@@ -20,7 +20,7 @@ src/background.js    service worker — the only always-loaded script; injects t
 src/content/
   settings.js        shared globalThis.OBR namespace + DEFAULTS + load/saveSettings (storage.sync)
   readability.js     VENDORED Mozilla Readability (Apache-2.0) — do not edit; see READABILITY-LICENSE.md
-  reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate
+  reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
   gallery.js         IMAGE mode: collect images → masonry grid + lightbox (Shadow DOM)
 src/options/         options page (reuses settings.js)
 icons/               16/32/48/128
@@ -45,6 +45,18 @@ open Shadow DOM styled via Constructable Stylesheets (`adoptedStyleSheets`) so s
 block layout. Pagination = CSS multi-column: `.obr-pages` is transformed horizontally, "pages" are
 columns, a "spread" is N columns-per-view (`columns`: 2/3/4, or 1 below `singlePageBelow`); the
 center spine shows only for even N. The ⊞ topbar button cycles 2→3→4.
+
+**Print / Save as PDF** (`reader.js`: `OBR.printReader` + the pure, testable `OBR._buildPrintDoc`): the
+🖨 topbar button (and the `P` key) reuse the article Readability already parsed (`lastArticle`, captured
+in `open()`) to build a clean, flat, **vertically-flowing** document and hand it to the browser's print
+dialog — which is also where "Save as PDF" lives, so print and PDF are one feature, no library. The
+print doc is always a white paper theme (honors font family + line-height, but NOT the screen px size or
+dark/sepia theme — paper wants white) and deliberately drops ALL `column-*`/`translateX`/`overflow`
+machinery so the browser paginates onto paper instead of printing one clipped spread. It renders into an
+**off-screen** iframe written via `about:blank` + `document.write` — NOT `srcdoc`, because `about:srcdoc`
+is `frame-src`-blocked on strict-CSP sites (GitHub, many news sites) → blank print; the CSS is also
+applied via `adoptedStyleSheets` to dodge strict `style-src`. Fully local, **no new permission**; the
+`<title>` becomes the default PDF filename; a footer shows the full source URL.
 
 **Reading progress is a FRACTION, never a spread index** (`reader.js` + `settings.js`). Re-pagination
 (font / columns / width) changes how many columns an article splits into, so position is stored as

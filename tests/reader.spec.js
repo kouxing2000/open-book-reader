@@ -364,6 +364,43 @@ test('the ⚠ Report button builds a feedback mailto with a parseable [feedback-
   expect(r.meta.pageUrl).toBe(r.expectedUrl); // query/hash stripped to origin+pathname
 });
 
+test('the 🖨 Print button builds a standalone, flat print document (no screen-layout machinery)', async ({ page }) => {
+  await openReader(page);
+  const r = await page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const hasBtn = !!root.querySelector('.obr-btn[data-act="print"]');
+    const html = globalThis.OBR._buildPrintDoc({
+      title: 'A & B <Title> "Q"',
+      byline: 'By <Jane> & John',
+      content: '<p>Body paragraph one.</p><p>Body paragraph two.</p>',
+      fontFamily: 'serif', lineHeight: 1.7,
+      url: 'https://example.com/path',
+    });
+    const empty = globalThis.OBR._buildPrintDoc({ title: 'X', content: '' });
+    return { hasBtn, html, empty };
+  });
+  expect(r.hasBtn).toBe(true);
+  // A complete, standalone document
+  expect(r.html).toContain('<!doctype html>');
+  expect(r.html).toContain('</html>');
+  // Title -> <title> (drives the default Save-as-PDF filename), HTML-escaped
+  expect(r.html).toContain('<title>A &amp; B &lt;Title&gt; &quot;Q&quot;</title>');
+  // Byline escaped; content inserted; source URL present
+  expect(r.html).toContain('By &lt;Jane&gt; &amp; John');
+  expect(r.html).toContain('Body paragraph one.');
+  expect(r.html).toContain('https://example.com/path');
+  // The chosen font family + line height actually reach the stylesheet
+  expect(r.html).toContain('12pt/1.7');
+  expect(r.html).toContain('Georgia'); // serif stack
+  // Empty extraction degrades to a readable fallback, not a blank page
+  expect(r.empty).toContain('Could not extract a readable article');
+  // Flat paper layout — NONE of the on-screen reader's column / transform / clip machinery,
+  // so the browser paginates it vertically onto paper instead of printing one clipped spread.
+  expect(r.html).not.toMatch(/column-/);
+  expect(r.html).not.toContain('translateX');
+  expect(r.html).not.toMatch(/overflow:\s*hidden/);
+});
+
 test('saveSettings persists only changed keys (default changes still apply)', async ({ page }) => {
   await openReader(page);
   await clickInReader(page, '.obr-btn[data-act="font+"]'); // changes only fontSize
