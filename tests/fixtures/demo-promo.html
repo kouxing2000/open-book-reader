@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body { margin: 0; padding: 0; }
+    .tile {
+      width: 440px; height: 280px; overflow: hidden; position: relative;
+      background: linear-gradient(135deg, #e7d8bd 0%, #d9cdb8 55%, #c9b89a 100%);
+      font-family: Georgia, "Songti SC", serif; color: #3a3122;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    /* A stylized open book: two pages meeting at a center spine. */
+    .book {
+      width: 250px; height: 150px; position: relative; margin-bottom: 18px;
+      filter: drop-shadow(0 12px 22px rgba(0,0,0,.28));
+    }
+    .page { position: absolute; top: 0; bottom: 0; width: 50%; background: #f6efe0; }
+    .page.left  { left: 0; border-radius: 8px 0 0 8px; transform: perspective(420px) rotateY(10deg); transform-origin: right center; }
+    .page.right { right: 0; border-radius: 0 8px 8px 0; transform: perspective(420px) rotateY(-10deg); transform-origin: left center; }
+    .page .lines { position: absolute; left: 16px; right: 16px; top: 22px; }
+    .page.right .lines { left: 16px; right: 16px; }
+    .line { height: 5px; border-radius: 3px; background: rgba(58,49,34,.18); margin-bottom: 9px; }
+    .line.short { width: 60%; }
+    .spine { position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; transform: translateX(-50%);
+      background: linear-gradient(to right, rgba(0,0,0,.18), rgba(0,0,0,.32), rgba(0,0,0,.18)); }
+    .title { font-size: 30px; font-weight: 700; letter-spacing: .3px; }
+    .tagline { font-size: 14px; margin-top: 6px; opacity: .72; font-family: -apple-system, system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div class="tile">
+    <div class="book">
+      <div class="page left"><div class="lines">
+        <div class="line"></div><div class="line"></div><div class="line"></div>
+        <div class="line"></div><div class="line short"></div>
+      </div></div>
+      <div class="page right"><div class="lines">
+        <div class="line"></div><div class="line"></div><div class="line"></div>
+        <div class="line"></div><div class="line short"></div>
+      </div></div>
+      <div class="spine"></div>
+    </div>
+    <div class="title">Open Book Reader</div>
+    <div class="tagline">Read the web like an open book</div>
+  </div>
+</body>
+</html>

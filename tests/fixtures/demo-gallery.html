@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Gallery demo — a wall of pictures</title>
+  <style> body { margin: 0; font-family: system-ui, sans-serif; } img { display: block; } </style>
+</head>
+<body>
+  <h1 style="padding:16px">A page full of pictures</h1>
+  <div id="imgs"></div>
+
+  <script>
+    // Procedurally paint attractive, varied gradient "photos" as canvas images so
+    // the masonry/lightbox screenshots look like a real gallery with no network.
+    function paint(w, h, palette) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+
+      const g = ctx.createLinearGradient(0, 0, w, h);
+      g.addColorStop(0, palette[0]);
+      g.addColorStop(0.5, palette[1]);
+      g.addColorStop(1, palette[2]);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+
+      // Soft radial glow for depth.
+      const r = ctx.createRadialGradient(w * 0.7, h * 0.3, 0, w * 0.7, h * 0.3, Math.max(w, h) * 0.7);
+      r.addColorStop(0, 'rgba(255,255,255,0.35)');
+      r.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = r;
+      ctx.fillRect(0, 0, w, h);
+
+      // A few translucent circles for a layered, abstract feel.
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        const cx = (0.2 + 0.3 * i) * w;
+        const cy = (0.75 - 0.18 * i) * h;
+        ctx.arc(cx, cy, w * (0.18 - 0.03 * i), 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.10 + 0.04 * i) + ')';
+        ctx.fill();
+      }
+      return c.toDataURL('image/png');
+    }
+
+    // Curated palettes + varied aspect ratios make a believable masonry wall.
+    const items = [
+      [420, 560, ['#6a3093', '#a044ff', '#f5d0ff']],
+      [480, 360, ['#1e3c72', '#2a5298', '#7db9e8']],
+      [400, 400, ['#ff5f6d', '#ffc371', '#fff2cc']],
+      [440, 600, ['#11998e', '#38ef7d', '#d6ffe9']],
+      [500, 340, ['#373b44', '#4286f4', '#a6c8ff']],
+      [420, 520, ['#c94b4b', '#4b134f', '#e0aaff']],
+      [460, 360, ['#ff9966', '#ff5e62', '#ffd6cc']],
+      [400, 480, ['#136a8a', '#267871', '#9be7d4']],
+      [480, 420, ['#4568dc', '#b06ab3', '#f3d9ff']],
+      [440, 560, ['#0f2027', '#2c5364', '#83a4d4']],
+      [500, 380, ['#aa4b6b', '#6b6b83', '#dfe6ff']],
+      [420, 440, ['#f7971e', '#ffd200', '#fff6cc']],
+      [460, 600, ['#654ea3', '#eaafc8', '#ffe6f2']],
+      [480, 340, ['#009245', '#fcee21', '#eaffd0']],
+      [400, 520, ['#e53935', '#e35d5b', '#ffd0cf']],
+    ];
+
+    const host = document.getElementById('imgs');
+    for (const [w, h, palette] of items) {
+      const img = document.createElement('img');
+      img.width = w; img.height = h;
+      img.src = paint(w, h, palette);
+      host.appendChild(img);
+    }
+  </script>
+</body>
+</html>

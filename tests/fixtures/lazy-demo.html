@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Book Reader — lazy / infinite gallery demo</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font: 15px/1.5 -apple-system, system-ui, sans-serif;
+           background: #f4f4f6; color: #1c1c22; }
+    header { position: sticky; top: 0; z-index: 5; padding: 14px 20px;
+             background: #16161a; color: #e8e8ea; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+    header b { color: #a99bff; }
+    header .count { float: right; font-variant-numeric: tabular-nums; opacity: .8; }
+    .hint { font-size: 13px; opacity: .8; margin-top: 4px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+    figure { margin: 0; background: #fff; border-radius: 10px; overflow: hidden;
+             box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+    figure img { width: 100%; height: auto; display: block; background: #e7e7ea; }
+    figcaption { padding: 6px 10px; font-size: 12px; color: #6a6a72; }
+    #sentinel { height: 1px; }
+    .done { text-align: center; padding: 30px; color: #6a6a72; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="count" id="count">0 images in DOM</span>
+    <div><b>Open Book Reader</b> — lazy / infinite-scroll gallery demo</div>
+    <div class="hint">
+      Open the image gallery (toolbar icon, or <b>Alt+Shift+B</b>), then scroll the gallery —
+      it should prefetch the next batch <i>before</i> you reach the bottom. Or hit <b>⟳ Load all</b>.
+      This page only mounts ~12 images per scroll (like a real feed); a few use a tiny
+      <code>data-src</code> placeholder to test lazy-URL rescue.
+    </div>
+  </header>
+  <main>
+    <div class="grid" id="grid"></div>
+    <div id="sentinel"></div>
+    <div class="done" id="done" hidden>— end of feed —</div>
+  </main>
+
+  <script>
+    const BATCH = 12, MAX = 180;
+    let n = 0;
+    const grid = document.getElementById('grid');
+    const countEl = document.getElementById('count');
+
+    // A labeled tile: the index drawn large on an HSL-tinted canvas, so you can see
+    // exactly which images the gallery has pulled in (and in what order).
+    function tile(i) {
+      const w = 220, h = 150 + ((i * 37) % 120); // varied heights → real masonry
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const x = cv.getContext('2d');
+      const hue = (i * 47) % 360;
+      x.fillStyle = `hsl(${hue} 65% 55%)`; x.fillRect(0, 0, w, h);
+      x.fillStyle = 'rgba(255,255,255,.92)';
+      x.font = `bold ${Math.min(72, h / 2)}px system-ui, sans-serif`;
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText(String(i + 1), w / 2, h / 2);
+      return cv.toDataURL('image/png');
+    }
+
+    function addBatch() {
+      if (n >= MAX) return;
+      const end = Math.min(n + BATCH, MAX);
+      for (; n < end; n++) {
+        const fig = document.createElement('figure');
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        if (n % 5 === 4) {
+          // Every 5th image is "lazy": a 2x2 placeholder in src, real URL in data-src.
+          // The page leaves it as a placeholder; the gallery should still grab the real one.
+          const real = tile(n);
+          img.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4nGNkYGD4z4AEGIcRAQAm0wH9exg0wgAAAABJRU5ErkJggg==';
+          img.setAttribute('data-src', real);
+          img.style.minHeight = '120px';
+        } else {
+          img.src = tile(n);
+        }
+        const cap = document.createElement('figcaption');
+        cap.textContent = `image #${n + 1}` + (n % 5 === 4 ? ' (lazy data-src)' : '');
+        fig.appendChild(img); fig.appendChild(cap);
+        grid.appendChild(fig);
+      }
+      countEl.textContent = grid.querySelectorAll('img').length + ' images in DOM';
+      if (n >= MAX) { document.getElementById('done').hidden = false; io.disconnect(); }
+    }
+
+    // Infinite scroll: mount the next batch when the sentinel nears the viewport.
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) addBatch();
+    }, { rootMargin: '300px' });
+    io.observe(document.getElementById('sentinel'));
+
+    addBatch(); // first screen
+  </script>
+</body>
+</html>

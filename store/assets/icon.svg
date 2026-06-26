@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="page" x1="64" y1="16" x2="64" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="img" x1="74" y1="50" x2="116" y2="94" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- left page -->
+  <path d="M64 34
+           C 44 18, 19 14, 6 19
+           C 4.3 19.5, 3 21, 3 22.8
+           L 3 113
+           C 3 115.7, 5.4 117.5, 8 116.8
+           C 23 112.8, 46 114, 64 124
+           Z"
+        fill="url(#page)" stroke="#7C2D12" stroke-width="5.5" stroke-linejoin="round"/>
+
+  <!-- right page -->
+  <path d="M64 34
+           C 84 18, 109 14, 122 19
+           C 123.7 19.5, 125 21, 125 22.8
+           L 125 113
+           C 125 115.7, 122.6 117.5, 120 116.8
+           C 105 112.8, 82 114, 64 124
+           Z"
+        fill="url(#page)" stroke="#7C2D12" stroke-width="5.5" stroke-linejoin="round"/>
+
+  <!-- spine -->
+  <path d="M64 34 L64 124" stroke="#7C2D12" stroke-width="6.5" stroke-linecap="round"/>
+
+  <!-- text lines (left page) -->
+  <g stroke="#7C2D12" stroke-width="5.5" stroke-linecap="round">
+    <path d="M19 50 L56 46"/>
+    <path d="M17 66 L56 62"/>
+    <path d="M17 82 L56 78"/>
+    <path d="M18 98 L48 96"/>
+  </g>
+
+  <!-- image (right page): frame + mountain + sun -->
+  <g>
+    <rect x="74" y="51" width="41" height="41" rx="5.5" fill="url(#img)" stroke="#7C2D12" stroke-width="4.5"/>
+    <circle cx="85" cy="63" r="4.6" fill="#7C2D12"/>
+    <path d="M75 92 L90 71 L100 82 L106 76 L114 92 Z" fill="#7C2D12"/>
+  </g>
+</svg>

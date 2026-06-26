@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Responsive Image Problem</title>
+  <meta name="author" content="Pat Pixel">
+</head>
+<body>
+  <header><nav>Home · Tech · About</nav></header>
+  <!-- Article whose lead figure uses the very common responsive pattern: a <picture>
+       with the real image in <source srcset> and a grey placeholder in the <img src>.
+       The reader must rescue the real URL (hydrateLazyImages) rather than render the
+       placeholder, and must drop a truly-empty placeholder image (no blank box). -->
+  <article>
+    <h1>The Responsive Image Problem</h1>
+    <p class="byline">By Pat Pixel</p>
+
+    <p>Modern news sites almost never put the real image URL in an image's src attribute.
+    Instead they ship a tiny grey placeholder and list the actual, full-resolution photographs
+    inside a picture element's source descriptors, letting the browser choose the right size for
+    the viewport. It is an elegant solution for performance, and a quiet trap for any tool that
+    only ever looks at the src attribute when deciding what to show a reader.</p>
+
+    <figure>
+      <picture>
+        <source type="image/webp" srcset="https://obr.test/lead-400.webp 400w, https://obr.test/lead-1600.webp 1600w">
+        <source type="image/jpeg" srcset="https://obr.test/lead-400.jpg 400w, https://obr.test/lead-1600.jpg 1600w">
+        <img src="https://static.example.com/grey-placeholder.png" alt="A wide landscape photograph">
+      </picture>
+      <figcaption>A landscape that should appear in the reader, not a grey box.</figcaption>
+    </figure>
+
+    <p>When a reading tool clones the page and hands it to an extractor, that placeholder src is
+    all a naive pass sees. The remedy is to look where the real image actually lives: the image's
+    own srcset, and failing that the source descriptors of the enclosing picture element, and only
+    then the assorted data attributes that lazy-loading scripts leave behind for their own use.</p>
+
+    <p>The harder case is the genuinely empty placeholder, the image element that carries nothing
+    but a spacer and never had a real source at all. Rendering it produces an ugly blank rectangle
+    in the middle of otherwise clean prose, so the right move is simply to drop it once extraction
+    has had every chance to fill it in.</p>
+
+    <figure>
+      <img src="https://static.example.com/blank-spacer.png" alt="">
+    </figure>
+
+    <p>Get both cases right and the reader shows real photographs where the author put them and
+    nothing where the author left only scaffolding, which is exactly what a calm reading surface
+    should do for the person who came to read rather than to debug someone else's markup.</p>
+  </article>
+  <footer><p>Boilerplate that should not appear in the extracted article.</p></footer>
+</body>
+</html>

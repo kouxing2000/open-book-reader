@@ -1,0 +1,70 @@
+name: Release to Chrome Web Store
+
+# Tag-driven release. Cut a version with `npm run bump -- minor` (which commits +
+# tags vX.Y.Z), then `git push --follow-tags`. Pushing the tag runs tests, packages
+# the allowlisted zip, uploads it to the Web Store, and SUBMITS it for review.
+#
+# AUTO_PUBLISH is true: fully hands-off. The pushed tag is the deliberate release
+# gesture; once Google's review passes the version goes live automatically, with no
+# dashboard click. (Review cannot be skipped — it's Google's, not ours.) To go back
+# to draft-only uploads, set AUTO_PUBLISH to 'false' below.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   CHROME_EXTENSION_ID  CHROME_CLIENT_ID  CHROME_CLIENT_SECRET  CHROME_REFRESH_TOKEN
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install tooling
+        run: npm ci
+
+      - name: Verify tag matches manifest version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          MANIFEST=$(node -p "require('./manifest.json').version")
+          if [ "$TAG" != "$MANIFEST" ]; then
+            echo "::error::Tag v$TAG does not match manifest version $MANIFEST. Use 'npm run bump' to keep them in sync."
+            exit 1
+          fi
+          echo "Releasing version $MANIFEST"
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run tests
+        run: npm test
+
+      - name: Package extension
+        run: npm run package
+
+      - name: Upload to Chrome Web Store and submit for review
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          AUTO_PUBLISH: 'true'
+          AUTO_GET_TOKEN: 'false'
+        run: npm run deploy
+
+      - name: Upload packaged zip as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-extension
+          path: dist.zip

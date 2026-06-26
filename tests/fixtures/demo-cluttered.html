@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Art of Slow Reading</title>
+  <meta name="author" content="Jane Quill">
+  <!-- A deliberately CLUTTERED article page: nav, cookie bar, ads, sidebar, share rail,
+       newsletter nag. Same article text as demo-article.html so the store before/after
+       shows the identical content cleaned up. Self-contained, no network. -->
+  <style>
+    :root { --ad:#fbe3b8; --adline:#e0b15f; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Segoe UI", system-ui, Arial, sans-serif;
+      color: #1f2430; background: #eef1f5; line-height: 1.5;
+    }
+    a { color: #1a6fd4; text-decoration: none; }
+
+    /* sticky top nav */
+    .topnav {
+      position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 18px;
+      background: #11233f; color: #fff; padding: 10px 18px; font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .topnav .logo { font-weight: 800; font-size: 18px; letter-spacing: .3px; color: #ffd36b; }
+    .topnav .menu { display: flex; gap: 16px; opacity: .92; }
+    .topnav .spacer { flex: 1; }
+    .topnav .btn { background: #1a6fd4; padding: 6px 14px; border-radius: 6px; font-weight: 700; }
+    .topnav .sub { background: #e23b5a; padding: 6px 14px; border-radius: 6px; font-weight: 700; }
+
+    /* leaderboard ad */
+    .leaderboard {
+      margin: 12px auto; max-width: 1100px; height: 92px; border: 1px dashed var(--adline);
+      background: repeating-linear-gradient(45deg, var(--ad), var(--ad) 14px, #f7d99e 14px, #f7d99e 28px);
+      display: flex; align-items: center; justify-content: center; color: #9a6a14; font-weight: 800;
+      letter-spacing: 2px; border-radius: 4px; position: relative;
+    }
+    .adtag { position: absolute; top: 4px; left: 8px; font-size: 9px; letter-spacing: 1px;
+      color: #b98a2e; font-weight: 700; }
+
+    /* layout */
+    .wrap { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 320px; gap: 22px; padding: 0 18px 40px; }
+    .main { background: #fff; padding: 22px 28px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .crumbs { font-size: 12px; color: #8a93a3; margin-bottom: 10px; }
+    h1 { font-size: 30px; line-height: 1.15; margin: 4px 0 6px; }
+    .byline { color: #6b7280; font-size: 13px; margin: 0 0 6px; }
+    .sharerow { display: flex; gap: 8px; margin: 10px 0 16px; }
+    .chip { font-size: 12px; font-weight: 700; color: #fff; padding: 5px 12px; border-radius: 20px; }
+    .fb{background:#3b5998}.tw{background:#111}.pin{background:#e60023}.mail{background:#6b7280}
+    figure { margin: 0 0 8px; }
+    figure img { width: 100%; height: auto; border-radius: 4px; display: block; }
+    figcaption { font-size: 12px; color: #8a93a3; margin-top: 6px; }
+    .main p { margin: 0 0 14px; font-size: 16px; }
+    h2 { font-size: 21px; margin: 22px 0 8px; }
+    blockquote { margin: 16px 0; padding: 10px 16px; border-left: 4px solid #1a6fd4;
+      background: #f3f7fd; color: #2b3242; font-style: italic; }
+
+    /* inline ad */
+    .inline-ad { margin: 18px 0; height: 120px; border: 1px dashed var(--adline);
+      background: repeating-linear-gradient(-45deg, var(--ad), var(--ad) 14px, #f7d99e 14px, #f7d99e 28px);
+      display: flex; align-items: center; justify-content: center; color: #9a6a14; font-weight: 800;
+      letter-spacing: 2px; border-radius: 4px; position: relative; }
+
+    /* sidebar */
+    .side > div { margin-bottom: 18px; }
+    .mpu { height: 250px; border: 1px dashed var(--adline);
+      background: repeating-linear-gradient(45deg, var(--ad), var(--ad) 14px, #f7d99e 14px, #f7d99e 28px);
+      display: flex; align-items: center; justify-content: center; color: #9a6a14; font-weight: 800;
+      letter-spacing: 2px; border-radius: 4px; position: relative; }
+    .panel { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 14px 16px; }
+    .panel h3 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: .6px; color: #e23b5a; }
+    .trend { font-size: 13px; padding: 8px 0; border-bottom: 1px solid #eef1f5; color: #2b3242; }
+    .trend b { color: #e23b5a; margin-right: 6px; }
+    .news { background: linear-gradient(135deg,#1a6fd4,#11233f); color: #fff; }
+    .news h3 { color: #ffd36b; }
+    .news input { width: 100%; padding: 8px; border: 0; border-radius: 4px; margin: 8px 0; }
+    .news .go { background: #ffd36b; color: #11233f; text-align: center; padding: 8px; border-radius: 4px; font-weight: 800; }
+
+    /* cookie bar */
+    .cookie { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9; background: #11233f; color: #fff;
+      padding: 12px 18px; display: flex; align-items: center; gap: 14px; font-size: 13px; box-shadow: 0 -2px 12px rgba(0,0,0,.3); }
+    .cookie .spacer { flex: 1; }
+    .cookie .ok { background: #1a6fd4; padding: 7px 18px; border-radius: 6px; font-weight: 700; }
+    .cookie .no { border: 1px solid #4a5a78; padding: 7px 14px; border-radius: 6px; }
+
+    /* floating social rail */
+    .rail { position: fixed; left: 10px; top: 220px; z-index: 6; display: flex; flex-direction: column; gap: 8px; }
+    .rail a { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+
+    footer { background: #11233f; color: #c3cad6; padding: 24px 18px; font-size: 12px; }
+    footer .links { max-width: 1100px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px 22px; }
+    footer a { color: #9fb2d0; }
+  </style>
+</head>
+<body>
+  <nav class="topnav">
+    <span class="logo">THE DAILY SCROLL</span>
+    <span class="menu"><a href="#">News</a><a href="#">Culture</a><a href="#">Tech</a><a href="#">Opinion</a><a href="#">Lifestyle</a><a href="#">Video</a></span>
+    <span class="spacer"></span>
+    <span class="btn">Sign in</span>
+    <span class="sub">Subscribe</span>
+  </nav>
+
+  <div class="leaderboard"><span class="adtag">ADVERTISEMENT</span>728 × 90 AD</div>
+
+  <div class="rail">
+    <a class="fb" style="background:#3b5998">f</a>
+    <a class="tw" style="background:#111">𝕏</a>
+    <a class="pin" style="background:#e60023">P</a>
+    <a class="mail" style="background:#6b7280">✉</a>
+  </div>
+
+  <div class="wrap">
+    <article class="main">
+      <div class="crumbs">Home › Culture › Essays › The Art of Slow Reading</div>
+      <h1>The Art of Slow Reading</h1>
+      <p class="byline">By Jane Quill · 12 min read · Updated 3 hours ago</p>
+      <div class="sharerow">
+        <span class="chip fb">Share</span><span class="chip tw">Post</span>
+        <span class="chip pin">Pin</span><span class="chip mail">Email</span>
+      </div>
+
+      <figure>
+        <img alt="A reader at a sunlit window" width="1200" height="520" src="data:image/svg+xml;utf8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1200'%20height='520'%20viewBox='0%200%201200%20520'%3E%3Cdefs%3E%3ClinearGradient%20id='sky'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23f6d9a8'/%3E%3Cstop%20offset='0.55'%20stop-color='%23e9a978'/%3E%3Cstop%20offset='1'%20stop-color='%23b9646a'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='h1'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%238a4f63'/%3E%3Cstop%20offset='1'%20stop-color='%235e3a55'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='h2'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23613a52'/%3E%3Cstop%20offset='1'%20stop-color='%233d2640'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='1200'%20height='520'%20fill='url(%23sky)'/%3E%3Ccircle%20cx='880'%20cy='190'%20r='90'%20fill='%23fbe6c4'%20opacity='0.92'/%3E%3Cpath%20d='M0%20360%20Q300%20300%20600%20350%20T1200%20330%20L1200%20520%20L0%20520%20Z'%20fill='url(%23h1)'/%3E%3Cpath%20d='M0%20430%20Q350%20380%20720%20425%20T1200%20415%20L1200%20520%20L0%20520%20Z'%20fill='url(%23h2)'/%3E%3C/svg%3E">
+        <figcaption>The page was a place to dwell rather than a surface to skim.</figcaption>
+      </figure>
+
+      <p>There was a time when reading was an unhurried act, a slow turning of pages by candlelight or
+      lamplight, when a single book might occupy a reader for an entire winter. The page was a place to
+      dwell rather than a surface to skim, and the reader moved through it the way one walks through a
+      familiar garden, noticing the small things that reward a second glance.</p>
+
+      <p>Today the screen invites a different posture. We scan, we skip, we hunt for the one sentence
+      that confirms what we already suspected, and then we move on. The infinite scroll has trained the
+      eye to keep falling, never landing, never resting on a paragraph long enough to let it change us.</p>
+
+      <div class="inline-ad"><span class="adtag">ADVERTISEMENT</span>300 × 250 AD</div>
+
+      <blockquote>We remember the shape of a book; we rarely remember the shape of a feed.</blockquote>
+
+      <h2>Why pages mattered</h2>
+      <p>A bound page imposes a boundary, and boundaries are generous things. The edge of the page tells
+      you where you are and how far you have come. It gives the text a shape your hands can hold and your
+      memory can map, so that weeks later you recall not only what a passage said but where it sat on the
+      page, high on the left or buried near the gutter.</p>
+
+      <p>The two-page spread, in particular, has a logic the screen has forgotten. The eye rests on the
+      left, drifts to the right, and the small motion of the turning page becomes a punctuation mark, a
+      breath between thoughts. There is a rhythm to it, and rhythm is the secret partner of attention.</p>
+
+      <h2>The discipline of attention</h2>
+      <p>To read slowly is, in a sense, to practice a discipline that the modern world is organized to
+      interrupt. Every notification is a small invitation to abandon the sentence you are in.</p>
+    </article>
+
+    <aside class="side">
+      <div class="mpu"><span class="adtag">ADVERTISEMENT</span>300 × 250 AD</div>
+      <div class="panel">
+        <h3>Trending now</h3>
+        <div class="trend"><b>1</b>10 foods nutritionists say to avoid</div>
+        <div class="trend"><b>2</b>The phone setting draining your battery</div>
+        <div class="trend"><b>3</b>Why everyone is talking about this show</div>
+        <div class="trend"><b>4</b>Stock tips for the second half of the year</div>
+        <div class="trend"><b>5</b>This $9 gadget sold out twice</div>
+      </div>
+      <div class="panel news">
+        <h3>Get our newsletter</h3>
+        <div style="font-size:13px;opacity:.9">The day's best stories, every morning.</div>
+        <input placeholder="your@email.com">
+        <div class="go">Sign me up →</div>
+      </div>
+      <div class="mpu"><span class="adtag">ADVERTISEMENT</span>300 × 250 AD</div>
+    </aside>
+  </div>
+
+  <footer>
+    <div class="links">
+      <a href="#">About</a><a href="#">Contact</a><a href="#">Careers</a><a href="#">Advertise</a>
+      <a href="#">Privacy</a><a href="#">Terms</a><a href="#">Cookie settings</a><a href="#">Sitemap</a>
+      <a href="#">Subscriptions</a><a href="#">Newsletters</a><a href="#">RSS</a><a href="#">Archive</a>
+    </div>
+  </footer>
+
+  <div class="cookie">
+    <span>🍪 We use cookies and 1,412 partners to personalise content and ads. By continuing you agree to our use of cookies.</span>
+    <span class="spacer"></span>
+    <span class="no">Manage</span>
+    <span class="ok">Accept all</span>
+  </div>
+</body>
+</html>

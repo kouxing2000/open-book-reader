@@ -1,0 +1,23 @@
+.DS_Store
+*.zip
+node_modules/
+
+# Release tooling
+.env.chrome-webstore
+package/
+
+# Test tooling
+test-results/
+playwright-report/
+
+# Generated store listing assets (regenerate with `npm run screenshots`)
+store-assets/
+
+/design
+
+# Scratch notes — never committed
+TODO.md
+/.deleted
+
+# Internal portfolio/marketing metadata — kept locally, not published
+.meta/
