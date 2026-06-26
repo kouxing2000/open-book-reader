@@ -83,6 +83,7 @@ READING THAT FEELS LIKE A BOOK
 • Paper, Light, and Dark themes
 • Adjustable font size and line height; serif or sans-serif
 • Fills the window by default, with an optional max width for a comfortable line length
+• Print the clean article — or save it as a tidy PDF — in one click (or press P)
 • Controls auto-hide while you read and reappear when you move the mouse
 
 A SECOND MODE: IMAGE GALLERY

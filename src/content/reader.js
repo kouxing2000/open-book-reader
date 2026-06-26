@@ -32,6 +32,9 @@
   // saved progress fraction until the first relayout positions us there (it keeps
   // re-anchoring through the late-image settle window, then a user nav clears it).
   let posKey = '', restoreFraction = null, saveTimer = null;
+  // The article Readability last parsed (held so Print can reuse it without re-parsing).
+  let lastArticle = null;
+  let printing = false; // re-entrancy guard for printReader (the native print dialog is modal)
 
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -183,6 +186,7 @@
             <button class="obr-seg-btn is-active" data-act="text" aria-current="true" title="You are in text reader">${ICON_BOOK}<span>Text</span></button>
             <button class="obr-seg-btn" data-act="images" title="Switch to image gallery">${ICON_IMAGES}<span>Images</span><span class="obr-seg-badge" hidden></span></button>
           </span>
+          <button class="obr-btn" data-act="print" title="Print or save as PDF (P)">🖨️</button>
           <button class="obr-btn" data-act="report" title="Report a problem on this page (opens an email)">⚠ Report</button>
           <button class="obr-btn" data-act="settings" title="Open settings">⚙ Settings</button>
           <button class="obr-btn" data-act="close" title="Close reader (Esc)">✕ Close</button>
@@ -198,7 +202,7 @@
       </div>
       <div class="obr-footer">
         <span class="obr-indicator"></span>
-        <span class="obr-hint">← / → flip · ↑↓ / Space · +/− font · T theme · Esc exit</span>
+        <span class="obr-hint">← / → flip · ↑↓ / Space · +/− font · T theme · P print · Esc exit</span>
       </div>
       <div class="obr-progress"><div class="obr-progress-fill"></div></div>`;
     root.appendChild(overlay);
@@ -253,9 +257,132 @@
     if (act === 'font+') return changeFont(1);
     if (act === 'font-') return changeFont(-1);
     if (act === 'columns') return cycleColumns();
+    if (act === 'print') return printReader();
     if (act === 'text') return; // already in the text reader — active segment is a no-op
     if (act === 'images') { close(); if (OBR.openGallery) OBR.openGallery(); return; }
   }
+
+  /* ----------------------------------------------------- print / save as PDF */
+  // Pure: build a complete standalone print document from the cleaned article.
+  // Deliberately a flat, vertically-flowing page (no columns / transform / fixed
+  // height / overflow clip) so the browser paginates it onto paper — the screen
+  // reader's layout would otherwise print as a single clipped horizontal spread.
+  // Always a white paper theme (printing the dark/sepia screen theme wastes ink);
+  // honors the reader's font family + line-height, but sizes in paper points since
+  // screen px don't map to paper. Exposed for unit testing, like _buildReportMailto.
+  function printCSS({ fontFamily, lineHeight }) {
+    const fam = FONT_STACKS[fontFamily] || FONT_STACKS.serif;
+    const lh = lineHeight || 1.6;
+    return `
+      @page { margin: 18mm 16mm; }
+      * { box-sizing: border-box; }
+      html, body { background: #fff; color: #1a1a1a; }
+      body { max-width: 40em; margin: 0 auto; padding: 0; font: 12pt/${lh} ${fam}; }
+      h1 { font-size: 1.9em; line-height: 1.2; margin: 0 0 .2em; }
+      h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 .4em; break-after: avoid; }
+      p { text-align: justify; hyphens: auto; orphans: 2; widows: 2; margin: 0 0 1em; }
+      a { color: inherit; text-decoration: underline; }
+      img, figure, table, pre, blockquote { break-inside: avoid; }
+      img { max-width: 100%; height: auto; }
+      figure { margin: 1em 0; }
+      figcaption { font-size: .85em; color: #555; text-align: center; }
+      blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid #ccc; color: #333; }
+      pre { white-space: pre-wrap; background: #f4f4f4; padding: .8em; border-radius: 4px; font-size: .9em; }
+      code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+      hr { border: 0; border-top: 1px solid #ddd; }
+      .obr-print-byline { color: #555; font-style: italic; margin: 0 0 1.4em; }
+      .obr-print-source { margin-top: 2em; padding-top: .8em; border-top: 1px solid #ddd; font-size: .8em; color: #777; word-break: break-all; }`;
+  }
+  function buildPrintDoc({ title, byline, content, fontFamily, lineHeight, url }) {
+    const t = escapeHTML(title || '');
+    return '<!doctype html><html><head><meta charset="utf-8">'
+      + `<title>${t || 'Article'}</title><style>${printCSS({ fontFamily, lineHeight })}</style></head>`
+      + `<body><h1>${t}</h1>`
+      + (byline ? `<div class="obr-print-byline">${escapeHTML(byline)}</div>` : '')
+      + (content || '<p>Could not extract a readable article from this page.</p>')
+      + (url ? `<div class="obr-print-source">${escapeHTML(url)}</div>` : '')
+      + '</body></html>';
+  }
+  OBR._buildPrintDoc = buildPrintDoc;
+
+  // Hand a clean print document to the browser's print dialog (which offers
+  // "Save as PDF"). Renders into a hidden iframe so the page's own CSS and the
+  // reader's screen-only column transform are entirely out of the picture.
+  function printReader() {
+    if (printing) return; // a print is already in flight; let the modal dialog finish first
+    printing = true;
+    const title = (lastArticle && lastArticle.title) || document.title;
+    const byline = (lastArticle && lastArticle.byline) || '';
+    const content = lastArticle && lastArticle.content ? lastArticle.content : '';
+    // Full URL so the saved/printed copy links back to the exact article (query
+    // included — unlike the Report mailto, this output never leaves the user's device
+    // unless they choose to share it).
+    let url = '';
+    try { url = location.href; } catch (e) { /* opaque origin */ }
+
+    const docHtml = buildPrintDoc({
+      title, byline, content,
+      fontFamily: settings.fontFamily, lineHeight: settings.lineHeight, url,
+    });
+
+    // Render into an OFF-SCREEN (not 0x0 / visibility:hidden) iframe so the print
+    // engine actually paints it, and write via about:blank document.write rather than
+    // srcdoc: a srcdoc frame navigates to about:srcdoc, which strict-CSP sites (GitHub,
+    // many news sites) block via frame-src — the frame loads empty and prints blank.
+    // about:blank is the initial empty document and isn't frame-src-checked.
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed; left:-10000px; top:0; width:820px; height:1160px; border:0; opacity:0;';
+    document.documentElement.appendChild(iframe);
+
+    const win = iframe.contentWindow;
+    const doc = win && (iframe.contentDocument || win.document);
+
+    let done = false, timer = 0;
+    const cleanup = () => {
+      if (done) return;
+      done = true; printing = false;
+      clearTimeout(timer);
+      try { iframe.remove(); } catch (e) {}
+    };
+    if (!doc) { cleanup(); return; }
+    doc.open();
+    doc.write(docHtml);
+    doc.close();
+
+    // Belt-and-suspenders for strict style-src that would drop the inline <style>:
+    // also adopt the same sheet in the iframe's own realm (Constructable Stylesheets
+    // bypass CSP — the trick reader.js already uses for its Shadow DOM). Best-effort.
+    try {
+      const Sheet = win.CSSStyleSheet;
+      if (Sheet && 'replaceSync' in Sheet.prototype) {
+        const sheet = new Sheet();
+        sheet.replaceSync(printCSS({ fontFamily: settings.fontFamily, lineHeight: settings.lineHeight }));
+        doc.adoptedStyleSheets = [sheet];
+      }
+    } catch (e) { /* the inline <style> already covers the common case */ }
+
+    const fire = () => {
+      // afterprint fires when the dialog closes (including after Save as PDF) — that's the
+      // primary cleanup. The timer is only a leak-guard for the rare case it never fires;
+      // keep it long so it can't yank the iframe while a slow user is still in the dialog
+      // (which would blank the preview / fail the save), and clear it once afterprint wins.
+      try { win.addEventListener('afterprint', cleanup); } catch (e) {}
+      timer = setTimeout(cleanup, 600000);
+      try { win.focus(); win.print(); } catch (e) { cleanup(); }
+    };
+
+    // Let images settle so figures aren't dropped, but cap the wait so a slow or
+    // broken image can't hang the print.
+    const pending = Array.from(doc.images || []).filter((im) => !im.complete);
+    if (!pending.length) { fire(); return; }
+    let left = pending.length, settled = false;
+    const ready = () => { if (settled) return; settled = true; fire(); };
+    const onOne = () => { if (--left <= 0) ready(); };
+    pending.forEach((im) => { im.addEventListener('load', onOne); im.addEventListener('error', onOne); });
+    setTimeout(ready, 2000);
+  }
+  OBR.printReader = printReader;
 
   /* ---------------------------------------------------------------- extract */
   // Forums and image boards often defer the real image URL into a non-standard
@@ -607,7 +734,8 @@
     overlay.className = 'obr-overlay ' + settings.theme;
     updateColumnsBtn();
     updateImagesBadge();
-    renderContent(extractArticle());
+    lastArticle = extractArticle();
+    renderContent(lastArticle);
 
     // Resume where the user last left off in this article (null if never read or
     // storage unavailable). Held as a fraction; layout() re-anchors it through the
@@ -670,6 +798,7 @@
       case '+': case '=': e.preventDefault(); changeFont(1); break;
       case '-': case '_': e.preventDefault(); changeFont(-1); break;
       case 't': case 'T': e.preventDefault(); cycleTheme(); break;
+      case 'p': case 'P': e.preventDefault(); printReader(); break;
     }
   }, true);
 
