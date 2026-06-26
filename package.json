@@ -1,0 +1,26 @@
+{
+  "name": "open-book-reader",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Release tooling for the Open Book Reader Chrome extension. The shipped extension is zero-dependency vanilla JS; these devDependencies are build/publish tooling only and are NOT bundled into the extension.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "HEADED=true playwright test --project=chromium",
+    "test:ui": "playwright test --ui",
+    "test:manual": "node tests/manual-site-proxy.mjs",
+    "bump": "node scripts/bump-version.mjs",
+    "screenshots": "node scripts/capture-screenshots.mjs",
+    "package": "node scripts/package-extension.js",
+    "get-token": "node scripts/get-refresh-token.js",
+    "deploy": "node scripts/deploy-to-store.js",
+    "release": "npm run package && npm run deploy",
+    "metrics": "node scripts/track-metrics.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "archiver": "^7.0.1",
+    "chrome-webstore-upload": "^3.1.4",
+    "dotenv": "^16.4.7"
+  }
+}

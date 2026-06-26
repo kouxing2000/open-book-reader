@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Image-heavy page</title>
+  <style> .hero { width: 200px; height: 150px; background-size: cover; } </style>
+</head>
+<body>
+  <h1>A page full of pictures</h1>
+  <div id="imgs"></div>
+  <div id="hero" class="hero"></div>
+
+  <script>
+    // Generate deterministic test images as canvas data-URIs so naturalWidth/Height
+    // are real (the gallery filters by natural size). 5 large (kept) + 2 tiny (filtered).
+    function png(w, h, color) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, w, h);
+      return c.toDataURL('image/png');
+    }
+    const big = [
+      [160, 120, '#c0392b'],
+      [140, 200, '#27ae60'],
+      [180, 140, '#2980b9'],
+      [120, 120, '#8e44ad'],
+      [200, 110, '#d35400'],
+    ];
+    const tiny = [
+      [40, 40, '#111'],
+      [30, 50, '#222'],
+    ];
+    const host = document.getElementById('imgs');
+    for (const [w, h, col] of big.concat(tiny)) {
+      const img = document.createElement('img');
+      img.width = w; img.height = h;
+      img.src = png(w, h, col);
+      host.appendChild(img);
+    }
+    // One CSS background-image (200x150, above the min) -> +1 collected image.
+    document.getElementById('hero').style.backgroundImage = "url('" + png(200, 150, '#16a085') + "')";
+  </script>
+</body>
+</html>

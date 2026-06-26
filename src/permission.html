@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Open Book Reader — permission</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, system-ui, "PingFang SC", sans-serif;
+      color: #222; background: #faf8f3;
+      display: flex; align-items: center; justify-content: center; padding: 22px;
+    }
+    @media (prefers-color-scheme: dark) { body { color: #ddd; background: #16171b; } }
+    .card { max-width: 380px; text-align: center; }
+    h1 { font-size: 18px; margin: 0 0 10px; display: flex; gap: 8px; justify-content: center; align-items: center; }
+    p { font-size: 13.5px; line-height: 1.5; opacity: .8; margin: 0 0 20px; }
+    .actions { display: flex; gap: 10px; justify-content: center; }
+    button { padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-family: inherit; }
+    .primary { background: #2b6cff; color: #fff; }
+    .ghost { background: rgba(127,127,127,.18); color: inherit; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📖 Open Book Reader</h1>
+    <p id="why">This feature needs an additional permission.</p>
+    <div class="actions">
+      <button class="primary" id="allow">Allow</button>
+      <button class="ghost" id="cancel">Not now</button>
+    </div>
+  </div>
+  <script src="permission.js"></script>
+</body>
+</html>

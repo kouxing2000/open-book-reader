@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>An Illustrated Essay on Slow Reading</title>
+  <meta name="author" content="Jane Quill">
+</head>
+<body>
+  <header><nav>Home · Essays · About</nav></header>
+  <!-- A genuine long-form article that ALSO happens to carry many figures. Image
+       count alone would wrongly send this to the gallery; the word-count signal
+       should keep it in the reader. -->
+  <article>
+    <h1>An Illustrated Essay on Slow Reading</h1>
+    <p class="byline">By Jane Quill</p>
+
+    <p>There was a time when reading was an unhurried act, a slow turning of pages by candlelight or
+    lamplight, when a single book might occupy a reader for an entire winter. The page was a place to
+    dwell rather than a surface to skim, and the reader moved through it the way one walks through a
+    familiar garden, noticing the small things that reward a second glance.</p>
+
+    <p>Today the screen invites a different posture. We scan, we skip, we hunt for the one sentence
+    that confirms what we already suspected, and then we move on. The infinite scroll has trained the
+    eye to keep falling, never landing, never resting on a paragraph long enough to let it change us.
+    Speed is mistaken for comprehension, and the quiet pleasures of attention are quietly lost.</p>
+
+    <h2>Why pages mattered</h2>
+
+    <p>A bound page imposes a boundary, and boundaries are generous things. The edge of the page tells
+    you where you are and how far you have come. It gives the text a shape your hands can hold and your
+    memory can map, so that weeks later you recall not only what a passage said but where it sat on the
+    page, high on the left or buried near the gutter.</p>
+
+    <p>Scrolling dissolves that geography. Everything floats in a single undifferentiated column,
+    weightless and placeless, and the mind, deprived of landmarks, struggles to build the spatial
+    scaffolding that good memory depends upon. We remember the shape of a book; we rarely remember the
+    shape of a feed. The figures below punctuate the argument rather than replace it.</p>
+
+    <div id="figures"></div>
+
+    <h2>The discipline of attention</h2>
+
+    <p>To read slowly is, in a sense, to practice a discipline that the modern world is organized to
+    interrupt. Every notification is a small invitation to abandon the sentence you are in. To resist
+    is not nostalgia; it is a deliberate reclaiming of the mind's capacity to follow a long argument to
+    its end without flinching toward the next bright thing.</p>
+
+    <p>A good reading tool disappears. You stop noticing the page and start noticing the prose, and the
+    machinery of letters and leading and margins recedes into the background where it belongs. The
+    highest praise a typographer can receive is that the reader never thought about the type at all.</p>
+  </article>
+  <footer><p>Boilerplate that should not appear in the extracted article.</p></footer>
+
+  <script>
+    // 12 real (decodable) figures, large enough to clear the gallery's tiny-image
+    // filter, so OBR._imageCount() >= the default autoGalleryMin of 10.
+    function png(w, h, color) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = color; ctx.fillRect(0, 0, w, h);
+      return c.toDataURL('image/png');
+    }
+    const host = document.getElementById('figures');
+    const hues = ['#c0392b', '#27ae60', '#2980b9', '#8e44ad', '#d35400', '#16a085',
+                  '#2c3e50', '#e67e22', '#1abc9c', '#9b59b6', '#34495e', '#e74c3c'];
+    hues.forEach((col, i) => {
+      const fig = document.createElement('figure');
+      const img = document.createElement('img');
+      img.width = 200; img.height = 150; img.src = png(200, 150, col);
+      img.alt = 'Figure ' + (i + 1);
+      fig.appendChild(img);
+      host.appendChild(fig);
+    });
+  </script>
+</body>
+</html>

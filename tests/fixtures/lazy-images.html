@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lazy / infinite-scroll image page</title>
+  <style> body { margin: 0; height: 3500px; } </style>
+</head>
+<body>
+  <div id="visible"></div>
+  <div id="more"></div>
+  <script>
+    function png(w, h, c) {
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const x = cv.getContext('2d');
+      x.fillStyle = c; x.fillRect(0, 0, w, h);
+      return cv.toDataURL('image/png');
+    }
+    function big(c) {
+      const im = document.createElement('img');
+      im.width = 200; im.height = 150; im.src = png(200, 150, c);
+      document.getElementById('more').appendChild(im);
+    }
+
+    // 3 normal, fully-loaded large images.
+    ['#c0392b', '#27ae60', '#2980b9'].forEach((c) => {
+      const im = document.createElement('img');
+      im.width = 200; im.height = 150; im.src = png(200, 150, c);
+      document.getElementById('visible').appendChild(im);
+    });
+
+    // 1 lazy image: only a 2x2 placeholder shows in src; the REAL 200x150 URL waits
+    // in data-src. Naive collection grabs the placeholder (then the tiny filter drops
+    // it); the gallery should take data-src and keep it. => 4 images visible up front.
+    const lazy = document.createElement('img');
+    lazy.src = png(2, 2, '#cccccc');
+    lazy.setAttribute('data-src', png(200, 150, '#8e44ad'));
+    document.getElementById('visible').appendChild(lazy);
+
+    // Two more batches appear only as the page is scrolled down — a stand-in for
+    // native loading="lazy" / IntersectionObserver / infinite scroll. A near-top
+    // batch (reachable by one "load more" chunk) and a deep batch (only "Load all").
+    const BATCHES = [
+      { at: 200,  hues: ['#d35400', '#16a085', '#2c3e50'] }, // +3 at a shallow scroll
+      { at: 2500, hues: ['#e67e22', '#1abc9c', '#9b59b6'] }, // +3 only near the bottom
+    ];
+    const done = new Set();
+    addEventListener('scroll', () => {
+      BATCHES.forEach((b, i) => {
+        if (done.has(i) || window.scrollY < b.at) return;
+        done.add(i);
+        b.hues.forEach(big);
+      });
+    }, { passive: true });
+    window.__obrInjected = () => done.size; // test hook: how many batches fired
+  </script>
+</body>
+</html>

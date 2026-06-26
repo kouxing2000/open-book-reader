@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Open Book Reader",
+  "version": "0.3.0",
+  "description": "Read any article as a calm two-page open book — flip with the arrow keys. Plus an image-gallery mode. Private, local, open source.",
+  "homepage_url": "https://kouxing2000.github.io/open-book-reader/",
+  "minimum_chrome_version": "99",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "optional_permissions": ["downloads"],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_title": "Open Book Reader (Alt+B)",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
+  "commands": {
+    "toggle-reader": {
+      "suggested_key": {
+        "default": "Alt+B",
+        "mac": "Alt+B"
+      },
+      "description": "Toggle Open Book Reader (text)"
+    },
+    "toggle-gallery": {
+      "suggested_key": {
+        "default": "Alt+Shift+B",
+        "mac": "Alt+Shift+B"
+      },
+      "description": "Toggle image gallery mode"
+    }
+  }
+}

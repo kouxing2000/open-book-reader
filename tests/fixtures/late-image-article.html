@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A Page Built Around One Tall Image</title>
+  <meta name="author" content="Test Harness">
+</head>
+<body>
+  <article>
+    <h1>A Page Built Around One Tall Image</h1>
+    <p class="byline">By Test Harness</p>
+
+    <!-- The bulk of this article's height is a single large image served with an
+         artificial delay (?delay=). Until it loads it reports height 0, so the
+         reader's first pagination pass under-counts the columns. The regression
+         test asserts the reader re-paginates once the image finishes loading. -->
+    <p>This essay exists mainly to host the tall figure below, which loads slowly
+    on purpose so the reader must re-measure once it arrives. The surrounding
+    prose is here so the page reads as a genuine article rather than a bare image,
+    which is what a real reading tool would encounter in the wild.</p>
+
+    <p>Forum threads, photo essays, and gallery posts frequently put a single
+    large image at the very top of the content, above any substantial text. When
+    that image has not yet downloaded, the browser reports its height as zero, and
+    a layout engine that measures the page exactly once will badly under-count how
+    much vertical space the article truly needs.</p>
+
+    <figure>
+      <img src="/tall.png?delay=1200" alt="A deliberately tall figure">
+      <figcaption>A tall figure that loads after the first layout pass.</figcaption>
+    </figure>
+
+    <p>If pagination is only measured before the image loads, everything above
+    collapses into a single short column and the rest of the article becomes an
+    unreachable blank spread. Re-measuring after the image arrives restores the
+    full set of pages so the reader can flip all the way to the end.</p>
+
+    <p>The fix is to watch each still-loading image and re-run the layout pass once
+    it settles, keeping the reader on its current spread while quietly extending
+    the reachable range of pages behind the scenes. The same applies when a web
+    font swaps in and reflows the text after the first measurement.</p>
+  </article>
+</body>
+</html>

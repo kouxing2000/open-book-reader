@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy — Open Book Reader</title>
+  <meta name="description" content="Open Book Reader privacy policy: nothing collected, nothing sent. Reading is fully local." />
+  <link rel="icon" href="img/icon.png" />
+  <style>
+    :root {
+      --paper:#faf8f3; --ink:#2b2722; --muted:#6b6358; --accent:#8a5a2b;
+      --card:#fffdf8; --line:#e7ded0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--ink); line-height: 1.65;
+      background: linear-gradient(160deg, #f3ead9 0%, var(--paper) 45%, #efe6d6 100%);
+      background-attachment: fixed;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 0 22px 70px; }
+    .top { padding: 34px 0 8px; }
+    .top a { color: var(--accent); text-decoration: none; font-size: 14.5px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+      padding: 38px 40px; box-shadow: 0 10px 30px rgba(60,45,25,.10); margin-top: 14px;
+    }
+    h1 { font-family: "Iowan Old Style", Georgia, serif; font-size: 32px; margin: 0 0 4px; }
+    .updated { color: var(--muted); font-size: 13.5px; margin: 0 0 26px; }
+    h2 { font-size: 19px; margin: 30px 0 8px; }
+    p { margin: 0 0 14px; }
+    .lead { font-size: 17px; }
+    ul { padding-left: 20px; }
+    li { margin-bottom: 8px; }
+    code { background: rgba(120,90,40,.10); padding: 1px 6px; border-radius: 5px; font-size: 13.5px; }
+    .strong-no { color: var(--accent); font-weight: 700; }
+    .sub-label { font-weight: 600; margin: 18px 0 6px; }
+    footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; }
+    footer a { color: var(--accent); }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper:#17150f; --ink:#ece4d4; --muted:#9a9081; --accent:#d9a566; --card:#211e16; --line:#34301f; }
+      body { background: linear-gradient(160deg, #1b1810 0%, var(--paper) 50%, #14110b 100%); }
+      code { background: rgba(217,165,102,.15); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top"><a href="index.html">← Open Book Reader</a></div>
+    <div class="card">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: 2026-06-19</p>
+
+      <p class="lead">Open Book Reader is designed to be completely private.</p>
+
+      <h2>What we collect</h2>
+      <p><span class="strong-no">Nothing.</span> The extension does not collect, store, or transmit any personal data, browsing history, or page content to us or any third party.</p>
+
+      <h2>Network activity</h2>
+      <p>Core reading is fully local: article extraction and pagination (and the image-gallery layout) happen entirely in your browser, and the Mozilla Readability library is bundled inside the extension — nothing is fetched from external servers for reading.</p>
+      <p>The extension makes network requests in <strong>one case only: when you explicitly download images</strong> from the image-gallery mode. To save an image, or to bundle several into a ZIP, your browser fetches those image URLs (the same images the page already shows). This happens only on your action (clicking a download / ZIP button), the bytes go only to your device, and <strong>nothing is ever sent to the developer or any third party.</strong></p>
+
+      <h2>Reporting a problem</h2>
+      <p>The reader and image-gallery toolbars have a <strong>⚠ Report</strong> button. Clicking it opens <strong>your own email client</strong> with a pre-filled message so you can tell the developer a page didn't work. The draft includes the address of the page you were on (path only — any <code>?query</code> string is stripped), the mode you were using, and the extension version, so the bug can be reproduced. <strong>The extension itself sends nothing</strong> — it only prepares the draft; you review it and decide whether to send it from your own email account. If you don't click Send, nothing leaves your device.</p>
+
+      <h2>Data stored on your device</h2>
+      <p>Your reading preferences (font size, theme, book width, spine width, line height) are stored using Chrome's <code>storage.sync</code> API. This data stays within your own browser profile and may sync across your signed-in devices via Google's account sync. It is never sent to the developer.</p>
+
+      <h2>Permissions</h2>
+      <p class="sub-label">Requested at install (the minimal set):</p>
+      <ul>
+        <li><strong>activeTab / scripting</strong> — used only to render the reading view (text or image gallery) on the page you explicitly activate it on.</li>
+        <li><strong>storage</strong> — used only to remember your preferences.</li>
+      </ul>
+      <p class="sub-label">Optional — requested only the first time you download an image, never at install:</p>
+      <ul>
+        <li><strong>downloads</strong> — used only to save images you explicitly download from the image gallery.</li>
+        <li><strong>host access (<code>&lt;all_urls&gt;</code>)</strong> — used only to fetch image bytes when you ask to download a ZIP of selected images. It is never used to read, monitor, or transmit page content.</li>
+      </ul>
+      <p>The extension only runs when you click its icon or press its keyboard shortcut. It does not run in the background or on pages you have not activated it on.</p>
+
+      <h2>Contact</h2>
+      <p>For questions about this policy, open an issue at the project's repository or email the developer.</p>
+    </div>
+    <footer>© Open Book Reader · <a href="index.html">Home</a></footer>
+  </div>
+</body>
+</html>

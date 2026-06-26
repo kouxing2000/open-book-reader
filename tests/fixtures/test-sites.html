@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Book Reader — test sites</title>
+  <style>
+    :root { --bg:#f4f1ea; --card:#fff; --ink:#2a2620; --mut:#7a736a; --accent:#7c6cff; --line:#e6e0d4; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:15px/1.55 -apple-system, system-ui, "Segoe UI", sans-serif;
+           background:var(--bg); color:var(--ink); }
+    header { padding:26px 24px 16px; max-width:1080px; margin:0 auto; }
+    h1 { margin:0 0 6px; font-size:22px; }
+    h1 .emoji { margin-right:6px; }
+    .lede { color:var(--mut); margin:0 0 14px; }
+    .tip { background:#fff; border:1px solid var(--line); border-left:3px solid var(--accent);
+           border-radius:8px; padding:10px 14px; color:#4a443c; font-size:14px; }
+    .tip code { background:#efeae0; padding:1px 5px; border-radius:4px; font-size:13px; }
+    main { max-width:1080px; margin:0 auto; padding:8px 24px 60px; }
+    section { margin-top:26px; }
+    section > h2 { font-size:15px; letter-spacing:.04em; text-transform:uppercase;
+                  color:var(--mut); margin:0 0 12px; font-weight:700; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr)); gap:12px; }
+    .card { display:block; text-decoration:none; color:inherit; background:var(--card);
+            border:1px solid var(--line); border-radius:10px; padding:13px 15px;
+            transition:border-color .12s ease, transform .12s ease, box-shadow .12s ease; }
+    .card:hover { border-color:var(--accent); transform:translateY(-2px);
+                  box-shadow:0 6px 18px rgba(124,108,255,.14); }
+    .card .row1 { display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+    .card .name { font-weight:650; font-size:15px; }
+    .card .url { color:var(--mut); font-size:12.5px; word-break:break-all; margin:2px 0 7px; }
+    .card .what { font-size:13px; color:#534c43; }
+    .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+    .b-reader  { background:#eae6ff; color:#5b4cff; }
+    .b-gallery { background:#e3f4ec; color:#138a5e; }
+    .b-either  { background:#f0ece2; color:#7a736a; }
+    .b-local   { background:#fde8d6; color:#b5631a; }
+    footer { max-width:1080px; margin:0 auto; padding:0 24px 50px; color:var(--mut); font-size:13px; }
+    .caveat { margin-top:8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span class="emoji">📖</span>Open Book Reader — test sites</h1>
+    <p class="lede">Click a card to open the page in a new tab, then invoke the extension
+      (toolbar icon, or <b>Alt+B</b> text / <b>Alt+Shift+B</b> images).</p>
+    <p class="tip">Open <b>DevTools → Console</b> first and watch the
+      <code>[OpenBookReader] auto-mode →</code> line to see why a mode was chosen
+      (images, proseWords, thresholds). The <span class="badge b-reader">Reader</span> /
+      <span class="badge b-gallery">Gallery</span> badges are what the toolbar icon
+      <i>should</i> auto-pick.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>Pure article → Reader</h2>
+      <div class="grid" id="g-article"></div>
+    </section>
+    <section>
+      <h2>Figure-rich long article → Reader (the reported bug)</h2>
+      <div class="grid" id="g-figrich"></div>
+    </section>
+    <section>
+      <h2>Image gallery · lazy / infinite scroll → Gallery</h2>
+      <div class="grid" id="g-gallery"></div>
+    </section>
+    <section>
+      <h2>Placeholder-lazy (real URL in data-src)</h2>
+      <div class="grid" id="g-placeholder"></div>
+    </section>
+    <section>
+      <h2>Virtualized / hard infinite scroll (stress “Load all”)</h2>
+      <div class="grid" id="g-virtual"></div>
+    </section>
+    <section>
+      <h2>Controlled local demo (no network, deterministic)</h2>
+      <div class="grid" id="g-local"></div>
+    </section>
+  </main>
+
+  <footer>
+    <div>Tip: scroll the gallery to watch progressive prefetch; hit <b>⟳ Load all</b> to sweep the whole page.</div>
+    <div class="caveat">Caveats: some sites change layout often or gate behind login/paywall
+      (Pinterest, Amazon, some news). If Readability comes up thin, that's the page, not the
+      extension — the local demo is your stable baseline.</div>
+  </footer>
+
+  <script>
+    const SITES = {
+      'g-article': [
+        ['Paul Graham — How to Do Great Work', 'http://www.paulgraham.com/greatwork.html', 'reader', 'Long essay, almost no images. Clean Readability baseline.'],
+        ['Wikipedia — Reading', 'https://en.wikipedia.org/wiki/Reading', 'reader', 'Heavy prose with a few images.'],
+        ['The Verge (open any article)', 'https://www.theverge.com/', 'reader', 'Typical news layout, lazy images.'],
+        ['MDN — CSS columns', 'https://developer.mozilla.org/en-US/docs/Web/CSS/columns', 'reader', 'Docs with code blocks.'],
+      ],
+      'g-figrich': [
+        ['Wikipedia — Photography', 'https://en.wikipedia.org/wiki/Photography', 'reader', '12+ images AND heavy prose. proseWords should be ≫ 200 → stays Reader.'],
+        ['Wikipedia — Apollo 11', 'https://en.wikipedia.org/wiki/Apollo_11', 'reader', 'Image-rich essay; the prose signal must win.'],
+      ],
+      'g-gallery': [
+        ['Unsplash', 'https://unsplash.com/', 'gallery', 'Infinite scroll, srcset + lazy. Best general test for progressive load.'],
+        ['Pexels', 'https://www.pexels.com/', 'gallery', 'Lots of lazy images.'],
+        ['Reddit — r/EarthPorn', 'https://www.reddit.com/r/EarthPorn/', 'gallery', 'Lazy-loaded image feed.'],
+        ['Wikimedia Commons — Photographs', 'https://commons.wikimedia.org/wiki/Category:Photographs', 'gallery', 'Grid of thumbnails.'],
+      ],
+      'g-placeholder': [
+        ['Medium (open any photo-heavy post)', 'https://medium.com/', 'gallery', 'Blurhash/low-res placeholders — tests grabbing the real image, not the blur.'],
+        ['Amazon (a search/listing page)', 'https://www.amazon.com/s?k=camera', 'either', 'Lazy product thumbnails.'],
+      ],
+      'g-virtual': [
+        ['Pinterest', 'https://www.pinterest.com/', 'gallery', 'Recycles DOM nodes — tests that cumulative-merge keeps what scrolled past.'],
+      ],
+      'g-local': [
+        ['Local lazy-demo (run: node tests/server.js)', 'http://localhost:5099/lazy-demo.html', 'local', 'Numbered tiles, deterministic — see load order and that positions stay put.'],
+      ],
+    };
+    const BADGE = { reader:['b-reader','Reader'], gallery:['b-gallery','Gallery'], either:['b-either','Either'], local:['b-local','Local'] };
+    for (const [id, items] of Object.entries(SITES)) {
+      const host = document.getElementById(id);
+      for (const [name, url, kind, what] of items) {
+        const a = document.createElement('a');
+        a.className = 'card'; a.href = url; a.target = '_blank'; a.rel = 'noopener';
+        const [bc, bl] = BADGE[kind] || BADGE.either;
+        a.innerHTML =
+          `<div class="row1"><span class="name">${name}</span><span class="badge ${bc}">${bl}</span></div>` +
+          `<div class="url">${url}</div><div class="what">${what}</div>`;
+        host.appendChild(a);
+      }
+    }
+  </script>
+</body>
+</html>

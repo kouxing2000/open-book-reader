@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Book Reader — read the web like an open book</title>
+  <meta name="description" content="A Chrome extension that turns any article into a calm two-page open-book view, with an image-gallery mode. Private and fully local." />
+  <link rel="icon" href="img/icon.png" />
+  <style>
+    :root {
+      --paper: #faf8f3; --ink: #2b2722; --muted: #6b6358;
+      --accent: #8a5a2b; --card: #fffdf8; --line: #e7ded0;
+      --shadow: 0 10px 30px rgba(60, 45, 25, .12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 50% -200px, #fff 0%, transparent 70%),
+        linear-gradient(160deg, #f3ead9 0%, var(--paper) 45%, #efe6d6 100%);
+      background-attachment: fixed;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 22px; }
+    header { text-align: center; padding: 70px 0 36px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted);
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 999px; padding: 6px 14px; margin-bottom: 26px;
+    }
+    .badge img { width: 18px; height: 18px; border-radius: 4px; }
+    h1 { font-size: clamp(34px, 6vw, 54px); margin: 0 0 12px; letter-spacing: -.5px; }
+    .tagline { font-size: clamp(17px, 2.6vw, 21px); color: var(--muted); margin: 0 auto 30px; max-width: 600px; }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      font-family: system-ui, sans-serif; font-size: 15px; font-weight: 600;
+      text-decoration: none; padding: 12px 22px; border-radius: 10px;
+      border: 1px solid transparent; transition: transform .12s ease;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+    .btn-ghost { background: var(--card); color: var(--ink); border-color: var(--line); }
+    .note { font-family: system-ui, sans-serif; font-size: 12.5px; color: var(--muted); margin-top: 14px; }
+
+    .shot { margin: 18px 0; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--line); }
+    .shot img { display: block; width: 100%; }
+
+    section { padding: 40px 0; }
+    h2 { font-size: 28px; margin: 0 0 6px; }
+    .sub { color: var(--muted); font-family: system-ui, sans-serif; font-size: 15px; margin: 0 0 26px; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+    .feature {
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+      padding: 22px; box-shadow: 0 4px 14px rgba(60,45,25,.05);
+    }
+    .feature .ico { font-size: 26px; }
+    .feature h3 { margin: 12px 0 6px; font-size: 18px; }
+    .feature p { margin: 0; color: var(--muted); font-family: system-ui, sans-serif; font-size: 14.5px; }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+
+    .privacy-band {
+      background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+      padding: 30px; text-align: center; box-shadow: 0 4px 14px rgba(60,45,25,.05);
+    }
+    .privacy-band p { color: var(--muted); font-family: system-ui, sans-serif; font-size: 15px; max-width: 640px; margin: 8px auto 0; }
+
+    footer {
+      text-align: center; padding: 40px 0 60px; color: var(--muted);
+      font-family: system-ui, sans-serif; font-size: 13.5px;
+    }
+    footer a { color: var(--accent); }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper:#17150f; --ink:#ece4d4; --muted:#9a9081; --accent:#d9a566; --card:#211e16; --line:#34301f; }
+      body { background: linear-gradient(160deg, #1b1810 0%, var(--paper) 50%, #14110b 100%); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <span class="badge"><img src="img/icon.png" alt="" /> Chrome extension · Manifest V3</span>
+      <h1>Read the web like an open book</h1>
+      <p class="tagline">Open Book Reader turns any long article into a calm, two-page reading view you flip through with the arrow keys — plus an image-gallery mode for picture-heavy pages.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#" id="store-link">Add to Chrome — coming soon</a>
+        <a class="btn btn-ghost" href="privacy.html">Privacy policy</a>
+        <a class="btn btn-ghost" href="https://github.com/kouxing2000/open-book-reader">View source</a>
+      </div>
+      <p class="note">Listing pending Chrome Web Store review. This button will link to the store once it's live.</p>
+
+      <div class="shot" style="margin-top:40px">
+        <img src="img/01-reader-paper.png" alt="Open Book Reader showing an article in a two-page paper view" />
+      </div>
+    </header>
+
+    <section>
+      <h2>Two ways to read</h2>
+      <p class="sub">Invoke it on demand — nothing runs on a page until you ask.</p>
+      <div class="grid2">
+        <div class="shot"><img src="img/02-reader-dark-3col.png" alt="Dark theme, three columns per spread" /></div>
+        <div class="shot"><img src="img/03-gallery-masonry.png" alt="Image gallery in a masonry wall" /></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What you get</h2>
+      <p class="sub">Small, fast, and built to stay out of the way.</p>
+      <div class="features">
+        <div class="feature"><div class="ico">📖</div><h3>Open-book text view</h3><p>Readability-clean article text laid out in 2–4 columns per spread. Flip with the arrow keys, click zones, or Home/End.</p></div>
+        <div class="feature"><div class="ico">🖼️</div><h3>Image-gallery mode</h3><p>Collect a page's images into a Pinterest-style masonry wall with a full-screen lightbox. Download one or bundle a ZIP.</p></div>
+        <div class="feature"><div class="ico">🎨</div><h3>Paper, light &amp; dark</h3><p>Three themes, adjustable font size, column count, and book width — your preferences sync across devices.</p></div>
+        <div class="feature"><div class="ico">⌨️</div><h3>Keyboard-first</h3><p><b>Alt+B</b> for the reader, <b>Alt+Shift+B</b> for the gallery. Works even on strict-CSP sites via Shadow DOM.</p></div>
+        <div class="feature"><div class="ico">🔒</div><h3>Private by design</h3><p>Reading is fully local — nothing is collected or sent anywhere. Download permissions are requested only on first use.</p></div>
+        <div class="feature"><div class="ico">⚡</div><h3>Zero bloat</h3><p>No build step, no tracking, no dependencies bundled. Just a tidy Manifest V3 extension.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="privacy-band">
+        <h2 style="margin-bottom:10px">Private by design 🔒</h2>
+        <p>Open Book Reader collects nothing and sends nothing to the developer. Article extraction and gallery layout happen entirely in your browser. The only network activity is when <em>you</em> explicitly download images — and even then the bytes go only to your device. And you don't have to take our word for it: it's fully <a href="https://github.com/kouxing2000/open-book-reader">open source</a>.</p>
+        <p style="margin-top:18px"><a class="btn btn-ghost" href="privacy.html">Read the full privacy policy →</a></p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    Open Book Reader · <a href="https://github.com/kouxing2000/open-book-reader">Source on GitHub</a> (MIT) · article extraction by
+    <a href="https://github.com/mozilla/readability">Mozilla Readability</a> (Apache-2.0)
+    <br />Made for calmer reading.
+  </footer>
+</body>
+</html>
