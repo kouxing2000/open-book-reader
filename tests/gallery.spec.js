@@ -122,6 +122,27 @@ test.describe('image gallery', () => {
     expect(s.tiles).toBe(6);           // all images distributed across them
   });
 
+  test('toolbar labels stay on one line in a narrow window (no per-character wrap)', async ({ page }) => {
+    // Regression: without white-space:nowrap the flex bar dumped all its shrink onto
+    // the only shrinkable items (the text labels), collapsing "Images" / "Select all" /
+    // "Size" to one character per line. They must stay single-line; the bar wraps instead.
+    await page.setViewportSize({ width: 560, height: 800 });
+    await openGallery(page);
+    const r = await page.evaluate(() => {
+      const root = document.getElementById('obr-gallery-host').shadowRoot;
+      const m = (sel) => {
+        const el = root.querySelector(sel);
+        const cs = getComputedStyle(el);
+        return { h: el.offsetHeight, line: parseFloat(cs.lineHeight) || 18, ws: cs.whiteSpace };
+      };
+      return { title: m('.title'), selall: m('.selall'), size: m('.bar label:not(.selall)') };
+    });
+    for (const part of [r.title, r.selall, r.size]) {
+      expect(part.ws).toBe('nowrap');
+      expect(part.h).toBeLessThan(part.line * 2); // one line tall, not a stacked column
+    }
+  });
+
   test('lightbox opens, navigates with arrows (wrapping), and Escape closes it', async ({ page }) => {
     await openGallery(page);
 
