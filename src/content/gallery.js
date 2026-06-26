@@ -286,12 +286,12 @@
       font: 14px/1.4 -apple-system, system-ui, "PingFang SC", sans-serif;
       display: flex; flex-direction: column;
     }
-    .bar { flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+    .bar { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
       padding: 10px 16px; background: #16161a; border-bottom: 1px solid #26262c; }
-    .title { font-weight: 600; }
+    .title { font-weight: 600; white-space: nowrap; }
     .count { color: #9a9aa2; }
     .spacer { flex: 1; }
-    .bar label { display: flex; align-items: center; gap: 8px; color: #b8b8c0; }
+    .bar label { display: flex; align-items: center; gap: 8px; color: #b8b8c0; white-space: nowrap; }
     .bar input[type=range] { width: 150px; accent-color: #7c6cff; }
     .btn { background: #26262c; color: #e8e8ea; border: 1px solid #34343c;
       border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-family: inherit;
@@ -315,7 +315,7 @@
     .sep { width: 1px; align-self: stretch; background: #2c2c34; margin: 0 2px; }
     .selcount { color: #9a9aa2; min-width: 70px; }
     .status { color: #b8b8c0; font-size: 12px; min-width: 60px; }
-    .selall { display: flex; align-items: center; gap: 6px; color: #b8b8c0; cursor: pointer; }
+    .selall { display: flex; align-items: center; gap: 6px; color: #b8b8c0; cursor: pointer; white-space: nowrap; }
     .scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 12px; }
     /* JS masonry: a flex row of equal columns; each new tile is APPENDED to the
        shortest column so already-placed tiles never move (CSS multi-column would
