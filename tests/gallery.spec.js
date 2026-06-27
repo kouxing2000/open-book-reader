@@ -161,6 +161,128 @@ test.describe('image gallery', () => {
     expect((await galleryState(page)).hostDisplay).not.toBe('none'); // gallery still open
   });
 
+  test('filmstrip renders one thumb per image and is shown on open', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    const s = await galleryState(page);
+    expect(s.filmstrip).toBe(6);          // one thumb per image (fixture has 6)
+    expect(s.filmstripHidden).toBe(false); // revealed when the lightbox opens
+    expect(s.filmstripActive).toBe(0);     // current image's thumb is highlighted
+  });
+
+  test('filmstrip active thumb tracks navigation (wrapping)', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    expect((await galleryState(page)).filmstripActive).toBe(0);
+
+    await page.keyboard.press('ArrowRight');
+    expect((await galleryState(page)).filmstripActive).toBe(1);
+
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft'); // 0 -> wrap to last
+    expect((await galleryState(page)).filmstripActive).toBe(5);
+  });
+
+  test('clicking a filmstrip thumb jumps to it without closing the lightbox', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    await clickInGallery(page, '.lb-strip .lb-thumb >> nth=3');
+    const s = await galleryState(page);
+    expect(s.lbOpen).toBe(true);          // backdrop-close guard: a thumb click must NOT close
+    expect(s.lbCounter).toBe('4 / 6');
+    expect(s.filmstripActive).toBe(3);
+  });
+
+  test('filmstrip and top controls auto-hide when idle and reappear on mouse move', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    let s = await galleryState(page);
+    expect(s.filmstripHidden).toBe(false);
+    expect(s.controlsHidden).toBe(false);
+
+    await page.waitForTimeout(2900); // STRIP_IDLE_MS (2500) + buffer, no mouse movement
+    s = await galleryState(page);
+    expect(s.filmstripHidden).toBe(true);  // bottom filmstrip clears the image
+    expect(s.controlsHidden).toBe(true);   // top control pill clears the image too
+
+    await page.mouse.move(300, 200);
+    await page.mouse.move(320, 220); // two points so a real mousemove fires
+    await expect.poll(() => galleryState(page).then((x) => x.filmstripHidden)).toBe(false);
+    expect((await galleryState(page)).controlsHidden).toBe(false);
+  });
+
+  test('slideshow auto-advances the big image and the filmstrip follows', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ gallerySlideSeconds: 1 }));
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    expect((await galleryState(page)).lbCounter).toBe('1 / 6');
+
+    await page.keyboard.press('a'); // start the slideshow (A key)
+    expect(await page.evaluate(() => globalThis.OBR._gallerySlideshowOn())).toBe(true);
+
+    await expect.poll(() => galleryState(page).then((s) => s.lbCounter)).toBe('2 / 6');
+    expect((await galleryState(page)).filmstripActive).toBe(1); // highlight tracks the auto-advance
+
+    await page.keyboard.press('a'); // pause
+    expect(await page.evaluate(() => globalThis.OBR._gallerySlideshowOn())).toBe(false);
+  });
+
+  test('slideshow plays once and auto-pauses on the last image', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ gallerySlideSeconds: 1 }));
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0'); // 1 / 6
+    await page.keyboard.press('ArrowLeft');        // wrap -> 6 / 6
+    await page.keyboard.press('ArrowLeft');        // 5 / 6
+    expect((await galleryState(page)).lbCounter).toBe('5 / 6');
+
+    await page.keyboard.press('a'); // play from the second-to-last image
+    await expect.poll(() => galleryState(page).then((s) => s.lbCounter)).toBe('6 / 6');
+    expect(await page.evaluate(() => globalThis.OBR._gallerySlideshowOn())).toBe(false); // stopped at the end
+  });
+
+  test('the play button toggles the slideshow and closing the lightbox stops it', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    await clickInGallery(page, '.lb-play');
+    expect(await page.evaluate(() => globalThis.OBR._gallerySlideshowOn())).toBe(true);
+    expect((await galleryState(page)).lbOpen).toBe(true); // a control click must NOT close the lightbox
+    await page.keyboard.press('Escape');
+    expect((await galleryState(page)).lbOpen).toBe(false);
+    expect(await page.evaluate(() => globalThis.OBR._gallerySlideshowOn())).toBe(false); // closing stops it
+  });
+
+  test('the slideshow seconds field persists and survives a reopen', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    await page.evaluate(() => {
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.lb-secs-in');
+      el.value = '7';
+      el.dispatchEvent(new Event('input', { bubbles: true }));  // real browsers fire input before change
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.evaluate(() => globalThis.OBR.closeGallery()); // close() flushes the debounced persist
+    expect(await page.evaluate(() => globalThis.OBR.loadSettings().then((s) => s.gallerySlideSeconds))).toBe(7);
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    const secs = await page.evaluate(() => document.getElementById('obr-gallery-host').shadowRoot.querySelector('.lb-secs-in').value);
+    expect(secs).toBe('7');
+  });
+
+  test('the +/- keys nudge the slideshow speed while it is playing (without stalling it)', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ gallerySlideSeconds: 5 }));
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    await page.keyboard.press('a'); // play (5s dwell — long enough that it won't advance mid-test)
+    expect(await page.evaluate(() => globalThis.OBR._gallerySlideshowOn())).toBe(true);
+
+    await page.keyboard.press('-');
+    await page.keyboard.press('-');
+    const secs = await page.evaluate(() => document.getElementById('obr-gallery-host').shadowRoot.querySelector('.lb-secs-in').value);
+    expect(secs).toBe('3'); // 5 -> 3, applied live in the field
+    expect(await page.evaluate(() => globalThis.OBR._gallerySlideshowOn())).toBe(true); // still playing, not stalled
+    await expect.poll(() => page.evaluate(() => globalThis.OBR.loadSettings().then((s) => s.gallerySlideSeconds))).toBe(3);
+  });
+
   test('the lightbox × button closes it (not obscured by the next-nav zone)', async ({ page }) => {
     await openGallery(page);
     await clickInGallery(page, '.tile >> nth=0');

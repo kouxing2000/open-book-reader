@@ -205,6 +205,9 @@ export function galleryState(page) {
     if (!host) return { present: false, tiles: 0 };
     const r = host.shadowRoot;
     const lb = r.querySelector('.lb');
+    const strip = r.querySelector('.lb-strip');
+    const controls = r.querySelector('.lb-slideshow');
+    const activeThumb = strip && strip.querySelector('.lb-thumb.is-active');
     return {
       present: true,
       hostDisplay: getComputedStyle(host).display,
@@ -212,6 +215,10 @@ export function galleryState(page) {
       tiles: r.querySelectorAll('.tile').length,
       lbOpen: lb?.classList.contains('open') || false,
       lbCounter: r.querySelector('.lb-counter')?.textContent || '',
+      filmstrip: strip ? strip.querySelectorAll('.lb-thumb').length : 0,
+      filmstripActive: activeThumb ? +activeThumb.dataset.idx : -1,
+      filmstripHidden: strip ? strip.classList.contains('is-hidden') : true,
+      controlsHidden: controls ? controls.classList.contains('is-hidden') : true,
       cols: r.querySelectorAll('.col').length,
       selCount: r.querySelector('.selcount')?.textContent || '',
       status: r.querySelector('.status')?.textContent || '',
