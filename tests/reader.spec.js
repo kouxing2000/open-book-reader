@@ -376,8 +376,12 @@ test('the 🖨 Print button builds a standalone, flat print document (no screen-
       fontFamily: 'serif', lineHeight: 1.7,
       url: 'https://example.com/path',
     });
+    // A normal article but NO url — the doc printReader() builds when printSourceUrl is off.
+    const noUrl = globalThis.OBR._buildPrintDoc({
+      title: 'T', byline: '', content: '<p>Body.</p>', fontFamily: 'serif', lineHeight: 1.6,
+    });
     const empty = globalThis.OBR._buildPrintDoc({ title: 'X', content: '' });
-    return { hasBtn, html, empty };
+    return { hasBtn, html, noUrl, empty };
   });
   expect(r.hasBtn).toBe(true);
   // A complete, standalone document
@@ -389,6 +393,11 @@ test('the 🖨 Print button builds a standalone, flat print document (no screen-
   expect(r.html).toContain('By &lt;Jane&gt; &amp; John');
   expect(r.html).toContain('Body paragraph one.');
   expect(r.html).toContain('https://example.com/path');
+  expect(r.html).toContain('<div class="obr-print-source">'); // footer rendered when a URL is passed
+  // A real article but no url (printReader omits it when printSourceUrl is off) -> no footer,
+  // and the body still renders. Isolates "no url" from the empty-content fallback below.
+  expect(r.noUrl).toContain('Body.');
+  expect(r.noUrl).not.toContain('<div class="obr-print-source">');
   // The chosen font family + line height actually reach the stylesheet
   expect(r.html).toContain('12pt/1.7');
   expect(r.html).toContain('Georgia'); // serif stack

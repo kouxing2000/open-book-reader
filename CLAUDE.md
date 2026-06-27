@@ -56,7 +56,8 @@ machinery so the browser paginates onto paper instead of printing one clipped sp
 **off-screen** iframe written via `about:blank` + `document.write` — NOT `srcdoc`, because `about:srcdoc`
 is `frame-src`-blocked on strict-CSP sites (GitHub, many news sites) → blank print; the CSS is also
 applied via `adoptedStyleSheets` to dodge strict `style-src`. Fully local, **no new permission**; the
-`<title>` becomes the default PDF filename; a footer shows the full source URL.
+`<title>` becomes the default PDF filename; a footer shows the full source URL unless the
+`printSourceUrl` setting is turned off (Options page).
 
 **Reading progress is a FRACTION, never a spread index** (`reader.js` + `settings.js`). Re-pagination
 (font / columns / width) changes how many columns an article splits into, so position is stored as

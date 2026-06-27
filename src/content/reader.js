@@ -316,9 +316,11 @@
     const content = lastArticle && lastArticle.content ? lastArticle.content : '';
     // Full URL so the saved/printed copy links back to the exact article (query
     // included — unlike the Report mailto, this output never leaves the user's device
-    // unless they choose to share it).
+    // unless they choose to share it). Opt out via the printSourceUrl setting.
     let url = '';
-    try { url = location.href; } catch (e) { /* opaque origin */ }
+    if (settings.printSourceUrl !== false) {
+      try { url = location.href; } catch (e) { /* opaque origin */ }
+    }
 
     const docHtml = buildPrintDoc({
       title, byline, content,
