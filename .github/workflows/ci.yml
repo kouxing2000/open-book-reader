@@ -1,0 +1,37 @@
+name: CI
+
+# Runs the test suite on pull requests and on direct pushes to master, so
+# incoming contributions get a green/red signal before merge and any master
+# breakage surfaces immediately instead of at release time. Needs no secrets;
+# forked-PR runs get a read-only token by default, which is all this requires.
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install tooling
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run tests
+        run: npm test
