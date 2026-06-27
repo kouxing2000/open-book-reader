@@ -807,7 +807,9 @@ test.describe('gallery auto-scroll', () => {
     await openAuto(page, 60);
     await page.evaluate(() => {
       const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.autospeed-in');
-      el.value = '250'; el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.value = '250';
+      el.dispatchEvent(new Event('input', { bubbles: true }));  // real browsers fire input before change
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     });
     // close() flushes the debounced persist, so the value is saved before the reopen reads storage.
     await page.evaluate(() => globalThis.OBR.closeGallery());

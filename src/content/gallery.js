@@ -977,13 +977,13 @@
   // settings each frame), persist to storage.sync so it survives a reopen / new session,
   // and reflect into the toolbar field. Drives the field, the +/- keys, and the options page.
   function setAutoSpeed(value) {
-    const cur = settings.galleryAutoScrollSpeed || 60;
-    const next = Math.max(20, Math.min(400, Number.isFinite(value) ? value : cur));
-    if (autoSpeedEl) autoSpeedEl.value = next; // normalize the field (clamp / strip junk) even if unchanged
-    if (next === cur) return;                  // no change → nothing to apply or persist
+    const next = Math.max(20, Math.min(400, Number.isFinite(value) ? value : (settings.galleryAutoScrollSpeed || 60)));
+    if (autoSpeedEl) autoSpeedEl.value = next; // normalize the field (clamp / strip junk)
     settings.galleryAutoScrollSpeed = next;    // live — autoStep reads it next frame
-    // Debounce the persist: key-repeat on +/- and field typing fire many calls, and
-    // chrome.storage.sync throttles writes (~120/min). Only the trailing value needs saving.
+    // Always (re)schedule the persist — the live `input` handler already set
+    // settings.galleryAutoScrollSpeed, so a `next === cur` short-circuit here would silently drop
+    // the save on the normal type/spinner edit path. Debounce it (key-repeat on +/- and field
+    // typing fire many calls, and chrome.storage.sync throttles writes); same-value re-saves collapse.
     clearTimeout(autoSpeedSaveTimer);
     autoSpeedSaveTimer = setTimeout(() => OBR.saveSettings({ galleryAutoScrollSpeed: next }), 400);
   }
