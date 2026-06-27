@@ -125,7 +125,7 @@
 
   /* -------------------------------------------------- state */
   let settings = Object.assign({}, OBR.DEFAULTS);
-  let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbCounter;
+  let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbCounter, lbStrip, lbSecsEl, lbControls;
   let active = false, built = false;
   let images = [];           // [{url, w, h}]
   let lightboxIndex = -1;
@@ -146,6 +146,10 @@
   let autoFrac = 0;                // sub-pixel accumulator (scrollTop applies integer deltas)
   let autoRetriedAtBottom = false; // one-shot: already pushed past a soft-stop at this bottom
   let autoSpeedSaveTimer = null;   // debounces persisting the speed (key-repeat / typing)
+  let slideOn = false;             // lightbox slideshow engaged (auto-advance images)
+  let slideTimer = 0;              // per-image dwell timeout handle (0 = idle)
+  let slideStartTs = 0;            // when the current image's dwell began (ms) — for elapsed-aware re-aim
+  let slideSecsSaveTimer = null;   // debounces persisting the slideshow seconds
 
   const MIN = () => settings.galleryMinSize || 80;
 
@@ -315,8 +319,8 @@
     .btn.autoscroll.on:hover { background: #6a5aef; }
     /* .bar label.autospeed beats the generic ".bar label" so gap/size aren't overridden. */
     .bar label.autospeed { gap: 5px; font-size: 12px; }
-    .autospeed-in { width: 48px; background: #131318; color: #e8e8ea; border: 1px solid #34343c;
-      border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12px; text-align: right;
+    .autospeed-in { width: 64px; background: #131318; color: #e8e8ea; border: 1px solid #34343c;
+      border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; text-align: right;
       font-variant-numeric: tabular-nums; }
     .autospeed-in:focus { outline: none; border-color: #7c6cff; }
     /* Mode switch: recessed track holding a raised brand-accent "thumb" on the
@@ -359,15 +363,14 @@
     .lb { position: fixed; inset: 0; z-index: 2147483647; background: rgba(8,8,10,.94);
       display: none; align-items: center; justify-content: center; }
     .lb.open { display: flex; }
-    .lb img { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 6px;
+    .lb-img { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 6px;
       box-shadow: 0 12px 60px rgba(0,0,0,.6); }
     .lb-nav { position: absolute; top: 0; bottom: 0; width: 16vw; display: flex; align-items: center;
       cursor: pointer; color: #fff; font-size: 40px; opacity: .4; user-select: none; }
     .lb-nav:hover { opacity: 1; }
     .lb-prev { left: 0; justify-content: flex-start; padding-left: 20px; }
     .lb-next { right: 0; justify-content: flex-end; padding-right: 20px; }
-    .lb-counter { position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.5); padding: 6px 14px; border-radius: 20px; font-size: 13px; }
+    .lb-counter { color: #fff; font-size: 13px; opacity: .92; font-variant-numeric: tabular-nums; }
     .lb-close { position: absolute; top: 10px; right: 16px; font-size: 34px; line-height: 1;
       cursor: pointer; color: #fff; opacity: .75; width: 44px; height: 44px; display: flex;
       align-items: center; justify-content: center; z-index: 5; }
@@ -377,6 +380,34 @@
       opacity: .85; display: flex; align-items: center; justify-content: center; }
     .lb-dl:hover { opacity: 1; background: #7c6cff; }
     .lb-dl svg { width: 20px; height: 20px; }
+    .lb-strip { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+      display: flex; gap: 8px; align-items: center; justify-content: center;
+      padding: 12px 14px 14px; overflow-x: auto; overflow-y: hidden;
+      background: linear-gradient(to top, rgba(8,8,10,.92), rgba(8,8,10,.5) 65%, rgba(8,8,10,0));
+      opacity: 1; transition: opacity .25s ease; scrollbar-width: thin; }
+    .lb-strip.is-hidden { opacity: 0; pointer-events: none; }
+    .lb-strip::-webkit-scrollbar { height: 8px; }
+    .lb-strip::-webkit-scrollbar-thumb { background: rgba(120,120,130,.6); border-radius: 4px; }
+    .lb-thumb { flex: 0 0 auto; height: 60px; width: auto; max-width: 110px; object-fit: cover;
+      border-radius: 6px; cursor: pointer; display: block; opacity: .5;
+      border: 2px solid transparent; transition: opacity .12s, border-color .12s; }
+    .lb-thumb:hover { opacity: .85; }
+    .lb-thumb.is-active { opacity: 1; border-color: #7c6cff; }
+    .lb-slideshow { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4;
+      display: flex; align-items: center; gap: 10px; max-width: 92vw;
+      background: rgba(20,20,24,.72); border-radius: 22px; padding: 5px 14px;
+      opacity: 1; transition: opacity .25s ease; }
+    .lb-slideshow.is-hidden { opacity: 0; pointer-events: none; }
+    .lb-play { flex: 0 0 auto; width: 30px; height: 30px; cursor: pointer; color: #fff; background: transparent;
+      border: none; border-radius: 50%; opacity: .9; display: flex; align-items: center; justify-content: center; }
+    .lb-play:hover { opacity: 1; background: #7c6cff; }
+    .lb-play.on { opacity: 1; background: #7c6cff; }
+    .lb-play svg { width: 16px; height: 16px; }
+    .lb-secs { display: flex; align-items: center; gap: 4px; color: #cfcfd6; font-size: 12px; white-space: nowrap; }
+    .lb-secs-in { width: 42px; background: #131318; color: #e8e8ea; border: 1px solid #34343c;
+      border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; text-align: right;
+      font-variant-numeric: tabular-nums; }
+    .lb-secs-in:focus { outline: none; border-color: #7c6cff; }
     `;
   }
 
@@ -424,10 +455,15 @@
       <div class="lb">
         <span class="lb-close">&times;</span>
         <button class="lb-dl" title="Download this image">${DL_ICON}</button>
-        <span class="lb-counter"></span>
+        <div class="lb-slideshow">
+          <button class="lb-play" aria-pressed="false" title="Start slideshow (A)">${PLAY_ICON}</button>
+          <label class="lb-secs" title="Seconds per image — type a value, use the arrows, or press + / -"><input type="number" class="lb-secs-in" min="1" max="30" step="1" aria-label="Slideshow seconds per image"> s</label>
+          <span class="lb-counter"></span>
+        </div>
         <div class="lb-nav lb-prev">&#8249;</div>
         <img class="lb-img" alt="">
         <div class="lb-nav lb-next">&#8250;</div>
+        <div class="lb-strip is-hidden" aria-label="Thumbnails"></div>
       </div>`;
     root.appendChild(wrap);
 
@@ -439,6 +475,9 @@
     lbEl = wrap.querySelector('.lb');
     lbImg = wrap.querySelector('.lb-img');
     lbCounter = wrap.querySelector('.lb-counter');
+    lbStrip = wrap.querySelector('.lb-strip');
+    lbSecsEl = wrap.querySelector('.lb-secs-in');
+    lbControls = wrap.querySelector('.lb-slideshow');
 
     wrap.querySelector('.close').addEventListener('click', close);
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(); });
@@ -455,7 +494,26 @@
     wrap.querySelector('.lb-close').addEventListener('click', (e) => { e.stopPropagation(); closeLightbox(); });
     wrap.querySelector('.lb-prev').addEventListener('click', (e) => { e.stopPropagation(); step(-1); });
     wrap.querySelector('.lb-next').addEventListener('click', (e) => { e.stopPropagation(); step(1); });
-    lbEl.addEventListener('click', (e) => { if (e.target !== lbImg) closeLightbox(); });
+    lbEl.addEventListener('click', (e) => {
+      if (e.target !== lbImg && !lbStrip.contains(e.target) && !lbControls.contains(e.target)) closeLightbox();
+    });
+    lbEl.addEventListener('mousemove', revealChrome);         // show controls + filmstrip on activity, fade when idle
+    lbStrip.addEventListener('mouseenter', pinChrome);        // keep visible while hovering the strip...
+    lbStrip.addEventListener('mouseleave', revealChrome);
+    lbControls.addEventListener('mouseenter', pinChrome);     // ...or the top controls (e.g. editing the seconds)
+    lbControls.addEventListener('mouseleave', revealChrome);
+    lbControls.addEventListener('focusin', pinChrome);        // don't fade the controls out from under a focused field
+    lbControls.addEventListener('focusout', revealChrome);
+    wrap.querySelector('.lb-play').addEventListener('click', (e) => {
+      e.stopPropagation(); toggleSlideshow();
+      e.currentTarget.blur(); // drop focus so arrow / +/- keys keep driving the lightbox, not the button
+    });
+    // Slideshow seconds: live while typing (scheduleSlide re-reads it), clamp + persist on change.
+    lbSecsEl.addEventListener('input', () => {
+      const v = parseInt(lbSecsEl.value, 10);
+      if (Number.isFinite(v)) { settings.gallerySlideSeconds = Math.max(1, Math.min(30, v)); applySlideSecsLive(); }
+    });
+    lbSecsEl.addEventListener('change', () => setSlideSecs(parseInt(lbSecsEl.value, 10)));
 
     rangeEl.addEventListener('input', () => {
       const v = parseInt(rangeEl.value, 10);
@@ -707,6 +765,7 @@
 
   function render() {
     images = collect();
+    if (lbStrip && lightboxIndex < 0) lbStrip.replaceChildren(); // rebuild the strip fresh on next open
     if (scrollerEl) scrollerEl.scrollTop = 0;
     countEl.textContent = images.length + ' images';
     layoutAll();
@@ -728,7 +787,16 @@
       placeTile(im, i);
       added++;
     });
-    if (added) { countEl.textContent = images.length + ' images'; updateSelUI(); softDone = false; }
+    if (added) {
+      countEl.textContent = images.length + ' images';
+      updateSelUI();
+      softDone = false;
+      if (lightboxIndex >= 0) { // keep the open lightbox's filmstrip + counter in sync as images hydrate
+        buildFilmstrip();
+        syncFilmstripActive(lightboxIndex);
+        lbCounter.textContent = (lightboxIndex + 1) + ' / ' + images.length;
+      }
+    }
     return added;
   }
 
@@ -932,17 +1000,135 @@
   OBR._galleryAutoScrollOn = () => autoScroll;                                     // state (tests)
 
   /* -------------------------------------------------- lightbox */
-  function openLightbox(i) {
+  const STRIP_IDLE_MS = 2500;
+  let stripTimer = 0;
+
+  // Filmstrip thumbnails under the big image. Append-only by count (mirrors mergeNewImages)
+  // so hydration growth never churns existing nodes or restarts their lazy-load.
+  function buildFilmstrip() {
+    if (!lbStrip) return;
+    if (images.length <= 1) { lbStrip.replaceChildren(); lbStrip.style.display = 'none'; return; }
+    lbStrip.style.display = 'flex';
+    for (let idx = lbStrip.childElementCount; idx < images.length; idx++) {
+      const im = images[idx];
+      const t = document.createElement('img');
+      t.className = 'lb-thumb';
+      t.loading = 'lazy';            // off-screen thumbs stay undecoded
+      t.src = im.url;                // same small URL the grid tile already cached -> no new request
+      t.alt = 'Thumbnail ' + (idx + 1);
+      t.dataset.idx = idx;
+      t.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(idx); });
+      lbStrip.appendChild(t);
+    }
+    while (lbStrip.childElementCount > images.length) lbStrip.lastElementChild.remove();
+  }
+  function syncFilmstripActive(i) {
+    if (!lbStrip || lbStrip.style.display === 'none') return;
+    const thumbs = lbStrip.children;
+    for (let k = 0; k < thumbs.length; k++) thumbs[k].classList.toggle('is-active', k === i);
+    const el = thumbs[i];
+    if (el) el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }
+  function revealChrome() {          // show the filmstrip + top controls, then fade both after idle
+    if (lightboxIndex < 0) return;
+    if (lbStrip) lbStrip.classList.remove('is-hidden');
+    if (lbControls) lbControls.classList.remove('is-hidden');
+    clearTimeout(stripTimer);
+    stripTimer = setTimeout(() => {
+      if (lbStrip) lbStrip.classList.add('is-hidden');
+      if (lbControls) lbControls.classList.add('is-hidden');
+    }, STRIP_IDLE_MS);
+  }
+  function pinChrome() { clearTimeout(stripTimer); } // keep visible while the pointer is over a control
+
+  /* ---- slideshow: auto-advance the big image, play once, stop at the end ---- */
+  function slideDwellMs() { return Math.max(1, Math.min(30, settings.gallerySlideSeconds || 3)) * 1000; }
+  function advanceSlide() {
+    if (slideOn && lightboxIndex >= 0 && lightboxIndex < images.length - 1) openLightbox(lightboxIndex + 1, true);
+  }
+  function scheduleSlide() {
+    clearTimeout(slideTimer); slideTimer = 0;
+    if (!slideOn || lightboxIndex < 0) return;
+    if (lightboxIndex >= images.length - 1) { stopSlideshow(); return; } // reached the end -> auto-pause
+    slideStartTs = Date.now();
+    slideTimer = setTimeout(advanceSlide, slideDwellMs());
+  }
+  // Speed changed mid-play: re-aim the CURRENT image's timer at the new dwell measured from when
+  // the image started — so +/- responds now without resetting the clock (repeated taps can't stall
+  // it). A reduction below the elapsed time advances right away.
+  function applySlideSecsLive() {
+    if (!slideOn || lightboxIndex < 0 || lightboxIndex >= images.length - 1) return;
+    clearTimeout(slideTimer);
+    const remaining = Math.max(0, slideDwellMs() - (Date.now() - slideStartTs));
+    slideTimer = setTimeout(advanceSlide, remaining);
+  }
+  function startSlideshow() {
+    if (lightboxIndex < 0 || slideOn) return;
+    if (lightboxIndex >= images.length - 1) return; // nothing to advance to from the last image
+    slideOn = true;
+    updatePlayBtn();
+    scheduleSlide();
+  }
+  function stopSlideshow() {
+    if (!slideOn && !slideTimer) return;
+    slideOn = false;
+    clearTimeout(slideTimer); slideTimer = 0;
+    updatePlayBtn();
+  }
+  function toggleSlideshow() { slideOn ? stopSlideshow() : startSlideshow(); }
+  function updatePlayBtn() {
+    const btn = wrap && wrap.querySelector('.lb-play');
+    if (!btn) return;
+    btn.classList.toggle('on', slideOn);
+    btn.setAttribute('aria-pressed', slideOn ? 'true' : 'false');
+    btn.innerHTML = slideOn ? PAUSE_ICON : PLAY_ICON;
+    btn.title = slideOn ? 'Pause slideshow (A)' : 'Start slideshow (A)';
+  }
+  // Single source of truth for the slideshow dwell: clamp to [1,30]s, apply live to a running
+  // slideshow, persist to storage.sync (debounced), and reflect into the lightbox field.
+  function setSlideSecs(value) {
+    const next = Math.max(1, Math.min(30, Number.isFinite(value) ? value : (settings.gallerySlideSeconds || 3)));
+    if (lbSecsEl) lbSecsEl.value = next; // normalize the field (clamp / strip junk)
+    settings.gallerySlideSeconds = next;
+    applySlideSecsLive();                // re-aim a running slideshow's current dwell (no reset)
+    // Always (re)schedule the persist — the live `input` handler already set
+    // settings.gallerySlideSeconds, so a `next === cur` short-circuit here would silently drop
+    // the save on the normal type/spinner edit path. Debounced, so same-value re-saves collapse.
+    clearTimeout(slideSecsSaveTimer);
+    slideSecsSaveTimer = setTimeout(() => OBR.saveSettings({ gallerySlideSeconds: next }), 400);
+  }
+  function flushSlideSecs() {
+    if (!slideSecsSaveTimer) return;
+    clearTimeout(slideSecsSaveTimer); slideSecsSaveTimer = null;
+    OBR.saveSettings({ gallerySlideSeconds: settings.gallerySlideSeconds });
+  }
+  function nudgeSlideSecs(delta) { setSlideSecs((settings.gallerySlideSeconds || 3) + delta); }
+
+  OBR._gallerySlideshow = (on) => { on ? startSlideshow() : stopSlideshow(); }; // drive (tests)
+  OBR._gallerySlideshowOn = () => slideOn;                                      // state (tests)
+
+  function openLightbox(i, fromAuto) {
     stopAutoScroll(); // opening the lightbox is a manual interaction
     lightboxIndex = i;
     lbImg.src = images[i].full || images[i].url;
     lbImg.alt = 'Image ' + (i + 1);
     lbCounter.textContent = (i + 1) + ' / ' + images.length;
     lbEl.classList.add('open');
+    const multi = images.length > 1;                          // a slideshow needs >1 image
+    const play = wrap.querySelector('.lb-play');
+    const secs = wrap.querySelector('.lb-secs');
+    if (play) play.style.display = multi ? '' : 'none';
+    if (secs) secs.style.display = multi ? '' : 'none';
+    buildFilmstrip();
+    syncFilmstripActive(i);
+    if (!fromAuto) revealChrome(); // don't pop the controls/filmstrip up on every auto-advance
+    if (slideOn) scheduleSlide();  // (re)arm the dwell after any navigation while playing
   }
   function closeLightbox() {
     lbEl.classList.remove('open');
     lightboxIndex = -1;
+    clearTimeout(stripTimer);
+    stopSlideshow();
   }
   function step(dir) {
     if (lightboxIndex < 0 || !images.length) return;
@@ -959,9 +1145,11 @@
     applyStylesheet();
     if (rangeEl) rangeEl.value = settings.galleryColWidth || 240;
     if (autoSpeedEl) autoSpeedEl.value = settings.galleryAutoScrollSpeed || 60; // reflect the persisted speed
+    if (lbSecsEl) lbSecsEl.value = settings.gallerySlideSeconds || 3;           // reflect the persisted slideshow secs
     savedPageX = window.scrollX; savedPageY = window.scrollY; // restored on close
     sweepY = 0; fullyHydrated = false; softDone = false; // fresh hydration cursor per open
     autoScroll = false; autoFrac = 0; autoRetriedAtBottom = false; // fresh auto-scroll state
+    slideOn = false; clearTimeout(slideTimer); slideTimer = 0; // fresh slideshow state
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
     active = true;
@@ -973,6 +1161,7 @@
     if (!active) return;
     stopAutoScroll(); // cancel the rAF before hiding the host (no orphan scrollTop writes)
     flushAutoSpeed();  // persist a just-edited speed before a reopen reads storage
+    flushSlideSecs();  // persist a just-edited slideshow dwell too
     stopWatching();
     closeLightbox();
     host.style.display = 'none';
@@ -1059,8 +1248,13 @@
     if (!active) return;
     if (lightboxIndex >= 0) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeLightbox(); }
+      else if (isFormFocused()) { /* editing the seconds field — leave caret/typing keys to it */ }
       else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); step(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(-1); }
+      // A toggles the slideshow; +/- nudge its per-image dwell (guard ctrl/meta so browser zoom still works).
+      else if ((e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); toggleSlideshow(); }
+      else if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); nudgeSlideSecs(+1); }
+      else if ((e.key === '-' || e.key === '_') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); nudgeSlideSecs(-1); }
     } else if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation(); close();
     } else if (scrollerEl && (e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && !e.altKey) {
