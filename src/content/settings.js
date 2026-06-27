@@ -22,6 +22,9 @@
     galleryAutoLoad: true, // image-gallery mode: progressively hydrate the page's lazy
                            // images as you near the end of the grid (prefetch). Off =
                            // only load what's already there + the manual "Load all".
+    galleryAutoScrollSpeed: 60, // image-gallery mode: hands-free auto-scroll speed (px/sec).
+                                // Toggle via the toolbar Auto-scroll button or the "A" key;
+                                // nudge live with +/-.
     autoGalleryMin: 10,    // toolbar-icon auto-mode: open the gallery instead of the
                            // reader when the page has >= this many images (0 = off).
                            // Only the toolbar icon auto-picks; Alt+B / Alt+Shift+B stay explicit.

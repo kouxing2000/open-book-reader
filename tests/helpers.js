@@ -216,6 +216,9 @@ export function galleryState(page) {
       selCount: r.querySelector('.selcount')?.textContent || '',
       status: r.querySelector('.status')?.textContent || '',
       dlSelDisabled: r.querySelector('.dl-sel') ? r.querySelector('.dl-sel').disabled : true,
+      scrollTop: r.querySelector('.scroll')?.scrollTop || 0,
+      autoOn: r.querySelector('.autoscroll')?.classList.contains('on') || false,
+      autoSpeed: r.querySelector('.autospeed-in')?.value || '',
     };
   });
 }

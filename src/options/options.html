@@ -74,6 +74,7 @@
       <p><b>In the gallery (🖼 images)</b></p>
       <ul>
         <li>Click a tile for the lightbox — <kbd>←</kbd> <kbd>→</kbd> browse · <kbd>Esc</kbd> close</li>
+        <li>▶ <b>Auto-scroll</b> hands-free browsing — <kbd>A</kbd> toggle · <kbd>+</kbd> / <kbd>−</kbd> speed</li>
         <li>⟳ <b>Load all</b> pulls lazy images · select tiles to download or ZIP · 📖 switch to reader</li>
       </ul>
 
@@ -148,6 +149,11 @@
   <div class="row">
     <label>Auto-load images on scroll <span class="hint">In 🖼 gallery mode, progressively pull the page's lazy images as you near the end of the grid (prefetched so tiles are ready). Off = only show what's already loaded, plus the manual <b>⟳ Load all</b> button.</span></label>
     <span><input type="checkbox" id="galleryAutoLoad" /></span>
+  </div>
+
+  <div class="row">
+    <label>Auto-scroll speed <span class="hint">Hands-free auto-scroll speed in 🖼 gallery mode (toolbar <b>Auto-scroll</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge), in pixels per second. Lower = slower browsing.</span></label>
+    <span><input type="range" id="galleryAutoScrollSpeed" min="20" max="400" step="10" /><span class="val" id="galleryAutoScrollSpeedVal"></span></span>
   </div>
 
   <div class="section-head">

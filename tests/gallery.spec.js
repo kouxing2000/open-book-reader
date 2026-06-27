@@ -616,3 +616,110 @@ test.describe('lazy / late images', () => {
     expect(await page.evaluate(() => window.scrollY)).toBe(0); // restored, not left mid-sweep
   });
 });
+
+test.describe('gallery auto-scroll', () => {
+  // Open on a short viewport so the masonry wall overflows the scroller (auto-scroll has room).
+  // Auto-load OFF so the only loading is the binge path; speed is tunable per test.
+  async function openAuto(page, speed = 600) {
+    await page.setViewportSize({ width: 520, height: 300 });
+    await gotoLazyImages(page);
+    await injectGallery(page);
+    await page.evaluate((s) => globalThis.OBR.saveSettings({ galleryAutoLoad: false, galleryAutoScrollSpeed: s }), speed);
+    await openGallery(page);
+  }
+
+  const scrollMax = (page) => page.evaluate(() => {
+    const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll');
+    return el.scrollHeight - el.clientHeight;
+  });
+  const clickAuto = (page) => page.evaluate(() =>
+    document.getElementById('obr-gallery-host').shadowRoot.querySelector('.autoscroll').click());
+
+  test('toggling auto-scroll advances the scroll position', async ({ page }) => {
+    await openAuto(page);
+    expect((await galleryState(page)).scrollTop).toBe(0);
+    await page.evaluate(() => globalThis.OBR._galleryAutoScroll(true));
+    await expect.poll(() => galleryState(page).then((s) => s.scrollTop)).toBeGreaterThan(0);
+  });
+
+  test('the toolbar Auto-scroll button toggles the .on state and aria-pressed', async ({ page }) => {
+    await openAuto(page, 20); // slow so it won't reach the bottom and auto-stop mid-test
+    await clickAuto(page);
+    await expect.poll(() => galleryState(page).then((s) => s.autoOn)).toBe(true);
+    expect(await page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelector('.autoscroll').getAttribute('aria-pressed'))).toBe('true');
+    await clickAuto(page);
+    await expect.poll(() => galleryState(page).then((s) => s.autoOn)).toBe(false);
+  });
+
+  test('a wheel gesture over the grid cancels auto-scroll', async ({ page }) => {
+    await openAuto(page, 60);
+    await page.evaluate(() => globalThis.OBR._galleryAutoScroll(true));
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryAutoScrollOn())).toBe(true);
+    await page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll')
+        .dispatchEvent(new WheelEvent('wheel', { deltaY: 60, bubbles: true })));
+    expect(await page.evaluate(() => globalThis.OBR._galleryAutoScrollOn())).toBe(false);
+  });
+
+  test('the speed field shows the persisted value, and +/- change it (no numpad needed)', async ({ page }) => {
+    await openAuto(page, 100);
+    expect((await galleryState(page)).autoSpeed).toBe('100'); // field reflects the persisted speed on open
+    await page.keyboard.press('Equal'); // the main-row "=" / "+" key — no numpad
+    await expect.poll(() => galleryState(page).then((s) => s.autoSpeed)).toBe('120');
+    await page.keyboard.press('Minus');
+    await page.keyboard.press('Minus');
+    await expect.poll(() => galleryState(page).then((s) => s.autoSpeed)).toBe('80');
+    // The persisted value tracks the field (persist is debounced, so poll for it).
+    await expect.poll(() => page.evaluate(() => globalThis.OBR.loadSettings().then((s) => s.galleryAutoScrollSpeed))).toBe(80);
+  });
+
+  test('the +/- keys work even when the size slider has focus', async ({ page }) => {
+    await openAuto(page, 100);
+    await page.evaluate(() => document.getElementById('obr-gallery-host').shadowRoot.querySelector('.range').focus());
+    await page.keyboard.press('Equal');
+    await expect.poll(() => galleryState(page).then((s) => s.autoSpeed)).toBe('120');
+  });
+
+  test('typing a speed in the field persists it and it survives a reopen', async ({ page }) => {
+    await openAuto(page, 60);
+    await page.evaluate(() => {
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.autospeed-in');
+      el.value = '250'; el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    // close() flushes the debounced persist, so the value is saved before the reopen reads storage.
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect(await page.evaluate(() => globalThis.OBR.loadSettings().then((s) => s.galleryAutoScrollSpeed))).toBe(250);
+    await openGallery(page);
+    expect((await galleryState(page)).autoSpeed).toBe('250');
+  });
+
+  test('an out-of-range typed value is clamped on change', async ({ page }) => {
+    await openAuto(page, 60);
+    await page.evaluate(() => {
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.autospeed-in');
+      el.value = '9000'; el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect.poll(() => galleryState(page).then((s) => s.autoSpeed)).toBe('400'); // clamped to max
+  });
+
+  test('a manual nav key (PageDown) cancels auto-scroll', async ({ page }) => {
+    await openAuto(page, 60);
+    await page.evaluate(() => globalThis.OBR._galleryAutoScroll(true));
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryAutoScrollOn())).toBe(true);
+    await page.keyboard.press('PageDown');
+    expect(await page.evaluate(() => globalThis.OBR._galleryAutoScrollOn())).toBe(false);
+  });
+
+  test('auto-scroll stops itself at the genuine bottom after Load all', async ({ page }) => {
+    await openAuto(page, 4000); // fast: reach the bottom quickly
+    await page.evaluate(() => globalThis.OBR._galleryRescan()); // sweep → fullyHydrated, 10 tiles
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(10);
+    const max = await scrollMax(page);
+    expect(max).toBeGreaterThan(150); // the wall genuinely overflows — so reaching the bottom means a real descent
+    await page.evaluate(() => globalThis.OBR._galleryAutoScroll(true));
+    // Descends to the end and turns itself off.
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryAutoScrollOn()), { timeout: 8000 }).toBe(false);
+    expect((await galleryState(page)).scrollTop).toBeGreaterThanOrEqual(max - 3); // parked at the bottom
+  });
+});
