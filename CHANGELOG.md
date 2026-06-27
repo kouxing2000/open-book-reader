@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-27
+
+First stable release — Open Book Reader graduates from the 0.x series.
+
 ### Added
 - Reader: print / save the cleaned article as a **PDF** — the 🖨 toolbar button (or the `P` key)
   reuses the already-parsed article, flows it vertically onto white paper, and hands it to the
@@ -60,5 +64,6 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.0.0
 [0.3.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v0.3.1
