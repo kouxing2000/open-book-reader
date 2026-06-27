@@ -1,5 +1,15 @@
 # Open Book Reader
 
+<p align="center">
+  <img src="site/img/01-reader-paper.png" alt="Open Book Reader turns any article into a calm two-page open book" width="820">
+</p>
+
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca"><b>Install from the Chrome Web Store</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://kouxing2000.github.io/open-book-reader/">Website</a>
+</p>
+
 Turn any long web article into a **two-page open-book view** with keyboard page-flipping.
 Extracts the article with Mozilla Readability, paginates it into left/right pages, and lets
 you flip with the arrow keys — paper / light / dark themes, adjustable font, all settings synced.
