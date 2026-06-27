@@ -80,7 +80,7 @@ READING THAT FEELS LIKE A BOOK
 • Jump to the start or end with Home / End
 • Resumes right where you left off — reopen an article and you're back on the same page
 • A slim progress bar and an estimated reading time show how far you've come
-• Paper, Light, and Dark themes
+• Paper, Light, and Dark themes — or Auto, which follows your system light/dark mode
 • Adjustable font size and line height; serif or sans-serif
 • Fills the window by default, with an optional max width for a comfortable line length
 • Print the clean article — or save it as a tidy PDF — in one click (or press P)

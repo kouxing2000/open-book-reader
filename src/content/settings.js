@@ -9,7 +9,9 @@
 
   OBR.DEFAULTS = {
     fontSize: 19,          // px
-    theme: 'paper',        // 'paper' | 'light' | 'dark'
+    theme: 'paper',        // 'auto' | 'paper' | 'light' | 'dark'. 'auto' follows the OS
+                           // color scheme (paper in light mode, dark in dark mode); the
+                           // resolution lives in reader.js resolveTheme().
     maxBookWidth: 0,       // 0 = fill the window (default). >0 caps the book width (px) for readability.
     gutter: 80,            // px, center spine width
     lineHeight: 1.62,
