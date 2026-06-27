@@ -17,6 +17,9 @@
     columns: 2,            // columns (pages) per spread: 2, 3, or 4
     singlePageBelow: 720,  // px viewport width → fall back to one page
     transitionMs: 340,     // page-flip animation duration
+    printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
+                           // so the saved copy links back to the article. Off = omit it
+                           // (e.g. when sharing a PDF and you'd rather not expose the URL).
     galleryColWidth: 240,  // image-gallery mode: masonry column width (px)
     galleryMinSize: 80,    // image-gallery mode: ignore images smaller than this (px)
     galleryAutoLoad: true, // image-gallery mode: progressively hydrate the page's lazy
@@ -25,6 +28,9 @@
     galleryAutoScrollSpeed: 60, // image-gallery mode: hands-free auto-scroll speed (px/sec).
                                 // Toggle via the toolbar Auto-scroll button or the "A" key;
                                 // nudge live with +/-.
+    gallerySlideSeconds: 3,     // image-gallery lightbox: slideshow dwell time per image (sec).
+                                // Toggle via the lightbox play button or the "A" key; nudge live
+                                // with +/-. Plays once and auto-pauses on the last image.
     autoGalleryMin: 10,    // toolbar-icon auto-mode: open the gallery instead of the
                            // reader when the page has >= this many images (0 = off).
                            // Only the toolbar icon auto-picks; Alt+B / Alt+Shift+B stay explicit.

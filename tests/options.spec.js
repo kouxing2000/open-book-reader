@@ -10,6 +10,7 @@ test('the options page shows the how-to-use guide with the trigger + shortcut do
 
   const guide = page.locator('details.guide');
   await expect(guide).toBeVisible();
+  await guide.locator('summary').click(); // collapsed by default — expand to read the docs
   await expect(guide).toContainText('Toolbar icon');
   await expect(guide).toContainText('Right-click');
   await expect(guide).toContainText('Per-site rules');
@@ -20,12 +21,26 @@ test('the options page shows the how-to-use guide with the trigger + shortcut do
   await expect(page.locator('#shortcutsBtn')).toBeVisible();
 });
 
-test('the guide is collapsible (native <details>)', async ({ page, extensionId }) => {
+test('the guide is collapsed by default and expands on click (native <details>)', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
   const guide = page.locator('details.guide');
-  await expect(guide).toHaveJSProperty('open', true); // open by default for first-run discovery
+  await expect(guide).toHaveJSProperty('open', false); // collapsed by default — settings come first
   await guide.locator('summary').click();
-  await expect(guide).toHaveJSProperty('open', false);
+  await expect(guide).toHaveJSProperty('open', true);
+});
+
+test('settings are grouped into Reader / Image gallery / Smart open cards', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  const cards = page.locator('section.card');
+  await expect(cards).toHaveCount(3);
+  await expect(cards.nth(0).locator('h2')).toContainText('Reader');
+  await expect(cards.nth(1).locator('h2')).toContainText('Image gallery');
+  await expect(cards.nth(2).locator('h2')).toContainText('Smart open');
+  // A representative control lives in each group (print under Reader, gallery
+  // column under Image gallery, per-site rules under Smart open).
+  await expect(cards.nth(0).locator('#printSourceUrl')).toBeVisible();
+  await expect(cards.nth(1).locator('#galleryColWidth')).toBeVisible();
+  await expect(cards.nth(2).locator('#siteHost')).toBeVisible();
 });
 
 test('the per-site rules editor renders (empty state) below the guide', async ({ page, extensionId }) => {

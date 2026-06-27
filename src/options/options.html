@@ -27,8 +27,15 @@
     .saved.show { opacity: 1; }
     .note { font-size: 12.5px; opacity: .6; margin-top: 24px; line-height: 1.5; }
     a { color: inherit; }
-    .section-head { font-size: 14px; padding: 16px 0 4px; border-top: 1px solid rgba(127,127,127,.18); margin-top: 8px; }
-    .section-head .hint { display: block; font-size: 12px; opacity: .55; margin-top: 2px; font-weight: normal; }
+    /* Grouped settings — each section is its own card so related controls read together. */
+    section.card { border: 1px solid rgba(127,127,127,.2); border-radius: 14px; padding: 2px 18px 12px; margin: 16px 0; background: rgba(255,255,255,.5); }
+    @media (prefers-color-scheme: dark) { section.card { background: rgba(255,255,255,.04); border-color: rgba(127,127,127,.26); } }
+    section.card > h2 { font-size: 13px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; opacity: .75; margin: 14px 2px 4px; display: flex; align-items: center; gap: 7px; }
+    section.card > h2 .h2-sub { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .65; font-size: 11.5px; }
+    section.card .row:last-child, section.card .row:has(+ .subhead) { border-bottom: 0; } /* avoid doubling with the .subhead top border */
+    /* A subsection inside a card (e.g. Per-site rules under Smart open). */
+    .subhead { font-size: 13.5px; font-weight: 600; padding: 16px 0 2px; margin-top: 6px; border-top: 1px solid rgba(127,127,127,.18); }
+    .subhead .hint { display: block; font-size: 12px; opacity: .55; margin-top: 3px; font-weight: normal; line-height: 1.5; }
     .hint code, .guide-body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; padding: 0 3px; border-radius: 4px; background: rgba(127,127,127,.16); }
     .site-add { display: flex; gap: 8px; padding: 8px 0; }
     .site-add input[type="text"] { flex: 1; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
@@ -53,7 +60,7 @@
 <body>
   <h1>📖 Open Book Reader</h1>
 
-  <details class="guide" open id="guide">
+  <details class="guide" id="guide">
     <summary>How to use &amp; shortcuts</summary>
     <div class="guide-body">
       <p><b>Open it on any page — three ways:</b></p>
@@ -84,97 +91,119 @@
     </div>
   </details>
 
-  <div class="row">
-    <label>Font size <span class="hint">Base reading size</span></label>
-    <span><input type="range" id="fontSize" min="14" max="26" step="1" /><span class="val" id="fontSizeVal"></span></span>
-  </div>
+  <section class="card">
+    <h2>📖 Reader</h2>
 
-  <div class="row">
-    <label>Theme</label>
-    <select id="theme">
-      <option value="paper">Paper</option>
-      <option value="light">Light</option>
-      <option value="dark">Dark</option>
-    </select>
-  </div>
+    <div class="row">
+      <label>Theme</label>
+      <select id="theme">
+        <option value="paper">Paper</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
 
-  <div class="row">
-    <label>Reading font</label>
-    <select id="fontFamily">
-      <option value="serif">Serif</option>
-      <option value="sans">Sans-serif</option>
-    </select>
-  </div>
+    <div class="row">
+      <label>Reading font</label>
+      <select id="fontFamily">
+        <option value="serif">Serif</option>
+        <option value="sans">Sans-serif</option>
+      </select>
+    </div>
 
-  <div class="row">
-    <label>Columns per view <span class="hint">2, 3, or 4 columns per spread</span></label>
-    <span><input type="range" id="columns" min="2" max="4" step="1" /><span class="val" id="columnsVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Font size <span class="hint">Base reading size</span></label>
+      <span><input type="range" id="fontSize" min="14" max="26" step="1" /><span class="val" id="fontSizeVal"></span></span>
+    </div>
 
-  <div class="row">
-    <label>Max book width <span class="hint">Default <b>Full</b> (fills the window). Drag left to cap line width for easier reading.</span></label>
-    <span><input type="range" id="maxBookWidth" min="800" max="2560" step="20" /><span class="val" id="maxBookWidthVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Line height</label>
+      <span><input type="range" id="lineHeight" min="1.2" max="2.0" step="0.02" /><span class="val" id="lineHeightVal"></span></span>
+    </div>
 
-  <div class="row">
-    <label>Spine width <span class="hint">Center gutter between pages (px)</span></label>
-    <span><input type="range" id="gutter" min="20" max="140" step="4" /><span class="val" id="gutterVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Columns per view <span class="hint">2, 3, or 4 columns per spread</span></label>
+      <span><input type="range" id="columns" min="2" max="4" step="1" /><span class="val" id="columnsVal"></span></span>
+    </div>
 
-  <div class="row">
-    <label>Line height</label>
-    <span><input type="range" id="lineHeight" min="1.2" max="2.0" step="0.02" /><span class="val" id="lineHeightVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Max book width <span class="hint">Default <b>Full</b> (fills the window). Drag left to cap line width for easier reading.</span></label>
+      <span><input type="range" id="maxBookWidth" min="800" max="2560" step="20" /><span class="val" id="maxBookWidthVal"></span></span>
+    </div>
 
-  <div class="row">
-    <label>Single-page below <span class="hint">Narrow windows show one page (px)</span></label>
-    <span><input type="range" id="singlePageBelow" min="0" max="1100" step="20" /><span class="val" id="singlePageBelowVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Spine width <span class="hint">Center gutter between pages (px)</span></label>
+      <span><input type="range" id="gutter" min="20" max="140" step="4" /><span class="val" id="gutterVal"></span></span>
+    </div>
 
-  <div class="row">
-    <label>Image gallery column <span class="hint">Tile width in 🖼 image mode (Alt+Shift+B) (px)</span></label>
-    <span><input type="range" id="galleryColWidth" min="140" max="420" step="20" /><span class="val" id="galleryColWidthVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Single-page below <span class="hint">Narrow windows show one page (px)</span></label>
+      <span><input type="range" id="singlePageBelow" min="0" max="1100" step="20" /><span class="val" id="singlePageBelowVal"></span></span>
+    </div>
 
-  <div class="row">
-    <label>Auto-open gallery <span class="hint">Toolbar-icon click opens 🖼 gallery instead of 📖 reader when the page has at least this many images. <b>Off</b> = always open the reader. (Alt+B / Alt+Shift+B always honor their mode.)</span></label>
-    <span><input type="range" id="autoGalleryMin" min="0" max="30" step="1" /><span class="val" id="autoGalleryMinVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Include source URL in print <span class="hint">When you 🖨 Print / Save as PDF, add a footer with the page's full URL so the saved copy links back to the article. Off = omit it.</span></label>
+      <span><input type="checkbox" id="printSourceUrl" /></span>
+    </div>
+  </section>
 
-  <div class="row">
-    <label>Keep reader for articles <span class="hint">When auto-opening by image count, stay in the 📖 reader if the page has at least this many words of article text - so a long illustrated read isn't sent to the gallery. <b>Off</b> = decide by image count only.</span></label>
-    <span><input type="range" id="autoTextMinWords" min="0" max="800" step="50" /><span class="val" id="autoTextMinWordsVal"></span></span>
-  </div>
+  <section class="card">
+    <h2>🖼 Image gallery</h2>
 
-  <div class="row">
-    <label>Auto-load images on scroll <span class="hint">In 🖼 gallery mode, progressively pull the page's lazy images as you near the end of the grid (prefetched so tiles are ready). Off = only show what's already loaded, plus the manual <b>⟳ Load all</b> button.</span></label>
-    <span><input type="checkbox" id="galleryAutoLoad" /></span>
-  </div>
+    <div class="row">
+      <label>Column width <span class="hint">Tile width in the 🖼 gallery grid (Alt+Shift+B) (px)</span></label>
+      <span><input type="range" id="galleryColWidth" min="140" max="420" step="20" /><span class="val" id="galleryColWidthVal"></span></span>
+    </div>
 
-  <div class="row">
-    <label>Auto-scroll speed <span class="hint">Hands-free auto-scroll speed in 🖼 gallery mode (toolbar <b>Auto-scroll</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge), in pixels per second. Lower = slower browsing.</span></label>
-    <span><input type="range" id="galleryAutoScrollSpeed" min="20" max="400" step="10" /><span class="val" id="galleryAutoScrollSpeedVal"></span></span>
-  </div>
+    <div class="row">
+      <label>Auto-load images on scroll <span class="hint">Progressively pull the page's lazy images as you near the end of the grid (prefetched so tiles are ready). Off = only show what's already loaded, plus the manual <b>⟳ Load all</b> button.</span></label>
+      <span><input type="checkbox" id="galleryAutoLoad" /></span>
+    </div>
 
-  <div class="section-head">
-    Per-site rules
-    <span class="hint">Force a mode on specific sites instead of the smart auto-pick. The
-    pattern matches <code>host + path</code> with <code>*</code> as a wildcard —
-    <code>example.com</code> (whole site), <code>example.com/blog/*</code> (a section),
-    <code>*.example.com/*</code> (all subdomains). When several match, the most specific
-    wins. Applies to the toolbar icon and right-click menu;
-    <b>Alt+B</b> / <b>Alt+Shift+B</b> always honor their own mode.</span>
-  </div>
-  <div class="site-add">
-    <input type="text" id="siteHost" placeholder="example.com/blog/*" />
-    <select id="siteMode">
-      <option value="auto">Auto</option>
-      <option value="images">Gallery</option>
-      <option value="text">Reader</option>
-    </select>
-    <button class="ghost" id="siteAddBtn">Add</button>
-  </div>
-  <div id="sites"></div>
+    <div class="row">
+      <label>Auto-scroll speed <span class="hint">Hands-free auto-scroll speed (toolbar <b>Auto-scroll</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge), in pixels per second. Lower = slower browsing.</span></label>
+      <span><input type="range" id="galleryAutoScrollSpeed" min="20" max="400" step="10" /><span class="val" id="galleryAutoScrollSpeedVal"></span></span>
+    </div>
+
+    <div class="row">
+      <label>Slideshow speed <span class="hint">Seconds each image is shown when you play the slideshow in the big-image view (lightbox <b>▶</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge). Plays once and stops on the last image.</span></label>
+      <span><input type="range" id="gallerySlideSeconds" min="1" max="30" step="1" /><span class="val" id="gallerySlideSecondsVal"></span></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>🎯 Smart open <span class="h2-sub">when you click the toolbar icon</span></h2>
+
+    <div class="row">
+      <label>Auto-open gallery <span class="hint">Toolbar-icon click opens 🖼 gallery instead of 📖 reader when the page has at least this many images. <b>Off</b> = always open the reader. (Alt+B / Alt+Shift+B always honor their mode.)</span></label>
+      <span><input type="range" id="autoGalleryMin" min="0" max="30" step="1" /><span class="val" id="autoGalleryMinVal"></span></span>
+    </div>
+
+    <div class="row">
+      <label>Keep reader for articles <span class="hint">When auto-opening by image count, stay in the 📖 reader if the page has at least this many words of article text - so a long illustrated read isn't sent to the gallery. <b>Off</b> = decide by image count only.</span></label>
+      <span><input type="range" id="autoTextMinWords" min="0" max="800" step="50" /><span class="val" id="autoTextMinWordsVal"></span></span>
+    </div>
+
+    <div class="subhead">
+      Per-site rules
+      <span class="hint">Force a mode on specific sites instead of the smart auto-pick. The
+      pattern matches <code>host + path</code> with <code>*</code> as a wildcard —
+      <code>example.com</code> (whole site), <code>example.com/blog/*</code> (a section),
+      <code>*.example.com/*</code> (all subdomains). When several match, the most specific
+      wins. Applies to the toolbar icon and right-click menu;
+      <b>Alt+B</b> / <b>Alt+Shift+B</b> always honor their own mode.</span>
+    </div>
+    <div class="site-add">
+      <input type="text" id="siteHost" placeholder="example.com/blog/*" />
+      <select id="siteMode">
+        <option value="auto">Auto</option>
+        <option value="images">Gallery</option>
+        <option value="text">Reader</option>
+      </select>
+      <button class="ghost" id="siteAddBtn">Add</button>
+    </div>
+    <div id="sites"></div>
+  </section>
 
   <div class="actions">
     <button class="ghost" id="reset">Reset to defaults</button>
