@@ -219,6 +219,35 @@ test('the Theme button cycles paper -> light -> dark and persists', async ({ pag
   expect(stored.theme).toBe('dark');
 });
 
+test('the Auto theme follows the OS color scheme and flips live', async ({ page }) => {
+  // Select Auto with the OS in dark mode, then open: 'auto' resolves to the concrete
+  // 'dark' overlay class (we never persist the concrete theme — only resolve at render).
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.evaluate(() => OBR.saveSettings({ theme: 'auto' }));
+  await openReader(page);
+  expect((await readState(page)).theme).toBe('dark');
+
+  // Switching the OS to light flips the open reader to 'paper' (the signature light look,
+  // not stark-white 'light') live — no reopen — via the prefers-color-scheme listener.
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect.poll(() => readState(page).then((s) => s.theme)).toBe('paper');
+
+  // The stored preference stays 'auto' through both resolutions.
+  const stored = await page.evaluate(
+    () => new Promise((r) => chrome.storage.sync.get('obr_settings', (d) => r(d.obr_settings)))
+  );
+  expect(stored.theme).toBe('auto');
+
+  // Pressing Theme while on Auto exits into an explicit concrete theme — from the resolved
+  // 'paper' (OS light), the cycle advances to 'light' and persists it (no longer 'auto').
+  await clickInReader(page, '.obr-btn[data-act="theme"]');
+  expect((await readState(page)).theme).toBe('light');
+  const stored2 = await page.evaluate(
+    () => new Promise((r) => chrome.storage.sync.get('obr_settings', (d) => r(d.obr_settings)))
+  );
+  expect(stored2.theme).toBe('light');
+});
+
 test('the A+ / A- buttons change font size within bounds', async ({ page }) => {
   await openReader(page);
   const base = (await readState(page)).fontSize;

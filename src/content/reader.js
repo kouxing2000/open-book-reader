@@ -38,6 +38,16 @@
 
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // Live OS color-scheme query, for the 'auto' theme. resolveTheme() maps the stored
+  // preference to a concrete overlay class: 'auto' -> 'dark' when the OS is in dark mode,
+  // else 'paper' (the signature light look — deliberately NOT stark-white 'light'); every
+  // other value maps to itself. The change listener at the bottom of the file re-applies it
+  // live while reading, so a scheduled OS dark-mode flip is honored mid-article.
+  const systemDark = matchMedia('(prefers-color-scheme: dark)');
+  function resolveTheme() {
+    return settings.theme === 'auto' ? (systemDark.matches ? 'dark' : 'paper') : settings.theme;
+  }
+
   /* ---------------------------------------------------------------- styles */
   function css() {
     const flip = reduceMotion ? 0 : settings.transitionMs;
@@ -172,7 +182,7 @@
     root = host.attachShadow({ mode: 'open' });
 
     overlay = document.createElement('div');
-    overlay.className = 'obr-overlay ' + settings.theme;
+    overlay.className = 'obr-overlay ' + resolveTheme();
     overlay.innerHTML = `
       <div class="obr-topbar">
         <span class="obr-doc-title"></span>
@@ -687,7 +697,10 @@
   }
 
   function cycleTheme() {
-    const idx = (THEMES.indexOf(settings.theme) + 1) % THEMES.length;
+    // Cycle the three concrete themes only (not 'auto'). Starting from the currently
+    // *resolved* theme means each press changes the visible look, and pressing T while
+    // on 'auto' exits it into an explicit choice rather than re-picking the same look.
+    const idx = (THEMES.indexOf(resolveTheme()) + 1) % THEMES.length;
     settings.theme = THEMES[idx];
     overlay.className = 'obr-overlay ' + settings.theme;
     OBR.saveSettings({ theme: settings.theme });
@@ -733,7 +746,7 @@
     if (OBR.closeGallery) OBR.closeGallery(); // ensure image mode isn't also showing
     build();
     applyStylesheet();
-    overlay.className = 'obr-overlay ' + settings.theme;
+    overlay.className = 'obr-overlay ' + resolveTheme();
     updateColumnsBtn();
     updateImagesBadge();
     lastArticle = extractArticle();
@@ -811,7 +824,7 @@
       OBR.loadSettings().then((s) => {
         const wasHidden = overlay.classList.contains('obr-chrome-hidden');
         settings = s;
-        overlay.className = 'obr-overlay ' + settings.theme + (wasHidden ? ' obr-chrome-hidden' : '');
+        overlay.className = 'obr-overlay ' + resolveTheme() + (wasHidden ? ' obr-chrome-hidden' : '');
         pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
         updateColumnsBtn();
         applyStylesheet();
@@ -819,4 +832,16 @@
       });
     });
   }
+
+  // Follow the OS color scheme live while the 'auto' theme is selected — flip the overlay
+  // between paper and dark as the system toggles (e.g. scheduled dark mode) without
+  // disturbing the auto-hidden chrome state. Attaches once at injection (like keydown /
+  // onChanged) and is inert unless 'auto' is the active preference on an open reader.
+  try {
+    systemDark.addEventListener('change', () => {
+      if (!active || !built || settings.theme !== 'auto') return;
+      const wasHidden = overlay.classList.contains('obr-chrome-hidden');
+      overlay.className = 'obr-overlay ' + resolveTheme() + (wasHidden ? ' obr-chrome-hidden' : '');
+    });
+  } catch (e) { /* MediaQueryList.addEventListener unavailable */ }
 })();
