@@ -18,7 +18,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write   # needed to create the GitHub Release
 
 jobs:
   release:
@@ -68,3 +68,23 @@ jobs:
         with:
           name: ${{ github.ref_name }}-extension
           path: dist.zip
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Pull this version's section out of CHANGELOG.md for the release notes.
+          NOTES=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { grab=1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md)
+          if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
+            NOTES="See [CHANGELOG.md](CHANGELOG.md) for details."
+          fi
+          printf '%s\n' "$NOTES" > release-notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Open Book Reader $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            dist.zip

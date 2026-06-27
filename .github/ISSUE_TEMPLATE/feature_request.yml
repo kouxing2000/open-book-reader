@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an improvement to the reader or gallery
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: The need behind the request, not just the feature. What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How might it work? Mockups or examples welcome.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      description: Open Book Reader collects no data and sends nothing to the developer.
+      options:
+        - label: This request does not require new tracking, telemetry, or an always-on permission.
+          required: false

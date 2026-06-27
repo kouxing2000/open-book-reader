@@ -84,12 +84,40 @@ fs.writeFileSync(manifestPath, bumpField(manifestText, 'manifest.json'));
 fs.writeFileSync(pkgPath, bumpField(pkgText, 'package.json'));
 console.log(`✓ Version ${current} -> ${next}  (manifest.json + package.json)`);
 
+// Roll CHANGELOG.md: the entries under "## [Unreleased]" become the new version's section.
+// Leaves an empty [Unreleased] on top and updates the compare link to point at the new tag.
+const changelogPath = path.join(rootDir, 'CHANGELOG.md');
+let changelogStamped = false;
+if (fs.existsSync(changelogPath)) {
+  let cl = fs.readFileSync(changelogPath, 'utf8');
+  const today = new Date().toISOString().slice(0, 10);
+  if (cl.includes(`## [${next}]`)) {
+    console.warn(`⚠️  CHANGELOG.md already has a [${next}] section — leaving it untouched.`);
+  } else if (/##\s*\[Unreleased\]/.test(cl)) {
+    cl = cl.replace(/##\s*\[Unreleased\]/, `## [Unreleased]\n\n## [${next}] - ${today}`);
+    // Re-point the [Unreleased] compare link and add a tag link for the new version.
+    cl = cl.replace(
+      /(\[Unreleased\]:\s*)(\S+?\/compare\/)v\d+\.\d+\.\d+(?:\.\.\.|\.\.\.)?HEAD/,
+      (_m, label, base) =>
+        `${label}${base}${tag}...HEAD\n[${next}]: ${base.replace(/\/compare\/$/, '/releases/tag/')}${tag}`
+    );
+    fs.writeFileSync(changelogPath, cl);
+    changelogStamped = true;
+    console.log(`✓ CHANGELOG.md: [Unreleased] -> [${next}] (${today})`);
+  } else {
+    console.warn('⚠️  CHANGELOG.md has no "## [Unreleased]" section — skipping changelog roll.');
+  }
+}
+
 if (noGit) {
   console.log('ℹ️  --no-git: files edited, no commit/tag created.');
   process.exit(0);
 }
 
-execSync(`git add manifest.json package.json`, { cwd: rootDir, stdio: 'inherit' });
+execSync(`git add manifest.json package.json${changelogStamped ? ' CHANGELOG.md' : ''}`, {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
 execSync(`git commit -m "chore(release): ${tag}"`, { cwd: rootDir, stdio: 'inherit' });
 execSync(`git tag -a ${tag} -m "Open Book Reader ${tag}"`, { cwd: rootDir, stdio: 'inherit' });
 
