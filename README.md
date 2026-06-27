@@ -57,6 +57,7 @@ Installed with a minimal set — nothing scary at install time:
 
 - `activeTab` + `scripting` — render the reader/gallery on the page you invoke it on
 - `storage` — remember your settings
+- `contextMenus` — the right-click "Open in Book Reader" menu and per-site rules
 - `commands` (manifest) — the Alt+B / Alt+Shift+B shortcuts
 
 Requested **only on first use, never at install** (optional permissions):
@@ -111,6 +112,13 @@ API (`npm run deploy`) only uploads/publishes the package.
 - [ ] Confirm single-purpose description matches behavior
 - [ ] Bump `version` per release
 - [ ] Update the "Add to Chrome" link in `site/index.html` once the store listing is live
+
+## Contributing
+
+Contributions welcome — it's a no-build, zero-dependency extension, so the loop is just edit +
+reload. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the dev setup and the reload gotcha,
+[`CHANGELOG.md`](CHANGELOG.md) for the release history, and [`SECURITY.md`](SECURITY.md) to
+report a vulnerability privately.
 
 ## Credits
 
