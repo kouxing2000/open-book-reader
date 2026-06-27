@@ -21,6 +21,11 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg>';
   const RESCAN_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+  // Hands-free auto-scroll toggle glyphs (filled play / pause).
+  const PLAY_ICON =
+    '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 4.5v15l12-7.5z"/></svg>';
+  const PAUSE_ICON =
+    '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 
   /* -------------------------------------------------- pure helpers (DOM-free) */
   // Whitespace-anchored srcset parser (handles comma-bearing CDN/data URLs); defined once
@@ -120,7 +125,7 @@
 
   /* -------------------------------------------------- state */
   let settings = Object.assign({}, OBR.DEFAULTS);
-  let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, lbEl, lbImg, lbCounter;
+  let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbCounter;
   let active = false, built = false;
   let images = [];           // [{url, w, h}]
   let lightboxIndex = -1;
@@ -135,6 +140,12 @@
   let mergeTimer = null, hydrateTimers = [], resizeTimer = null; // debounced re-collect / relayout
   let cols = [], colHeights = []; // JS-masonry columns + their estimated heights
   const selected = new Set(); // selected image URLs (survives re-render)
+  let autoScroll = false;          // hands-free auto-scroll engaged
+  let autoRaf = 0;                 // requestAnimationFrame handle (0 = idle)
+  let autoPrevTs = 0;              // prev frame timestamp (ms); 0 = first frame, seed only
+  let autoFrac = 0;                // sub-pixel accumulator (scrollTop applies integer deltas)
+  let autoRetriedAtBottom = false; // one-shot: already pushed past a soft-stop at this bottom
+  let autoSpeedSaveTimer = null;   // debounces persisting the speed (key-repeat / typing)
 
   const MIN = () => settings.galleryMinSize || 80;
 
@@ -299,6 +310,15 @@
     .btn svg { width: 15px; height: 15px; flex: none; }
     .btn:hover { background: #34343c; }
     .btn:disabled { opacity: .4; cursor: default; }
+    .btn .icon { display: inline-flex; align-items: center; }
+    .btn.autoscroll.on { background: #7c6cff; color: #fff; border-color: #7c6cff; }
+    .btn.autoscroll.on:hover { background: #6a5aef; }
+    /* .bar label.autospeed beats the generic ".bar label" so gap/size aren't overridden. */
+    .bar label.autospeed { gap: 5px; font-size: 12px; }
+    .autospeed-in { width: 48px; background: #131318; color: #e8e8ea; border: 1px solid #34343c;
+      border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12px; text-align: right;
+      font-variant-numeric: tabular-nums; }
+    .autospeed-in:focus { outline: none; border-color: #7c6cff; }
     /* Mode switch: recessed track holding a raised brand-accent "thumb" on the
        current side — reads as a physical toggle, matching the reader overlay. */
     .seg { display: inline-flex; padding: 3px; gap: 2px; background: #131318;
@@ -387,6 +407,8 @@
         <button class="btn dl-sel" disabled>${DL_ICON}<span>Download</span></button>
         <button class="btn dl-zip" disabled>${DL_ICON}<span>ZIP</span></button>
         <button class="btn rescan" title="Load every image — scroll the whole page to the bottom to pull in all lazy images">${RESCAN_ICON}<span>Load all</span></button>
+        <button class="btn autoscroll" aria-pressed="false" title="Auto-scroll down through the gallery (A)"><span class="icon">${PLAY_ICON}</span><span class="lbl">Auto-scroll</span></button>
+        <label class="autospeed" title="Auto-scroll speed in pixels/second — type a value, use the arrows, or press + / -"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="Auto-scroll speed (px/sec)"> px/s</label>
         <span class="status"></span>
         <span class="spacer"></span>
         <label>Size <input type="range" class="range" min="140" max="420" step="20" value="${colW}"></label>
@@ -413,6 +435,7 @@
     scrollerEl = wrap.querySelector('.scroll');
     countEl = wrap.querySelector('.count');
     rangeEl = wrap.querySelector('.range');
+    autoSpeedEl = wrap.querySelector('.autospeed-in');
     lbEl = wrap.querySelector('.lb');
     lbImg = wrap.querySelector('.lb-img');
     lbCounter = wrap.querySelector('.lb-counter');
@@ -447,7 +470,22 @@
     rangeEl.addEventListener('pointerup', () => rangeEl.blur());
 
     wrap.querySelector('.rescan').addEventListener('click', () => hydratePage(true));
+    wrap.querySelector('.autoscroll').addEventListener('click', (e) => {
+      toggleAutoScroll();
+      e.currentTarget.blur(); // drop focus so Space / PageDown still drive the scroll
+    });
+    // Typing in the speed field applies live (autoStep reads settings each frame); persist
+    // on change (blur / Enter / spinner) so a multi-keystroke entry isn't saved per keystroke.
+    autoSpeedEl.addEventListener('input', () => {
+      const v = parseInt(autoSpeedEl.value, 10);
+      if (Number.isFinite(v)) settings.galleryAutoScrollSpeed = Math.max(20, Math.min(400, v));
+    });
+    autoSpeedEl.addEventListener('change', () => setAutoSpeed(parseInt(autoSpeedEl.value, 10)));
     scrollerEl.addEventListener('scroll', onScrollerScroll, { passive: true });
+    // Any real user scroll gesture takes over: cancel hands-free auto-scroll. Listen on
+    // wheel/touchmove (user-gesture-only) NOT scroll — our own scrollTop writes fire scroll.
+    scrollerEl.addEventListener('wheel', () => { if (autoScroll) stopAutoScroll(); }, { passive: true });
+    scrollerEl.addEventListener('touchmove', () => { if (autoScroll) stopAutoScroll(); }, { passive: true });
     // Re-lay-out on viewport resize when the column count changes. Anchor the
     // topmost visible tile (keepScroll) so a resize doesn't snap the wall to the
     // top — same reading-position protection as the column-width slider.
@@ -805,8 +843,97 @@
   OBR._galleryLoadMore = () => hydratePage(false); // progressive chunk (tests)
   OBR._galleryRescan = () => hydratePage(true);    // "Load all" (button + tests)
 
+  /* ---- hands-free auto-scroll: rAF-driven smooth descent of the masonry wall ----
+   * Toggle on and the wall scrolls down by itself; near the bottom it keeps pulling more
+   * lazy images (explicit-gesture semantics: ignores galleryAutoLoad, pushes once past a
+   * soft-stop) so you can passively browse. Stops at the genuine end, on toggle, on any
+   * manual scroll/key/wheel, on lightbox open, and on close. */
+  const AUTO_DT_CAP = 0.05; // s — cap per-frame delta so a backgrounded/janky tab can't lurch
+  const AUTO_PIN    = 2;    // px from true bottom that counts as "pinned"
+
+  function autoStep(ts) {
+    if (!autoScroll || !active || !scrollerEl) { autoRaf = 0; return; }
+    if (lightboxIndex >= 0) { stopAutoScroll(); return; }
+    if (!autoPrevTs) { autoPrevTs = ts; autoRaf = requestAnimationFrame(autoStep); return; }
+    let dt = (ts - autoPrevTs) / 1000; autoPrevTs = ts;
+    if (dt > AUTO_DT_CAP) dt = AUTO_DT_CAP; if (dt < 0) dt = 0;
+
+    const speed = Math.max(1, settings.galleryAutoScrollSpeed || 60); // px/sec, read live
+    autoFrac += speed * dt;
+    const whole = Math.floor(autoFrac);
+    if (whole >= 1) { autoFrac -= whole; scrollerEl.scrollTop += whole; } // browser clamps to range
+
+    const remaining = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight;
+    const near = scrollerEl.clientHeight * 1.5;
+    if (remaining >= near) autoRetriedAtBottom = false; // re-arm soft-stop retry when buffer returns
+
+    // Binge feed near the bottom — ignore galleryAutoLoad, push past a soft stop ONCE per arrival.
+    if (remaining < near && !sweeping && !fullyHydrated) {
+      if (!softDone) hydratePage(false);
+      else if (!autoRetriedAtBottom) { autoRetriedAtBottom = true; softDone = false; hydratePage(false); }
+    }
+    // Genuine end: pinned, nothing loading, feed exhausted (hard end or our soft retry came up empty).
+    if (remaining <= AUTO_PIN && !sweeping && (fullyHydrated || (softDone && autoRetriedAtBottom))) {
+      stopAutoScroll(); return;
+    }
+    autoRaf = requestAnimationFrame(autoStep);
+  }
+
+  function startAutoScroll() {
+    if (!active || autoScroll) return;
+    closeLightbox();
+    autoScroll = true; autoPrevTs = 0; autoFrac = 0; autoRetriedAtBottom = false;
+    updateAutoBtn();
+    autoRaf = requestAnimationFrame(autoStep);
+  }
+  function stopAutoScroll() {
+    if (!autoScroll && !autoRaf) return;
+    autoScroll = false;
+    if (autoRaf) { cancelAnimationFrame(autoRaf); autoRaf = 0; }
+    autoPrevTs = 0; autoFrac = 0; autoRetriedAtBottom = false;
+    updateAutoBtn();
+  }
+  function toggleAutoScroll() { autoScroll ? stopAutoScroll() : startAutoScroll(); }
+
+  function updateAutoBtn() {
+    const btn = wrap && wrap.querySelector('.autoscroll');
+    if (!btn) return;
+    btn.classList.toggle('on', autoScroll);
+    btn.setAttribute('aria-pressed', autoScroll ? 'true' : 'false');
+    btn.querySelector('.icon').innerHTML = autoScroll ? PAUSE_ICON : PLAY_ICON;
+    btn.querySelector('.lbl').textContent = autoScroll ? 'Stop' : 'Auto-scroll';
+    btn.title = autoScroll ? 'Stop auto-scroll (A)' : 'Auto-scroll down through the gallery (A)';
+  }
+
+  // Single source of truth for the speed: clamp to [20,400], apply live (autoStep reads
+  // settings each frame), persist to storage.sync so it survives a reopen / new session,
+  // and reflect into the toolbar field. Drives the field, the +/- keys, and the options page.
+  function setAutoSpeed(value) {
+    const cur = settings.galleryAutoScrollSpeed || 60;
+    const next = Math.max(20, Math.min(400, Number.isFinite(value) ? value : cur));
+    if (autoSpeedEl) autoSpeedEl.value = next; // normalize the field (clamp / strip junk) even if unchanged
+    if (next === cur) return;                  // no change → nothing to apply or persist
+    settings.galleryAutoScrollSpeed = next;    // live — autoStep reads it next frame
+    // Debounce the persist: key-repeat on +/- and field typing fire many calls, and
+    // chrome.storage.sync throttles writes (~120/min). Only the trailing value needs saving.
+    clearTimeout(autoSpeedSaveTimer);
+    autoSpeedSaveTimer = setTimeout(() => OBR.saveSettings({ galleryAutoScrollSpeed: next }), 400);
+  }
+  // Flush a pending debounced speed persist immediately (e.g. on close, before a reopen
+  // reads storage). No-op if nothing is pending.
+  function flushAutoSpeed() {
+    if (!autoSpeedSaveTimer) return;
+    clearTimeout(autoSpeedSaveTimer); autoSpeedSaveTimer = null;
+    OBR.saveSettings({ galleryAutoScrollSpeed: settings.galleryAutoScrollSpeed });
+  }
+  function nudgeAutoSpeed(delta) { setAutoSpeed((settings.galleryAutoScrollSpeed || 60) + delta); }
+
+  OBR._galleryAutoScroll = (on) => { on ? startAutoScroll() : stopAutoScroll(); }; // drive (tests)
+  OBR._galleryAutoScrollOn = () => autoScroll;                                     // state (tests)
+
   /* -------------------------------------------------- lightbox */
   function openLightbox(i) {
+    stopAutoScroll(); // opening the lightbox is a manual interaction
     lightboxIndex = i;
     lbImg.src = images[i].full || images[i].url;
     lbImg.alt = 'Image ' + (i + 1);
@@ -831,8 +958,10 @@
     build();
     applyStylesheet();
     if (rangeEl) rangeEl.value = settings.galleryColWidth || 240;
+    if (autoSpeedEl) autoSpeedEl.value = settings.galleryAutoScrollSpeed || 60; // reflect the persisted speed
     savedPageX = window.scrollX; savedPageY = window.scrollY; // restored on close
     sweepY = 0; fullyHydrated = false; softDone = false; // fresh hydration cursor per open
+    autoScroll = false; autoFrac = 0; autoRetriedAtBottom = false; // fresh auto-scroll state
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
     active = true;
@@ -842,6 +971,8 @@
   }
   function close() {
     if (!active) return;
+    stopAutoScroll(); // cancel the rAF before hiding the host (no orphan scrollTop writes)
+    flushAutoSpeed();  // persist a just-edited speed before a reopen reads storage
     stopWatching();
     closeLightbox();
     host.style.display = 'none';
@@ -932,6 +1063,14 @@
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(-1); }
     } else if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation(); close();
+    } else if (scrollerEl && (e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Auto-scroll toggle + speed nudge work regardless of focus — the gallery's only form
+      // controls (size slider, select-all checkbox) don't use a / + / -, so there's no clash.
+      e.preventDefault(); e.stopPropagation(); toggleAutoScroll();
+    } else if (scrollerEl && (e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault(); e.stopPropagation(); nudgeAutoSpeed(+20); // guard ctrl/meta so browser zoom still works
+    } else if (scrollerEl && (e.key === '-' || e.key === '_') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault(); e.stopPropagation(); nudgeAutoSpeed(-20);
     } else if (scrollerEl && !isFormFocused()) {
       // The overlay scroll-locks the page and the grid scrolls inside its own (unfocused)
       // container, so PageUp/Down/Home/End/space/arrows have no native target — drive it.
@@ -946,6 +1085,7 @@
       else if (e.key === 'End') top = scrollerEl.scrollHeight;
       if (top !== null) {
         e.preventDefault(); e.stopPropagation();
+        stopAutoScroll(); // any manual scroll cancels hands-free auto-scroll
         const goingDown = top > scrollerEl.scrollTop;
         scrollerEl.scrollTop = top;
         // An explicit page/space/End toward the bottom is a clear "give me more" —
