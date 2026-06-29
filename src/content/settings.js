@@ -19,6 +19,12 @@
     columns: 2,            // columns (pages) per spread: 2, 3, or 4
     singlePageBelow: 720,  // px viewport width → fall back to one page
     transitionMs: 340,     // page-flip animation duration
+    pageTurn: 'curl',      // page-flip effect: 'curl' (soft paper bend - the page slices
+                           // into strips that curve as it turns) | 'book' (rigid 3D page
+                           // about the spine) | 'slide' (eased translateX) | 'off'
+                           // (instant). prefers-reduced-motion forces instant regardless.
+                           // 'curl'/'book' fall back to 'slide' for odd / single-page
+                           // layouts (no center spine to hinge on).
     printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
                            // so the saved copy links back to the article. Off = omit it
                            // (e.g. when sharing a PDF and you'd rather not expose the URL).

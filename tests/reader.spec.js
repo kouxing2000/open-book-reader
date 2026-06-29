@@ -202,6 +202,132 @@ test('the right click-zone advances the page', async ({ page }) => {
   expect(after.translateX).toBeLessThan(start.translateX);
 });
 
+/* ---------------------------------------------------- 3D "book" page turn ----
+   The default viewport (1280px) gives 2 columns/spread, so these run the book path. */
+const flipLayers = (page) => page.locator('#obr-host >> .obr-flip-layer').count();
+
+test('the book page-turn floats a transient leaf and then cleans it up', async ({ page }) => {
+  // Slow the turn so the (synchronously-built) leaf reliably outlives the query round-trip
+  // even under load — otherwise a fast default turn can finish before count() runs.
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'book', transitionMs: 1200 }));
+  await openReader(page);
+  // Let the late font/image relayout fire first — layout() ends any in-flight turn, so flipping
+  // before it settles would legitimately abort the leaf we're about to assert on.
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press('ArrowRight');
+  expect(await flipLayers(page)).toBe(1);            // built synchronously in the flip handler
+  await expect.poll(() => flipLayers(page), { timeout: 3000 }).toBe(0); // torn down when it finishes
+});
+
+test('the book turn settles to the exact same state as the plain flip (additive overlay)', async ({ page }) => {
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'book' }));
+  await openReader(page);
+  await page.keyboard.press('ArrowRight');
+  const mid = await readState(page); // real strip already snapped to the destination
+  expect(mid.translateX).toBeLessThan(0);
+
+  await expect.poll(() => flipLayers(page), { timeout: 2000 }).toBe(0);
+  const after = await readState(page);
+  // The transient leaf never touches the real strip — final state == the snapped state.
+  expect(after.translateX).toBe(mid.translateX);
+  expect(after.indicator).toBe(mid.indicator);
+});
+
+for (const mode of ['slide', 'off']) {
+  test(`pageTurn:'${mode}' advances without ever creating a leaf`, async ({ page }) => {
+    await page.evaluate((m) => globalThis.OBR.saveSettings({ pageTurn: m }), mode);
+    await openReader(page);
+    const start = await readState(page);
+
+    await page.keyboard.press('ArrowRight');
+    expect(await flipLayers(page)).toBe(0);          // no 3D leaf in slide/off mode
+    const after = await readState(page);
+    expect(after.translateX).toBeLessThan(start.translateX); // but the page still advanced
+  });
+}
+
+test('prefers-reduced-motion forces an instant flip with no leaf', async ({ page }) => {
+  // reduceMotion is captured when reader.js loads, so set it before re-injecting.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await gotoArticle(page);
+  await injectReader(page);
+  await openReader(page);
+  const start = await readState(page);
+
+  await page.keyboard.press('ArrowRight');
+  expect(await flipLayers(page)).toBe(0);
+  const after = await readState(page);
+  expect(after.translateX).toBeLessThan(start.translateX);
+});
+
+test('rapid flips strand no leaf and advance by two spreads', async ({ page }) => {
+  await openReader(page);
+  const start = await readState(page);
+
+  await page.keyboard.press('ArrowRight');
+  const one = await readState(page);
+  await page.keyboard.press('ArrowRight'); // interrupts the first turn mid-flight
+  const two = await readState(page);
+
+  expect(one.translateX).toBeLessThan(start.translateX);
+  expect(two.translateX).toBeLessThan(one.translateX); // second flip advanced further
+  await expect.poll(() => flipLayers(page), { timeout: 2000 }).toBe(0); // nothing orphaned
+});
+
+test('the soft curl turn floats a transient leaf, then settles to the plain-flip state', async ({ page }) => {
+  // The curl runs on its own ~760ms+ duration, so the overlay reliably outlives the query.
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'curl' }));
+  await openReader(page);
+  // Let the late font/image relayout fire first — layout() ends any in-flight turn, so flipping
+  // before it settles would legitimately abort the leaf we're about to assert on.
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press('ArrowRight');
+  expect(await flipLayers(page)).toBe(1);                 // curl overlay built synchronously
+  const mid = await readState(page);
+  expect(mid.translateX).toBeLessThan(0);                 // real strip already at destination
+
+  await expect.poll(() => flipLayers(page), { timeout: 3000 }).toBe(0); // sliced strips cleaned up
+  const after = await readState(page);
+  expect(after.translateX).toBe(mid.translateX);          // additive: real strip untouched
+  expect(after.indicator).toBe(mid.indicator);
+});
+
+// Regression test for the leaf-size bug: the turning leaf and the laid-page overlay must
+// each span a FULL page (half the paper, full height) — NOT just the smaller text/viewport
+// area. offsetWidth/offsetHeight read the layout box, so they ignore the rotation transform.
+for (const mode of ['curl', 'book']) {
+  test(`the turning page (${mode}) is sized to the full paper page, not the text area`, async ({ page }) => {
+    await page.evaluate((m) => globalThis.OBR.saveSettings({ pageTurn: m }), mode);
+    await openReader(page);
+    await page.evaluate(() => document.fonts && document.fonts.ready);
+    await page.waitForTimeout(150);
+
+    await page.keyboard.press('ArrowRight');
+    const sz = await page.evaluate((leafSel) => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const leaf = root.querySelector(leafSel);
+      const stat = root.querySelector('.obr-flip-static');
+      const paper = root.querySelector('.obr-paper');
+      if (!leaf || !stat || !paper) return null;
+      return {
+        leafW: leaf.offsetWidth, leafH: leaf.offsetHeight,
+        statW: stat.offsetWidth, statH: stat.offsetHeight,
+        paperW: paper.offsetWidth, paperH: paper.offsetHeight,
+      };
+    }, mode === 'curl' ? '.obr-curl' : '.obr-leaf');
+
+    expect(sz).not.toBeNull();
+    expect(sz.leafH).toBe(sz.paperH);                          // full page height (incl. margins)
+    expect(sz.statH).toBe(sz.paperH);
+    expect(Math.abs(sz.leafW - sz.paperW / 2)).toBeLessThanOrEqual(1); // one full page wide
+    expect(Math.abs(sz.statW - sz.paperW / 2)).toBeLessThanOrEqual(1);
+  });
+}
+
 test('the Theme button cycles paper -> light -> dark and persists', async ({ page }) => {
   await openReader(page);
   expect((await readState(page)).theme).toBe('paper');

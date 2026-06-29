@@ -2,7 +2,7 @@
 (function () {
   const OBR = globalThis.OBR;
   const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColWidth', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
-  const SELECTS = ['theme', 'fontFamily'];
+  const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
   const CHECKBOXES = ['galleryAutoLoad', 'printSourceUrl'];
   const savedEl = document.getElementById('saved');
   let saveTimer;

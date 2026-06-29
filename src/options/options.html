@@ -113,6 +113,16 @@
     </div>
 
     <div class="row">
+      <label>Page turn <span class="hint">How pages flip: a 3D book page, a soft paper curl, a simple slide, or instant. Respects your “reduce motion” setting.</span></label>
+      <select id="pageTurn">
+        <option value="book">Book (3D page)</option>
+        <option value="curl">Curl (soft paper)</option>
+        <option value="slide">Slide</option>
+        <option value="off">Off (instant)</option>
+      </select>
+    </div>
+
+    <div class="row">
       <label>Font size <span class="hint">Base reading size</span></label>
       <span><input type="range" id="fontSize" min="14" max="26" step="1" /><span class="val" id="fontSizeVal"></span></span>
     </div>

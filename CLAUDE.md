@@ -46,6 +46,26 @@ block layout. Pagination = CSS multi-column: `.obr-pages` is transformed horizon
 columns, a "spread" is N columns-per-view (`columns`: 2/3/4, or 1 below `singlePageBelow`); the
 center spine shows only for even N. The ⊞ topbar button cycles 2→3→4.
 
+**Page-turn animation** (`reader.js`: `flip` → `bookFlip` / `curlFlip` / `endActiveFlip`, setting
+`pageTurn`: `curl`(default) | `book` | `slide` | `off`): the 3D turns are **additive overlays**, never a
+3D path for the real strip. On flip, the real `.obr-pages` is **snapped straight to the destination**
+(`applySpread()`), so `currentSpread`/`translateX`/`indicator`/progress/persist end up identical to the
+plain slide *synchronously* (this is what keeps the sync-read tests green) — then a transient
+`.obr-flip-layer` of **cloned column slices** animates on top. `book` = a rigid leaf rotating about the
+spine; `curl` = the leaf sliced into a nested chain of vertical strips that each rotate a little more
+(a soft paper bend). `endActiveFlip()` removes the overlay on finish AND is called at the top of
+`layout()` and in Home/End/`close()`, so any relayout/close aborts an in-flight turn and snaps to the
+(already-correct) end — re-entrancy is fast-forward, guarded by `activeFlip.layer === layer` on the WAAPI
+`finished` callback. Only runs for **even** columns-per-spread (needs a center spine); odd/single-page/
+reduced-motion/`slide`/`off` take the plain translateX path. **GOTCHA — the turning leaf must be sized to
+the full PAPER PAGE (text column + the paper's white margins), not the viewport text area**, or it renders
+visibly smaller than the laid page from the first frame; `pageGeom()` computes the page-relative spine /
+page width / margins and every panel (`makePagesClone(tx, ty)` with the `padY` margin offset) is built
+from it. Tunable curl look: `CURL_STRIPS` / `CURL_BEND` / `CURL_PEAK` / `CURL_DURATION` / `CURL_OVERLAP`
+(the last widens each strip 1px so neighbours overlap and hide sub-pixel seams). Reworking this is
+**transform-heavy and easy to get subtly wrong — verify with a real-Chromium screenshot capture, and
+MEASURE element rects (`offsetWidth`/`getBoundingClientRect`) before blaming a transform**.
+
 **Print / Save as PDF** (`reader.js`: `OBR.printReader` + the pure, testable `OBR._buildPrintDoc`): the
 🖨 topbar button (and the `P` key) reuse the article Readability already parsed (`lastArticle`, captured
 in `open()`) to build a clean, flat, **vertically-flowing** document and hand it to the browser's print
