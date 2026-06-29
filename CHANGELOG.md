@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Reader: realistic **page-turn animations** for the two-page text reader — a soft paper
+  **curl** (default) and a rigid **book** 3D flip, alongside plain **slide** and instant
+  **off**, selectable under Options - Reader - Page turn. Respects your OS "reduce motion"
+  setting and adds no new permission.
+
 ## [1.0.0] - 2026-06-27
 
 First stable release — Open Book Reader graduates from the 0.x series.

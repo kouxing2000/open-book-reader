@@ -28,6 +28,10 @@
   let colW = 0, colGap = 0, pagesPerSpread = 2;
   let savedScrollY = 0;
   let mediaTimer = null;
+  // While a 'book' or 'curl' page turn is animating: { layer, anims: [Animation...] }. The
+  // real strip is already at its destination (see bookFlip/curlFlip), so this is purely the
+  // transient overlay; endActiveFlip() tears it down at any moment (finish, relayout, close).
+  let activeFlip = null;
   // Per-article resume: posKey identifies the article; restoreFraction holds the
   // saved progress fraction until the first relayout positions us there (it keeps
   // re-anchoring through the late-image settle window, then a user nav clears it).
@@ -50,7 +54,9 @@
 
   /* ---------------------------------------------------------------- styles */
   function css() {
-    const flip = reduceMotion ? 0 : settings.transitionMs;
+    // 'off' (and reduced-motion) make the .obr-pages slide instant; 'slide'/'book' keep
+    // the eased translateX. The 3D 'book' turn suppresses this transition per-flip anyway.
+    const flip = (reduceMotion || settings.pageTurn === 'off') ? 0 : settings.transitionMs;
     return `
     :host { all: initial; }
     * { box-sizing: border-box; }
@@ -124,6 +130,54 @@
 
     .obr-zone { position: absolute; top: 0; bottom: 0; width: 28%; cursor: pointer; z-index: 2; }
     .obr-zone-left { left: 0; } .obr-zone-right { right: 0; }
+
+    /* Realistic 3D page turn (settings.pageTurn === 'book'): a transient leaf cloned from
+       .obr-pages rotates about the center spine on top of the real strip. It lives in its
+       OWN layer that is a sibling of .obr-viewport (not inside it) because the viewport's
+       overflow:hidden would both clip and flatten the rotation. perspective is on the layer;
+       preserve-3d on the leaf. z-index 4 sits above the page backdrop but below the chrome
+       (10/11); pointer-events:none lets the click-zones keep receiving rapid flips. */
+    .obr-flip-layer { position: absolute; z-index: 4; pointer-events: none;
+      perspective: 5200px; perspective-origin: 50% 50%; }
+    .obr-flip-static { position: absolute; top: 0; overflow: hidden; }
+    .obr-leaf { position: absolute; top: 0; transform-origin: left center;
+      transform-style: preserve-3d; will-change: transform;
+      box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+    .obr-leaf-face { position: absolute; inset: 0; overflow: hidden;
+      backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+    .obr-leaf-face.back { transform: rotateY(180deg); }
+    .obr-leaf-pages { position: absolute; top: 0; left: 0; }
+    .obr-leaf-shade { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+    .obr-leaf-face.front .obr-leaf-shade { background: linear-gradient(to right, rgba(0,0,0,.32), rgba(0,0,0,0) 60%); }
+    .obr-leaf-face.back  .obr-leaf-shade { background: linear-gradient(to left,  rgba(0,0,0,.32), rgba(0,0,0,0) 60%); }
+
+    /* Soft "curl" turn (settings.pageTurn === 'curl'): the turning half-page is sliced into
+       a nested chain of vertical strips, each rotated a little more than the last, so the
+       sheet BENDS like real paper instead of staying a rigid board. The whole chain also
+       rotates about the spine. .obr-cseg is the 3D frame (preserve-3d, overflow visible);
+       each nested seg sits at its parent's right edge (left:100%) and pivots at its own left
+       edge, so the rotations accumulate into a smooth arc. .obr-cface is the flat content
+       slice (overflow:hidden is fine — it has no 3D children). A single flat back face
+       (.obr-curl-back, rigid-style, correct un-mirrored text) shows once past edge-on. */
+    .obr-curl { position: absolute; top: 0; transform-origin: left center;
+      transform-style: preserve-3d; will-change: transform; }
+    .obr-curl-back { position: absolute; inset: 0; overflow: hidden; transform: rotateY(180deg);
+      backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+    .obr-cseg { position: absolute; left: 0; top: 0; transform-origin: left center;
+      transform-style: preserve-3d; }
+    .obr-cseg.nested { left: 100%; }
+    .obr-cface { position: absolute; inset: 0; overflow: hidden;
+      backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+    .obr-cface .obr-leaf-shade { background: #000; }  /* opacity driven per-strip in JS */
+
+    /* Faces and stationary halves need the paper's opaque background so the destination
+       strip underneath doesn't bleed through (mirrors the .obr-paper theme colors). */
+    .obr-overlay.paper .obr-leaf-face, .obr-overlay.paper .obr-flip-static,
+    .obr-overlay.paper .obr-cface, .obr-overlay.paper .obr-curl-back { background: #f6efe0; }
+    .obr-overlay.light .obr-leaf-face, .obr-overlay.light .obr-flip-static,
+    .obr-overlay.light .obr-cface, .obr-overlay.light .obr-curl-back { background: #fff; }
+    .obr-overlay.dark  .obr-leaf-face, .obr-overlay.dark  .obr-flip-static,
+    .obr-overlay.dark  .obr-cface, .obr-overlay.dark  .obr-curl-back { background: #1f2024; }
 
     .obr-footer {
       position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
@@ -568,6 +622,7 @@
 
   /* ---------------------------------------------------------------- layout */
   function layout(keepSpread, anchorFraction) {
+    endActiveFlip(); // abort any in-flight 3D turn and snap to its (already-correct) end
     const vw = window.innerWidth, vh = window.innerHeight;
     const cols = Math.max(2, Math.min(4, settings.columns || 2)); // 2, 3, or 4 per spread
     pagesPerSpread = vw < settings.singlePageBelow ? 1 : cols;
@@ -655,8 +710,306 @@
     const next = currentSpread + dir;
     if (next < 0 || next >= totalSpreads) return;
     restoreFraction = null; // user is navigating — stop re-anchoring to the resume point
+    // The realistic 3D book turn only makes sense when there is a center spine to hinge
+    // on — i.e. an even number of columns per spread. Odd (3) / single-page layouts, the
+    // 'slide'/'off' settings, and reduced-motion all take the plain translateX path, whose
+    // final state (currentSpread + applySpread) is authoritative; 'book' is purely additive.
+    const animated = !reduceMotion && pagesPerSpread % 2 === 0;
+    if (animated && settings.pageTurn === 'book') { bookFlip(dir, currentSpread, next); return; }
+    if (animated && settings.pageTurn === 'curl') { curlFlip(dir, currentSpread, next); return; }
+    currentSpread = next; applySpread();
+  }
+
+  /* ----------------------------------------------- realistic 3D book page turn
+     There are no per-page DOM nodes — "pages" are virtual CSS columns and the whole
+     article is one strip (pagesEl). To turn a page like a real book we DON'T move the
+     real strip through a 3D path; instead we snap it straight to the destination, then
+     float a transient leaf — cloned column slices — that rotates about the center spine
+     on top. So the engine's final state (currentSpread / translateX / indicator /
+     progress) is identical to the plain slide, set synchronously; the 3D turn is purely
+     additive and can be aborted at any instant without leaving the reader inconsistent.
+
+     Forward turn k->k+1: the source's RIGHT page lifts at the spine and swings left; its
+     back is the destination's LEFT page; the destination's RIGHT page is revealed beneath
+     (already in the real strip); the source's LEFT page sits still until the back lands on
+     it. Backward mirrors this. See the plan's geometry table for the clip/translateX math. */
+
+  // Paper-relative page geometry shared by both turn styles. A "page" is the full PAPER
+  // half the reader sees — the text column AND its surrounding white margins — so panels
+  // sized to it match the laid page exactly (the turning leaf is NOT just the text area).
+  function pageGeom() {
+    const vp = viewportEl.getBoundingClientRect();
+    const paper = paperEl.getBoundingClientRect();
+    const stride = pagesPerSpread * (colW + colGap);
+    const half = (stride - colGap) / 2;        // half the text area = column + half gutter
+    const padX = vp.left - paper.left;          // outer side margin (paper padding)
+    const padY = vp.top - paper.top;            // top / bottom margin
+    const spineX = padX + half;                 // spine / page centre, in paper coords
+    // Left page = [0, spineX]; right page = [spineX, paperW]; both spineX wide (symmetric).
+    return { padX, padY, spineX, pageW: paper.width - spineX, paperW: paper.width, paperH: paper.height };
+  }
+
+  // A clone of the real strip, frozen and shifted so a clip window reveals chosen columns.
+  // tx aligns the columns horizontally; ty pushes the text down by the page's top margin so
+  // the panel (sized to the full paper page) shows the text with its margins, like a real page.
+  function makePagesClone(tx, ty) {
+    const clone = pagesEl.cloneNode(true);
+    clone.classList.add('obr-leaf-pages');     // keep .obr-pages too (it carries the styling)
+    clone.style.transition = 'none';
+    clone.style.willChange = 'auto';           // don't spawn a compositor layer per clone
+    clone.style.transform = `translateX(${tx}px)`;
+    if (ty) clone.style.top = ty + 'px';
+    return clone;
+  }
+
+  // One face of the turning leaf: a clipped clone plus a shading overlay (returned so its
+  // opacity can be animated — the page darkens as it stands edge-on).
+  function buildFace(kind, tx, ty) {
+    const face = document.createElement('div');
+    face.className = 'obr-leaf-face ' + kind;
+    face.appendChild(makePagesClone(tx, ty));
+    const shade = document.createElement('div');
+    shade.className = 'obr-leaf-shade';
+    face.appendChild(shade);
+    return { face, shade };
+  }
+
+  function bookFlip(dir, src, next) {
+    endActiveFlip();                 // fast-forward any in-flight turn to its settled state
+    const fwd = dir > 0;
+
+    // 1. Snap the real strip (+ indicator / progress / persist) straight to the destination
+    //    with no slide, so the final state matches the plain-flip path synchronously.
+    pagesEl.style.transition = 'none';
     currentSpread = next;
     applySpread();
+
+    // 2. Geometry. A "page" is the full PAPER half — text column PLUS its white margins —
+    //    not just the text area, so the turning leaf matches the page the reader sees.
+    //    g = pageGeom() gives the paper-relative spine, page width/height, and the margins.
+    const stride = pagesPerSpread * (colW + colGap);
+    const g = pageGeom();
+
+    // 3. The flip layer covers the WHOLE paper (margins included).
+    const layer = document.createElement('div');
+    layer.className = 'obr-flip-layer';
+    layer.style.left = '0px';
+    layer.style.top = '0px';
+    layer.style.width = g.paperW + 'px';
+    layer.style.height = g.paperH + 'px';
+
+    // 4. The stationary page (forward: source LEFT page; backward: source RIGHT page) —
+    //    a full-page panel, opaque so the destination underneath doesn't bleed through.
+    const staticLeft = fwd ? 0 : g.spineX;
+    const staticBox = document.createElement('div');
+    staticBox.className = 'obr-flip-static';
+    staticBox.style.left = staticLeft + 'px';
+    staticBox.style.width = g.pageW + 'px';
+    staticBox.style.height = g.paperH + 'px';
+    staticBox.appendChild(makePagesClone(g.padX - staticLeft - src * stride, g.padY));
+
+    // 5. The turning leaf = the right page, hinged at the spine. Two full-page faces; the
+    //    back is pre-rotated 180deg about ITS OWN center (the double reflection lands it
+    //    un-mirrored on the opposite page when the leaf lays down).
+    const sFront = fwd ? src : next;     // page shown on the front (toward the reader at rest)
+    const sBack = fwd ? next : src;      // page shown on the back (after it lays down)
+    const leaf = document.createElement('div');
+    leaf.className = 'obr-leaf';
+    leaf.style.left = g.spineX + 'px';
+    leaf.style.width = g.pageW + 'px';
+    leaf.style.height = g.paperH + 'px';
+    const frontTx = g.padX - g.spineX - sFront * stride;
+    const backTx = g.padX - sBack * stride;
+    const front = buildFace('front', frontTx, g.padY);
+    const back = buildFace('back', backTx, g.padY);
+    leaf.appendChild(front.face);
+    leaf.appendChild(back.face);
+
+    const fromAngle = fwd ? 0 : -180;
+    const toAngle = fwd ? -180 : 0;
+    leaf.style.transform = `rotateY(${fromAngle}deg)`;
+
+    layer.appendChild(staticBox);
+    layer.appendChild(leaf);
+    paperEl.appendChild(layer);      // LAST child → real pagesEl stays first for querySelector
+
+    // 6. Animate (WAAPI — reliable finish hook + clean cancel for re-entrancy).
+    const dur = settings.transitionMs;
+    const easing = 'cubic-bezier(.22,.61,.36,1)';
+    const anim = leaf.animate(
+      [{ transform: `rotateY(${fromAngle}deg)` }, { transform: `rotateY(${toAngle}deg)` }],
+      { duration: dur, easing, fill: 'forwards' }
+    );
+    // Each face dims as it stands edge-on (peak shading mid-turn), then lightens.
+    const shadeFrames = [{ opacity: 0.05 }, { opacity: 0.5 }, { opacity: 0.05 }];
+    const a2 = front.shade.animate(shadeFrames, { duration: dur, easing });
+    const a3 = back.shade.animate(shadeFrames, { duration: dur, easing });
+
+    activeFlip = { layer, anims: [anim, a2, a3] };
+    anim.finished
+      .then(() => { if (activeFlip && activeFlip.layer === layer) endActiveFlip(); })
+      .catch(() => {});              // cancel() rejects with AbortError — already torn down
+  }
+
+  /* ------------------------------------------------- soft "curl" page turn -----
+     Same additive model as bookFlip (snap the real strip to the destination, overlay a
+     transient leaf), but the turning half-page BENDS like paper instead of staying rigid.
+     The leaf rotates about the spine; inside it, the source's outer half is sliced into a
+     nested chain of vertical strips, each rotated a little more than the last so the sheet
+     curves into a smooth arc (uniform per-strip angle => circular bow). The bow grows to a
+     peak early (while the page faces the reader) and relaxes back to FLAT by edge-on, so the
+     curl only ever shows in the front half and the back half is a clean flat turn. A single
+     flat back face shows the destination's inner page once the sheet passes edge-on. */
+  const CURL_STRIPS = 16;     // slices across the turning half-page (more = smoother bend)
+  const CURL_BEND = 6.5;      // peak degrees of bow added per strip. The invariant to respect
+                              // is the free edge's NET rotation at the bow's peak: the leaf's own
+                              // rotation there (~40deg) PLUS the cumulative bow (CURL_STRIPS *
+                              // this ~= 104deg) must stay under 90 (here ~65deg). Past 90 the
+                              // free-edge strips rotate beyond edge-on while the page still faces
+                              // the reader, get back-culled, and expose the page behind them (a
+                              // second page bleeding through). The bow also relaxes to flat by
+                              // edge-on (see CURL_PEAK), so the back half is a clean flat turn.
+  const CURL_PEAK = 0.32;     // when the bow is deepest (0..1): early, while the page faces
+                              // the reader. The bow then relaxes to FLAT by edge-on (~0.5) and
+                              // stays flat through the second half — so the curl is only ever
+                              // shown while the page faces you, and the back-half is a clean
+                              // rigid turn. (If the bow persisted past edge-on, heavily-bent
+                              // free-edge strips would swing back to face the viewer and show
+                              // the source page on top of the destination — a "page in the
+                              // middle" double-image.)
+  const CURL_OVERLAP = 1.0;   // px each strip is widened so neighbours overlap horizontally,
+                              // hiding the sub-pixel hairline seams between strips as they bend.
+  // The curl is a far richer motion than a flat slide, so it runs slower than the shared
+  // transitionMs (otherwise the bend just flashes by). Still scales if the user raises it.
+  const CURL_DURATION = (ms) => Math.max(760, Math.round(ms * 1.9));
+
+  function curlFlip(dir, src, next) {
+    endActiveFlip();
+    const fwd = dir > 0;
+
+    // Snap the real strip to the destination (final state == the plain flip, synchronously).
+    pagesEl.style.transition = 'none';
+    currentSpread = next;
+    applySpread();
+
+    const stride = pagesPerSpread * (colW + colGap);
+    const g = pageGeom();          // full PAGE geometry (text + margins), not just the text area
+
+    // Flip layer covers the WHOLE paper (margins included).
+    const layer = document.createElement('div');
+    layer.className = 'obr-flip-layer';
+    layer.style.left = '0px';
+    layer.style.top = '0px';
+    layer.style.width = g.paperW + 'px';
+    layer.style.height = g.paperH + 'px';
+
+    // Stationary full page (forward: source LEFT; backward: source RIGHT), opaque.
+    const staticLeft = fwd ? 0 : g.spineX;
+    const staticBox = document.createElement('div');
+    staticBox.className = 'obr-flip-static';
+    staticBox.style.left = staticLeft + 'px';
+    staticBox.style.width = g.pageW + 'px';
+    staticBox.style.height = g.paperH + 'px';
+    staticBox.appendChild(makePagesClone(g.padX - staticLeft - src * stride, g.padY));
+
+    // The curl leaf = the right page, hinged at the spine, rotates fromAngle -> toAngle.
+    const sFront = fwd ? src : next;
+    const sBack = fwd ? next : src;
+    const leaf = document.createElement('div');
+    leaf.className = 'obr-curl';
+    leaf.style.left = g.spineX + 'px';
+    leaf.style.width = g.pageW + 'px';
+    leaf.style.height = g.paperH + 'px';
+
+    // Single flat back face (the page shown after it lays down) — rigid-style 180 about the
+    // leaf centre so its text reads correctly; only visible once the sheet passes edge-on.
+    const back = document.createElement('div');
+    back.className = 'obr-curl-back';
+    back.appendChild(makePagesClone(g.padX - sBack * stride, g.padY));
+    leaf.appendChild(back);
+
+    // Nested front strips spanning the full page. Strip k shows the slice starting at
+    // arc-length k*w (arc length is preserved along the bend, so the offset is exactly -k*w).
+    const N = CURL_STRIPS;
+    const w = g.pageW / N;
+    const frontBaseTx = g.padX - g.spineX - sFront * stride;
+    const segs = [];
+    let parent = leaf;
+    for (let k = 0; k < N; k++) {
+      const seg = document.createElement('div');
+      seg.className = 'obr-cseg' + (k === 0 ? '' : ' nested');
+      seg.style.width = w + 'px';
+      seg.style.height = g.paperH + 'px';
+      const face = document.createElement('div');
+      face.className = 'obr-cface';
+      // Widen the clip window past the strip's slot so it overlaps the next strip and the
+      // hairline seam disappears (horizontal only — strips are full-height vertical slices).
+      face.style.width = (w + CURL_OVERLAP) + 'px';
+      face.appendChild(makePagesClone(frontBaseTx - k * w, g.padY));
+      const shade = document.createElement('div');
+      shade.className = 'obr-leaf-shade';
+      face.appendChild(shade);
+      seg.appendChild(face);
+      parent.appendChild(seg);
+      parent = seg;          // nest the next strip at this one's right edge
+      segs.push({ seg, shade });
+    }
+
+    layer.appendChild(staticBox);
+    layer.appendChild(leaf);
+    paperEl.appendChild(layer);
+
+    const dur = CURL_DURATION(settings.transitionMs);
+    const fromA = fwd ? 0 : -180;
+    const toA = fwd ? -180 : 0;
+    const bend = CURL_BEND;     // both directions bow the same way (the free edge toward you)
+    leaf.style.transform = `rotateY(${fromA}deg)`;
+    const leafAnim = leaf.animate(
+      [{ transform: `rotateY(${fromA}deg)` }, { transform: `rotateY(${toA}deg)` }],
+      // Symmetric ease-in-out keeps the rotation EVEN, so edge-on lands at offset ~0.5 — the
+      // bend (flat by 0.5) is then reliably gone before the back half. A fast-middle easing put
+      // edge-on at ~0.33, leaving the page still bent past edge-on (the double-image).
+      { duration: dur, easing: 'ease-in-out', fill: 'forwards' }
+    );
+    const anims = [leafAnim];
+    // The bow lives ONLY in the half where the strips face the reader: the front half of a
+    // forward turn (offset 0–0.5, leaf 0->-90) or the back half of a backward turn (0.5–1,
+    // leaf -90->0). It peaks while the page is partway and is flat at edge-on (0.5) and when
+    // laid flat — so the back-culled half never shows a bent page (no double-image), and a
+    // backward turn curls just like a forward one. Shade darkens toward the free edge as it
+    // bows, which reads as a rounded sheet rather than a flat board.
+    const pkAt = fwd ? CURL_PEAK : 1 - CURL_PEAK;          // bow peak, in the front-facing half
+    const flat = { transform: 'rotateY(0deg)' };
+    const bowed = { transform: `rotateY(${bend}deg)` };
+    const segFrames = fwd
+      ? [{ ...flat, offset: 0 }, { ...bowed, offset: pkAt }, { ...flat, offset: 0.5 }, { ...flat, offset: 1 }]
+      : [{ ...flat, offset: 0 }, { ...flat, offset: 0.5 }, { ...bowed, offset: pkAt }, { ...flat, offset: 1 }];
+    segs.forEach(({ seg, shade }, k) => {
+      anims.push(seg.animate(segFrames, { duration: dur, easing: 'ease-in-out', fill: 'forwards' }));
+      const k01 = N > 1 ? k / (N - 1) : 0;       // 0 at the spine, 1 at the free edge
+      const peak = 0.06 + 0.52 * k01;            // free edge curls into shadow
+      const shadeFrames = fwd
+        ? [{ opacity: peak * 0.12, offset: 0 }, { opacity: peak, offset: pkAt }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }]
+        : [{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: peak, offset: pkAt }, { opacity: peak * 0.12, offset: 1 }];
+      anims.push(shade.animate(shadeFrames, { duration: dur, easing: 'ease-in-out' }));
+    });
+
+    activeFlip = { layer, anims };
+    leafAnim.finished
+      .then(() => { if (activeFlip && activeFlip.layer === layer) endActiveFlip(); })
+      .catch(() => {});
+  }
+
+  // Tear down the current turn (idempotent). Safe at any instant: the real strip was moved
+  // to the destination when the flip began, so there is nothing to re-settle — just remove
+  // the transient overlay and restore the strip's normal transition.
+  function endActiveFlip() {
+    if (!activeFlip) return;
+    const f = activeFlip;
+    activeFlip = null;
+    try { f.anims.forEach((a) => a.cancel()); } catch (e) { /* already finished */ }
+    try { f.layer.remove(); } catch (e) { /* already detached */ }
+    if (pagesEl) pagesEl.style.transition = '';
   }
 
   // Pagination is measured once from pagesEl.scrollWidth, but images inside the
@@ -774,6 +1127,7 @@
 
   function close() {
     if (!active) return;
+    endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); // drop any pending late-image relayout for this open
     // Flush the reading position now (don't wait out the debounce — the tab may go away).
     clearTimeout(saveTimer);
@@ -807,8 +1161,8 @@
         e.preventDefault(); e.stopPropagation(); flip(1); break;
       case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
         e.preventDefault(); e.stopPropagation(); flip(-1); break;
-      case 'Home': e.preventDefault(); restoreFraction = null; currentSpread = 0; applySpread(); break;
-      case 'End': e.preventDefault(); restoreFraction = null; currentSpread = totalSpreads - 1; applySpread(); break;
+      case 'Home': e.preventDefault(); endActiveFlip(); restoreFraction = null; currentSpread = 0; applySpread(); break;
+      case 'End': e.preventDefault(); endActiveFlip(); restoreFraction = null; currentSpread = totalSpreads - 1; applySpread(); break;
       case 'Escape': e.preventDefault(); e.stopPropagation(); close(); break;
       case '+': case '=': e.preventDefault(); changeFont(1); break;
       case '-': case '_': e.preventDefault(); changeFont(-1); break;
