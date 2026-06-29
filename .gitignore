@@ -19,5 +19,6 @@ store-assets/
 TODO.md
 /.deleted
 
-# Internal portfolio/marketing metadata — kept locally, not published
+# Internal portfolio/marketing metadata + store metrics — kept locally, not published (RULE #1)
 .meta/
+metrics/
