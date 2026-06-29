@@ -4,6 +4,13 @@
  * Nothing runs against a page until the user explicitly invokes it.
  */
 
+// Reuse the shared settings helpers (host normalization + the legacy sites→siteRules
+// migration) instead of re-implementing them here. settings.js touches no DOM at load
+// time, so a classic service worker can importScripts it. Leading slash = resolve from
+// the extension root (this worker lives in src/, so a bare 'src/…' path would double up).
+importScripts('/src/content/settings.js');
+const OBR = globalThis.OBR;
+
 const FILES = [
   'src/content/settings.js',     // defines globalThis.OBR.DEFAULTS
   'src/content/readability.js',  // bundled Mozilla Readability (Apache-2.0)
@@ -84,29 +91,15 @@ function createMenus() {
   });
 }
 
-// host of a URL, normalized like OBR.normalizeHost (the SW doesn't load settings.js).
-function hostOf(url) {
-  try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ''); }
-  catch (e) { return ''; }
-}
-
-// Add/replace/remove the WHOLE-SITE rule for `host` in siteRules (read-modify-write the
-// raw settings object). Migrates a legacy `sites` map on first touch so old rules survive.
+// Add/replace/remove the WHOLE-SITE rule for `host` (read-modify-write the raw settings
+// object). OBR.upsertSiteRule folds in any legacy `sites` map and does the add/replace/
+// remove — the same shared helper the read (loadSettings) and save paths use.
 function setSiteRule(host, mode) {
   if (!host) return;
   chrome.storage.sync.get('obr_settings', (data) => {
     void chrome.runtime.lastError;
     const raw = (data && data.obr_settings) || {};
-    let rules = Array.isArray(raw.siteRules) ? raw.siteRules.slice() : [];
-    if (!Array.isArray(raw.siteRules) && raw.sites && typeof raw.sites === 'object') {
-      rules = Object.keys(raw.sites)
-        .filter((h) => raw.sites[h] && raw.sites[h].mode)
-        .map((h) => ({ match: h, mode: raw.sites[h].mode }));
-    }
-    const next = rules.filter((r) => !(r && r.match === host)); // drop existing whole-site rule
-    if (mode) next.push({ match: host, mode });
-    raw.siteRules = next;
-    delete raw.sites; // purge the legacy host-map (mirrors settings.js saveSettings/withMigration)
+    OBR.upsertSiteRule(raw, host, mode);
     chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; });
   });
 }
@@ -116,7 +109,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   const id = info.menuItemId;
   // Rule items: persist a whole-site rule, then open that mode now (clear just clears).
   if (id === 'obr-rule-text' || id === 'obr-rule-images' || id === 'obr-rule-clear') {
-    const host = hostOf(info.pageUrl || tab.url);
+    // Gate on a parseable URL before normalizing: OBR.normalizeHost is lenient (it treats a
+    // non-URL string as a bare host), so a falsy/garbage source would otherwise write a bogus
+    // whole-site rule. A context-menu source is normally a real page URL; this just keeps the
+    // no-op-on-junk guard the deleted hostOf provided (setSiteRule bails on an empty host).
+    const src = info.pageUrl || tab.url || '';
+    let host = '';
+    try { new URL(src); host = OBR.normalizeHost(src); } catch (e) { /* not a real URL — no-op */ }
     if (id === 'obr-rule-clear') return setSiteRule(host, null);
     const mode = id === 'obr-rule-images' ? 'images' : 'text';
     setSiteRule(host, mode);

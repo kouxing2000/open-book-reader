@@ -1,6 +1,11 @@
 /* Open Book Reader — shared defaults
- * Loaded by the content script (injected) and by the options page (via <script>).
- * Attaches to globalThis.OBR so all injected files share one namespace.
+ * Loaded by the content script (injected), the options page (via <script>), AND the
+ * background service worker (via importScripts in background.js). Attaches to globalThis.OBR
+ * so all three share one namespace.
+ * CONSTRAINT: touch NO DOM at load time (no top-level document/window/navigator/location) —
+ * the service worker has no DOM, so a top-level DOM access throws at importScripts and the
+ * worker never registers (killing the toolbar/commands/context-menus/downloads). Keep every
+ * such access inside a function body, as reportBroken/makeShadowHost/_buildReportMailto do.
  */
 (function () {
   const OBR = (globalThis.OBR = globalThis.OBR || {});
@@ -251,14 +256,16 @@
     return best;
   };
 
-  // Migrate the legacy exact-host `sites` map ({host:{mode}}) into `siteRules` on read,
-  // so a user's earlier per-host rules survive the model change. Read-side only; the next
-  // write persists siteRules. Harmless once everyone is on siteRules.
-  function withMigration(s) {
+  // Migrate the legacy exact-host `sites` map ({host:{mode}}) into `siteRules` on a RAW
+  // settings object (mutates in place) and guarantee `siteRules` is an array, so a user's
+  // earlier per-host rules survive the model change. Shared by the read path (loadSettings)
+  // AND the write path (OBR.upsertSiteRule, called from the service worker) — the one
+  // migration rule lives here, not copied per call site. Only seeds from the legacy map
+  // when siteRules hasn't been written yet (not-array or empty): once any siteRules write
+  // has happened (saveSettings purges `sites` from storage), the map is gone — so a
+  // deliberately-emptied siteRules stays empty (no resurrection).
+  OBR.migrateSiteRules = function (s) {
     if (s.sites && typeof s.sites === 'object') {
-      // Only seed from the legacy map when siteRules hasn't been written yet. Once any
-      // siteRules write has happened (saveSettings purges `sites` from storage), the map
-      // is gone — so a deliberately-emptied siteRules stays empty (no resurrection).
       if (!Array.isArray(s.siteRules) || !s.siteRules.length) {
         s.siteRules = Object.keys(s.sites)
           .filter((h) => s.sites[h] && s.sites[h].mode)
@@ -268,7 +275,20 @@
     }
     if (!Array.isArray(s.siteRules)) s.siteRules = [];
     return s;
-  }
+  };
+
+  // Add / replace / remove the WHOLE-SITE rule for `host` on a RAW settings object (mutates
+  // `raw.siteRules` in place; the caller persists). Falsy `mode` removes the rule. Folds in
+  // any legacy `sites` map first so old per-host rules survive the first touch. PURE aside
+  // from mutating the passed object — no storage I/O — so the service worker's context-menu
+  // rule handler (and tests) call it directly. `host` should be pre-normalized via
+  // OBR.normalizeHost.
+  OBR.upsertSiteRule = function (raw, host, mode) {
+    OBR.migrateSiteRules(raw); // fold in any legacy map; guarantees raw.siteRules is an array
+    raw.siteRules = raw.siteRules.filter((r) => !(r && r.match === host)); // drop existing whole-site rule
+    if (mode) raw.siteRules.push({ match: host, mode });
+    return raw;
+  };
 
   // Read settings merged over defaults (chrome.storage.sync).
   OBR.loadSettings = function () {
@@ -276,10 +296,10 @@
       try {
         chrome.storage.sync.get(OBR.STORAGE_KEY, (data) => {
           const saved = (data && data[OBR.STORAGE_KEY]) || {};
-          resolve(withMigration(Object.assign({}, OBR.DEFAULTS, saved)));
+          resolve(OBR.migrateSiteRules(Object.assign({}, OBR.DEFAULTS, saved)));
         });
       } catch (e) {
-        resolve(withMigration(Object.assign({}, OBR.DEFAULTS)));
+        resolve(OBR.migrateSiteRules(Object.assign({}, OBR.DEFAULTS)));
       }
     });
   };
@@ -301,7 +321,7 @@
         chrome.storage.sync.get(OBR.STORAGE_KEY, (data) => {
           const savedRaw = (data && data[OBR.STORAGE_KEY]) || {};
           const nextRaw = Object.assign({}, savedRaw, partial);
-          delete nextRaw.sites; // purge the legacy host-map once anything is written (see withMigration)
+          delete nextRaw.sites; // purge the legacy host-map once anything is written (see OBR.migrateSiteRules)
           const merged = Object.assign({}, OBR.DEFAULTS, nextRaw);
           try {
             chrome.storage.sync.set({ [OBR.STORAGE_KEY]: nextRaw }, () => resolve(merged));
