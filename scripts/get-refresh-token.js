@@ -227,7 +227,9 @@ async function main() {
         `&response_type=code` +
         `&scope=${encodeURIComponent(SCOPE)}` +
         `&access_type=offline` +
-        `&prompt=consent`;
+        // Force the account chooser every time — minting with the wrong Google account yields a
+        // token that authenticates fine but 403s on upload (it doesn't own the extension).
+        `&prompt=${encodeURIComponent('select_account consent')}`;
 
       setTimeout(() => openBrowser(authUrl), 1000);
     });
@@ -243,7 +245,7 @@ async function main() {
   });
 }
 
-main().catch((error) => {
+main().then(() => process.exit(0)).catch((error) => {
   console.error('\n❌ Failed to get refresh token:', error.message);
   console.error('\nPlease check:');
   console.error('  1. Your Client ID and Secret are correct');
