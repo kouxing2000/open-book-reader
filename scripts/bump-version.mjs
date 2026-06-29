@@ -84,6 +84,21 @@ fs.writeFileSync(manifestPath, bumpField(manifestText, 'manifest.json'));
 fs.writeFileSync(pkgPath, bumpField(pkgText, 'package.json'));
 console.log(`✓ Version ${current} -> ${next}  (manifest.json + package.json)`);
 
+// package-lock.json mirrors package.json's version in exactly two places (the top-level
+// field and packages[""].version), both at the very top before any dependency entry. Bump
+// just those first two so the lock stops drifting behind releases — never touch dependency
+// versions further down, and never re-serialize (preserve npm's formatting).
+const lockPath = path.join(rootDir, 'package-lock.json');
+let lockStamped = false;
+if (fs.existsSync(lockPath)) {
+  let lockText = fs.readFileSync(lockPath, 'utf8');
+  let seen = 0;
+  lockText = lockText.replace(/("version"\s*:\s*)"\d+\.\d+\.\d+"/g, (m, p1) => (seen++ < 2 ? `${p1}"${next}"` : m));
+  fs.writeFileSync(lockPath, lockText);
+  lockStamped = true;
+  console.log(`✓ Version ${current} -> ${next}  (package-lock.json)`);
+}
+
 // Roll CHANGELOG.md: the entries under "## [Unreleased]" become the new version's section.
 // Leaves an empty [Unreleased] on top and updates the compare link to point at the new tag.
 const changelogPath = path.join(rootDir, 'CHANGELOG.md');
@@ -114,7 +129,7 @@ if (noGit) {
   process.exit(0);
 }
 
-execSync(`git add manifest.json package.json${changelogStamped ? ' CHANGELOG.md' : ''}`, {
+execSync(`git add manifest.json package.json${lockStamped ? ' package-lock.json' : ''}${changelogStamped ? ' CHANGELOG.md' : ''}`, {
   cwd: rootDir,
   stdio: 'inherit',
 });
