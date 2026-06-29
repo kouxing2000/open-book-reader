@@ -111,6 +111,39 @@ function getVersion() {
   return manifest.version;
 }
 
+// uploadExisting()/publish() refresh the OAuth token internally, so a DEAD refresh token
+// surfaces as a bare "Bad Request" (Google's token endpoint returns HTTP 400 invalid_grant).
+// On any deploy failure, probe the token directly so the real cause is unambiguous in CI logs:
+// either "token OK -> it's the upload/publish API" or "invalid_grant -> re-mint the token".
+async function reportTokenHealth() {
+  if (!CONFIG.refreshToken) return;
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: CONFIG.clientId,
+        client_secret: CONFIG.clientSecret,
+        refresh_token: CONFIG.refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.access_token) {
+      console.error(`   ⮑ OAuth token OK (scope: ${j.scope || '?'}) — the failure is the upload/publish API, not auth.`);
+    } else {
+      console.error(`   ⮑ OAuth token check: HTTP ${r.status} ${j.error || ''} ${j.error_description || ''}`.trimEnd());
+      if (j.error === 'invalid_grant') {
+        console.error('   ⮑ CHROME_REFRESH_TOKEN is expired/revoked. Re-mint it (npm run get-token), update the');
+        console.error('     GitHub secret, and set the OAuth consent screen to "In production" so tokens stop');
+        console.error('     expiring (~7-day limit while the consent screen is in "Testing").');
+      }
+    }
+  } catch (e) {
+    console.error('   ⮑ OAuth token check could not run:', e.message);
+  }
+}
+
 async function deploy() {
   console.log('\n🚀 Starting Chrome Web Store Deployment\n');
 
@@ -172,10 +205,10 @@ async function deploy() {
       (error.response && typeof error.response.text === 'function' ? await error.response.text().catch(() => undefined) : undefined);
     if (body !== undefined) {
       console.error('   API response:', typeof body === 'string' ? body : JSON.stringify(body, null, 2));
-    } else {
-      console.error('   (no response body — re-run the publish against the raw API to read the error:');
-      console.error('    POST https://www.googleapis.com/chromewebstore/v1.1/items/<id>/publish )');
     }
+    // The most common silent cause is a dead refresh token (HTTP 400 invalid_grant, which looks
+    // like a bare "Bad Request"). Probe it so CI logs say plainly whether it's auth or the API.
+    await reportTokenHealth();
     process.exit(1);
   }
 
