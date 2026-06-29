@@ -1,5 +1,14 @@
 # Open Book Reader — project guide
 
+> ## ⚠️ RULE #1 — this is a PUBLIC open-source repo. Never commit anything personal or publishing-sensitive to tracked files.
+> That means: real/personal emails, the owning Google account, OAuth client IDs/secrets, refresh
+> tokens, Web Store API credentials, publisher/developer IDs, signing keys, or analytics/metrics
+> dumps. Such things live ONLY in gitignored paths (`.env.chrome-webstore`, `.meta/`, `metrics/`)
+> or your private `~/.claude/` config — never in `CLAUDE.md`, `README.md`, `SECURITY.md`, `store/`,
+> `src/`, tests, or commit messages. The sole deliberate public contact is the in-app feedback
+> address `studio.peach.go+open-book-reader@gmail.com` (a project alias, by design). **Scan every
+> diff for personal/credential leaks before committing.**
+
 Chrome MV3 extension, two reading modes: a two-page open-book **text** reader (keyboard
 page-flipping) and an **image-gallery** mode (masonry wall + lightbox). Reading is fully local —
 no data collected, nothing sent to the developer. The one network case: when the user explicitly
@@ -189,6 +198,16 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   extension ID differs per extension).
 - **Local deploy** uses `.env.chrome-webstore` (gitignored; copy from `.env.chrome-webstore.example`,
   then `npm run get-token`). Local keeps `AUTO_PUBLISH=false`; only CI publishes.
+- **Publisher + release account** (the source of a long 1.1.0 release outage): this extension is published
+  under a Chrome Web Store **group publisher**, so the `CHROME_REFRESH_TOKEN` secret must be minted
+  (`npm run get-token`, which now forces the account chooser) signed in as the specific **group-member
+  account that owns the publisher** — a token from any other account *authenticates fine but the Web Store
+  upload 403s* (the OAuth client's GCP project is irrelevant; only the consenting account decides access).
+  The exact publisher + owning account are in `.meta/portfolio.json` (gitignored — deliberately kept out
+  of this public repo, per RULE #1). A bare `Bad Request`/`Forbidden` with a swallowed body on deploy is
+  usually this or an expired token; `deploy-to-store.js` probes the token and prints the real reason.
+  Confirm ownership with `GET /chromewebstore/v1.1/items/<id>?projection=DRAFT` (200 = owns it). Full
+  playbook: the `chrome-webstore-publish` skill.
 - **Packaging is allowlist-based** (`SHIP_FILES`/`SHIP_DIRS` in `package-extension.js`): only
   `manifest.json`, `icons/`, `src/` ship — dev files can't leak. `READABILITY-LICENSE.md` ships too
   (Apache-2.0 requires it beside the vendored code).
