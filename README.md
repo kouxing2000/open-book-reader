@@ -12,7 +12,8 @@
 
 Turn any long web article into a **two-page open-book view** with keyboard page-flipping.
 Extracts the article with Mozilla Readability, paginates it into left/right pages, and lets
-you flip with the arrow keys — paper / light / dark themes, adjustable font, all settings synced.
+you flip with the arrow keys — with a realistic page-turn (soft paper curl or 3D book), paper /
+light / dark themes, adjustable font, all settings synced.
 
 **Open source (MIT).** The whole extension lives in this repo — reading is fully local and
 nothing is sent to the developer, so you can read every line and verify that yourself.

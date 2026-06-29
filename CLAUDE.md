@@ -61,7 +61,12 @@ reduced-motion/`slide`/`off` take the plain translateX path. **GOTCHA — the tu
 the full PAPER PAGE (text column + the paper's white margins), not the viewport text area**, or it renders
 visibly smaller than the laid page from the first frame; `pageGeom()` computes the page-relative spine /
 page width / margins and every panel (`makePagesClone(tx, ty)` with the `padY` margin offset) is built
-from it. Tunable curl look: `CURL_STRIPS` / `CURL_BEND` / `CURL_PEAK` / `CURL_DURATION` / `CURL_OVERLAP`
+from it. **GOTCHA (curl) — the bow must relax to FLAT by edge-on, keep its net free-edge rotation
+(leaf angle + cumulative bow) under ~90°, and live only in the half where the strips face the reader**
+(forward turn: offsets 0–0.5; backward: 0.5–1, since it rotates -180->0). Otherwise heavily-bent
+free-edge strips swing past edge-on while the page still faces you, get back-culled, and the source page
+bleeds over the destination back face — a "two pages in the middle" double-image. The leaf uses
+`ease-in-out` so edge-on lands predictably at offset 0.5. Tunable curl look: `CURL_STRIPS` / `CURL_BEND` / `CURL_PEAK` / `CURL_DURATION` / `CURL_OVERLAP`
 (the last widens each strip 1px so neighbours overlap and hide sub-pixel seams). Reworking this is
 **transform-heavy and easy to get subtly wrong — verify with a real-Chromium screenshot capture, and
 MEASURE element rects (`offsetWidth`/`getBoundingClientRect`) before blaming a transform**.
