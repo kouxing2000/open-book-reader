@@ -7,6 +7,21 @@ test('background service worker registers with a valid extension id', async ({ e
   expect(extensionId).toMatch(/^[a-p]{32}$/); // Chrome extension IDs are 32 chars, a-p
 });
 
+test('the SW importScripts settings.js — shared helpers are live in the worker', async ({ serviceWorker }) => {
+  // background.js reuses settings.js (host normalization + the legacy sites→siteRules
+  // migration) via importScripts. A wrong path would make the SW throw at load and never
+  // register, so this both proves the import resolved AND that the shared helpers are usable
+  // server-side (the context-menu "Always open this site as …" rule handler depends on them).
+  const out = await serviceWorker.evaluate(() => ({
+    hasNormalizeHost: typeof globalThis.OBR?.normalizeHost === 'function',
+    hasUpsert: typeof globalThis.OBR?.upsertSiteRule === 'function',
+    normalized: globalThis.OBR?.normalizeHost('https://WWW.Example.com/p?x=1'),
+  }));
+  expect(out.hasNormalizeHost).toBe(true);
+  expect(out.hasUpsert).toBe(true);
+  expect(out.normalized).toBe('example.com');
+});
+
 test('Chrome loads the shipped manifest (name + minimal install permissions)', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/manifest.json`);
   const manifest = JSON.parse(await page.locator('body').innerText());
