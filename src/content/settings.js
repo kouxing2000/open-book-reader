@@ -80,6 +80,31 @@
     return best;
   };
 
+  // Mode-switch glyphs shared by the reader and gallery toolbars (an open book + a framed
+  // picture). Defined once here — settings.js loads before both engines — so the two stay
+  // visually identical instead of carrying byte-for-byte copies that can drift apart.
+  OBR.ICONS = {
+    book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg>',
+    images: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg>',
+  };
+
+  // Create an overlay host element with an open Shadow root (the build prologue both engines
+  // share). Open mode so Playwright can pierce it in tests. Returns { host, root }.
+  OBR.makeShadowHost = function (id) {
+    const host = document.createElement('div');
+    host.id = id;
+    document.documentElement.appendChild(host);
+    return { host, root: host.attachShadow({ mode: 'open' }) };
+  };
+
+  // Apply a stylesheet to a Shadow root via Constructable Stylesheets, so strict-CSP sites
+  // (style-src) can't block the overlay's CSS. Replaces the per-engine applyStylesheet().
+  OBR.adoptStyles = function (root, cssText) {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(cssText);
+    root.adoptedStyleSheets = [sheet];
+  };
+
   // Where "Report a problem" emails go. This is the ONLY developer-facing channel and
   // it is USER-INITIATED — see OBR.reportBroken. The matching Gmail filter / label live
   // in .meta/feedback.json so the `feedback` ingest pipeline can route these reports.
@@ -259,12 +284,19 @@
     });
   };
 
+  // Serialize setting writes so two near-simultaneous saves can't interleave their
+  // read-modify-write and drop each other's keys (e.g. the gallery's debounced column-width
+  // and slideshow-seconds persists landing together). Each save waits for the previous to
+  // commit before it reads. Mirrors the savePosition saveChain above. (Cross-PROCESS — two
+  // tabs at once — is still best-effort; chrome.storage offers no lock.)
+  let settingsChain = Promise.resolve();
+
   // Persist ONLY the keys the user explicitly changes. Merging into the RAW saved
   // object (not DEFAULTS-merged) means unset keys keep falling back to DEFAULTS at
   // load time — so changing a default later actually takes effect. (Merging the
   // full object used to "bake in" the defaults-of-the-day and block future changes.)
   OBR.saveSettings = function (partial) {
-    return new Promise((resolve) => {
+    const run = () => new Promise((resolve) => {
       try {
         chrome.storage.sync.get(OBR.STORAGE_KEY, (data) => {
           const savedRaw = (data && data[OBR.STORAGE_KEY]) || {};
@@ -281,6 +313,8 @@
         resolve(Object.assign({}, OBR.DEFAULTS, partial));
       }
     });
+    settingsChain = settingsChain.then(run, run); // chain through failures too
+    return settingsChain;
   };
 
   /* ---------------------------------------------------------- reading position

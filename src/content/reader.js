@@ -14,11 +14,10 @@
   };
   const FONT_MIN = 14, FONT_MAX = 26;
 
-  // Mode-switch glyphs (shared shape with gallery.js): open book + framed picture.
-  const ICON_BOOK =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg>';
-  const ICON_IMAGES =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg>';
+  // Mode-switch glyphs (open book + framed picture) — shared with gallery.js, defined once
+  // on the OBR namespace in settings.js (loads first).
+  const ICON_BOOK = OBR.ICONS.book;
+  const ICON_IMAGES = OBR.ICONS.images;
 
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl;
@@ -222,18 +221,13 @@
   }
 
   function applyStylesheet() {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(css());
-    root.adoptedStyleSheets = [sheet];
+    OBR.adoptStyles(root, css());
   }
 
   /* ---------------------------------------------------------------- build */
   function build() {
     if (built) return;
-    host = document.createElement('div');
-    host.id = 'obr-host';
-    document.documentElement.appendChild(host);
-    root = host.attachShadow({ mode: 'open' });
+    ({ host, root } = OBR.makeShadowHost('obr-host'));
 
     overlay = document.createElement('div');
     overlay.className = 'obr-overlay ' + resolveTheme();

@@ -6,6 +6,7 @@ import { test, expect } from './fixtures.js';
 import {
   gotoImages, injectGallery, openGallery, galleryState, clickInGallery, sentMessages,
   gotoArticle, injectAll, readState, clickInReader, gotoIllustratedArticle, gotoLazyImages,
+  gotoGrowNoImages,
 } from './helpers.js';
 
 test.describe('image gallery', () => {
@@ -20,6 +21,43 @@ test.describe('image gallery', () => {
     // fixture: 5 large <img> + 1 background-image kept; 2 tiny (<80px) filtered.
     expect(s.tiles).toBe(6);
     expect(s.count).toBe('6 images');
+  });
+
+  // Perf split (REFACTOR-PLAN 1.2): the costly getComputedStyle('*') background-image scan
+  // runs only on initial render and at the end of a full "Load all" — NOT on the per-step
+  // progressive merges. So a CSS background-image that appears AFTER open is folded in by
+  // "Load all" (_galleryRescan), not by a progressive chunk (_galleryLoadMore). This pins
+  // both halves: that the cheap path skips it, and that the Load-all fold-in still catches it.
+  test('a CSS background-image added after open is folded in by "Load all", not a progressive chunk', async ({ page }) => {
+    // Auto-load OFF so open()'s maybePreload doesn't leave a hydration sweep in flight that
+    // would make the explicit _galleryLoadMore/_galleryRescan hooks below no-op (sweeping guard).
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openGallery(page);
+    const before = (await galleryState(page)).tiles; // 6, incl. the fixture's 1 background
+
+    // Mount a NEW element carrying a valid (loadable) CSS background-image. A bare <div> is
+    // not an <img>, so the MutationObserver's containsImg() never auto-merges it — it can only
+    // enter the gallery via a full background scan. A data:image/png URL keeps it deterministic
+    // (loads instantly, no network) and isn't dropped by the gif/svg data-URI filter.
+    await page.evaluate(() => {
+      const c = document.createElement('canvas');
+      c.width = 200; c.height = 200;
+      const x = c.getContext('2d'); x.fillStyle = '#33aa77'; x.fillRect(0, 0, 200, 200);
+      const d = document.createElement('div');
+      d.style.width = '200px';
+      d.style.height = '200px';
+      d.style.backgroundImage = "url('" + c.toDataURL('image/png') + "')"; // quoted (data URL has commas)
+      document.body.appendChild(d);
+    });
+
+    // Progressive chunk = cheap <img>/<picture> walk → the new background is NOT collected.
+    // (images.html is static, so a chunk mounts no real <img> either: the count holds.)
+    await page.evaluate(() => globalThis.OBR._galleryLoadMore());
+    expect((await galleryState(page)).tiles).toBe(before);
+
+    // "Load all" runs the full background scan at the end and folds the new background in.
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(before + 1);
   });
 
   test('a <picture> with multiple <source>s counts as one image, not one per source', async ({ page }) => {
@@ -346,10 +384,13 @@ test.describe('image gallery', () => {
     });
     expect((await galleryState(page)).cols).toBeLessThan(narrow); // wider tiles → fewer columns
 
-    const stored = await page.evaluate(
-      () => new Promise((r) => chrome.storage.sync.get('obr_settings', (d) => r(d.obr_settings)))
-    );
-    expect(stored.galleryColWidth).toBe(420);
+    // The persist is debounced (dragging fires `input` repeatedly, which would otherwise
+    // spam chrome.storage.sync) — poll for the write to land rather than reading it
+    // synchronously. Same approach as the auto-scroll-speed persistence tests.
+    await expect
+      .poll(() => page.evaluate(() => new Promise((r) =>
+        chrome.storage.sync.get('obr_settings', (d) => r((d.obr_settings || {}).galleryColWidth)))))
+      .toBe(420);
   });
 
   test('column-width slider preserves scroll position (does not snap to top)', async ({ page }) => {
@@ -736,6 +777,33 @@ test.describe('lazy / late images', () => {
     // Give any in-flight sweep step time to (not) clobber the restored position.
     await page.evaluate(() => new Promise((r) => setTimeout(r, 600)));
     expect(await page.evaluate(() => window.scrollY)).toBe(0); // restored, not left mid-sweep
+  });
+
+  // Regression: an infinite-scroll page that keeps GROWING but mounts no new gallery
+  // image must not make progressive hydration (and thus auto-scroll) loop forever
+  // pulling chunks. A progressive chunk that surfaces nothing now arms the soft-done
+  // pause, so the NEXT progressive pull short-circuits instead of scrolling again.
+  // Without the fix the second pull runs and grows the page once more (test goes red).
+  test('a progressive chunk that finds no new images stops the next pull (no endless Load-more)', async ({ page }) => {
+    await gotoGrowNoImages(page);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(4);
+
+    // First progressive pull: it scrolls the page (which grows it), but no new image mounts.
+    const added1 = await page.evaluate(() => globalThis.OBR._galleryLoadMore());
+    const growsAfter1 = await page.evaluate(() => window.__grows);
+    expect(added1).toBe(0);
+    expect(growsAfter1).toBeGreaterThan(0); // the sweep really did scroll/grow the page
+
+    // Second progressive pull: soft-done is armed, so this must short-circuit — no further
+    // scrolling, no further growth. (Pre-fix it kept sweeping and growsAfter2 > growsAfter1.)
+    const added2 = await page.evaluate(() => globalThis.OBR._galleryLoadMore());
+    const growsAfter2 = await page.evaluate(() => window.__grows);
+    expect(added2).toBe(0);
+    expect(growsAfter2).toBe(growsAfter1);
+    expect((await galleryState(page)).tiles).toBe(4); // still no new images
   });
 });
 
