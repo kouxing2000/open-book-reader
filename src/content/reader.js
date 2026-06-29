@@ -250,7 +250,7 @@
             <button class="obr-seg-btn is-active" data-act="text" aria-current="true" title="You are in text reader">${ICON_BOOK}<span>Text</span></button>
             <button class="obr-seg-btn" data-act="images" title="Switch to image gallery">${ICON_IMAGES}<span>Images</span><span class="obr-seg-badge" hidden></span></button>
           </span>
-          <button class="obr-btn" data-act="print" title="Print or save as PDF (P)">🖨️</button>
+          <button class="obr-btn" data-act="print" title="Print or save as PDF (P)">🖨 Print</button>
           <button class="obr-btn" data-act="report" title="Report a problem on this page (opens an email)">⚠ Report</button>
           <button class="obr-btn" data-act="settings" title="Open settings">⚙ Settings</button>
           <button class="obr-btn" data-act="close" title="Close reader (Esc)">✕ Close</button>

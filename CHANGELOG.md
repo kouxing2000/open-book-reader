@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **off**, selectable under Options - Reader - Page turn. Respects your OS "reduce motion"
   setting and adds no new permission.
 
+### Changed
+- Reader: the toolbar's Print button now shows a "Print" label, matching Report / Settings / Close.
+
 ## [1.0.0] - 2026-06-27
 
 First stable release — Open Book Reader graduates from the 0.x series.
