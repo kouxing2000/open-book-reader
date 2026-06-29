@@ -180,6 +180,16 @@ export async function gotoLazyImages(page) {
   await page.waitForFunction(() => document.images.length >= 4 && Array.from(document.images).every((i) => i.complete));
 }
 
+/** Load the "grows on scroll but never mounts a new image" fixture (4 initial tiles;
+ *  every downward scroll appends an image-less spacer and bumps window.__grows). Used to
+ *  pin the progressive-hydration / auto-scroll stop behaviour on infinite-scroll pages. */
+export async function gotoGrowNoImages(page) {
+  await page.addInitScript(storageShim);
+  await page.addInitScript(downloadShim);
+  await page.goto('/grow-no-images.html');
+  await page.waitForFunction(() => document.images.length >= 4 && Array.from(document.images).every((i) => i.complete));
+}
+
 /** Messages the gallery sent to the (stubbed) service worker. */
 export function sentMessages(page) {
   return page.evaluate(() => window.__obrMsgs || []);

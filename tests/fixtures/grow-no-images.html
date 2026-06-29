@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Book Reader — grows-on-scroll-but-no-new-images fixture</title>
+  <style>
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 12px; }
+    .grid img { width: 100%; height: auto; display: block; }
+    /* Each spacer adds real page height with NO image inside it. */
+    .spacer { height: 1200px; }
+  </style>
+</head>
+<body>
+  <!--
+    Regression fixture for the auto-scroll / progressive-hydration stop bug.
+    The page keeps GROWING every time it is scrolled (a tall image-less spacer is
+    appended), but it never mounts any new gallery-worthy <img>. That is the nasty
+    infinite-scroll shape the old hydratePage() missed: it never looked "at bottom"
+    (the page outgrew the cursor each step) and never surfaced new images, so the
+    soft-done pause never armed and auto-scroll / prefetch hammered forever.
+    window.__grows counts how many times the page grew, so a test can assert that a
+    second progressive hydrate does NOT scroll the page again (soft-done short-circuit).
+  -->
+  <div class="grid" id="grid"></div>
+  <!-- Initial height taller than any test viewport, so the very first hydrate sweep has
+       somewhere to scroll (and thus fires the grow handler below). -->
+  <div class="spacer" id="seed" style="height: 3000px"></div>
+
+  <script>
+    // Four normal, decode-immediately tiles so the gallery has initial images.
+    function tile(i, size) {
+      const cv = document.createElement('canvas');
+      cv.width = size; cv.height = size;
+      const x = cv.getContext('2d');
+      x.fillStyle = `hsl(${(i * 67) % 360} 60% 55%)`;
+      x.fillRect(0, 0, size, size);
+      return cv.toDataURL('image/png');
+    }
+    const grid = document.getElementById('grid');
+    for (let i = 0; i < 4; i++) {
+      const img = document.createElement('img');
+      img.width = 200; img.height = 200;
+      img.src = tile(i, 200);
+      grid.appendChild(img);
+    }
+
+    // Grow the page on scroll — but only with image-less spacers. Capped so a runaway
+    // loop in the engine can't hang the test forever; the cap is far above what any
+    // correct run needs (a fixed engine stops pulling after ~2 empty chunks).
+    window.__grows = 0;
+    const GROW_CAP = 200;
+    let lastY = -1;
+    addEventListener('scroll', () => {
+      if (window.scrollY <= lastY) return; // only grow on downward movement
+      lastY = window.scrollY;
+      if (window.__grows >= GROW_CAP) return;
+      window.__grows++;
+      const s = document.createElement('div');
+      s.className = 'spacer';
+      document.body.appendChild(s);
+    }, { passive: true });
+  </script>
+</body>
+</html>

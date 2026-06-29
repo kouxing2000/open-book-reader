@@ -14,11 +14,10 @@
 
   const DL_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
-  // Mode-switch glyphs (shared shape with reader.js): open book + framed picture.
-  const ICON_BOOK =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2H22z"/></svg>';
-  const ICON_IMAGES =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg>';
+  // Mode-switch glyphs (open book + framed picture) — shared with reader.js, defined once
+  // on the OBR namespace in settings.js (loads first).
+  const ICON_BOOK = OBR.ICONS.book;
+  const ICON_IMAGES = OBR.ICONS.images;
   const RESCAN_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
   // Hands-free auto-scroll toggle glyphs (filled play / pause).
@@ -145,13 +144,44 @@
   let autoPrevTs = 0;              // prev frame timestamp (ms); 0 = first frame, seed only
   let autoFrac = 0;                // sub-pixel accumulator (scrollTop applies integer deltas)
   let autoRetriedAtBottom = false; // one-shot: already pushed past a soft-stop at this bottom
-  let autoSpeedSaveTimer = null;   // debounces persisting the speed (key-repeat / typing)
   let slideOn = false;             // lightbox slideshow engaged (auto-advance images)
   let slideTimer = 0;              // per-image dwell timeout handle (0 = idle)
   let slideStartTs = 0;            // when the current image's dwell began (ms) — for elapsed-aware re-aim
-  let slideSecsSaveTimer = null;   // debounces persisting the slideshow seconds
+  // Debounced, clamped numeric settings wired to their form fields (created in build()):
+  // auto-scroll speed, slideshow seconds, masonry column width. See makeNumSetting.
+  let speedSetting = null, slideSecsSetting = null, colWidthSetting = null;
 
   const MIN = () => settings.galleryMinSize || 80;
+
+  // One debounced, clamped numeric setting wired to a form field. Folds together the three
+  // near-identical setter trios the gallery used to carry (auto-scroll speed, slideshow
+  // seconds, masonry column width). Each clamps to [min,max], applies the value live, and
+  // debounces the chrome.storage.sync write — dragging / key-repeat / typing fire many
+  // updates, sync throttles writes, and a raw write-per-tick races its own read-modify-write.
+  //   set(v)     normalize the field + apply live + (debounced) persist  — change / spinner / nudge
+  //   setLive(v) apply live only; DON'T touch the field or persist        — while typing in the field
+  //   flush()    write any pending value now                              — close(), before a reopen reads it
+  //   nudge(d)   set(current + d)                                         — +/- keys
+  function makeNumSetting({ key, min, max, fallback, field, applyLive }) {
+    let timer = null;
+    const clamp = (v) => Math.max(min, Math.min(max, Number.isFinite(v) ? v : (settings[key] || fallback)));
+    const persist = (v) => { clearTimeout(timer); timer = setTimeout(() => { timer = null; OBR.saveSettings({ [key]: v }); }, 400); };
+    const setLive = (v) => {
+      if (!Number.isFinite(v)) return;
+      settings[key] = clamp(v);
+      if (applyLive) applyLive(settings[key]);
+    };
+    const set = (v) => {
+      const next = clamp(v);
+      if (field) field.value = next; // normalize the field (clamp / strip junk)
+      settings[key] = next;
+      if (applyLive) applyLive(next);
+      persist(next); // always (re)schedule — same-value re-saves collapse anyway
+    };
+    const flush = () => { if (!timer) return; clearTimeout(timer); timer = null; OBR.saveSettings({ [key]: settings[key] }); };
+    const nudge = (d) => set((settings[key] || fallback) + d);
+    return { set, setLive, flush, nudge };
+  }
 
   /* -------------------------------------------------- collection */
   // The real image URL a lazy <img> defers into a non-standard attribute (data-src
@@ -237,11 +267,28 @@
     });
   }
 
-  function collect() {
+  // Scan every element's computed background-image. This is the EXPENSIVE part of a full
+  // collect: getComputedStyle on every node forces a synchronous style recalc, so it's kept
+  // OUT of the per-merge hot path (see collect()) and only run on the initial render and at
+  // the end of a "Load all" sweep.
+  function eachBackgroundImage(push) {
+    const min = MIN();
+    document.querySelectorAll('*').forEach((el) => {
+      const urls = parseBackgroundImageUrls(getComputedStyle(el).backgroundImage);
+      if (!urls.length) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < min || rect.height < min) return;
+      urls.forEach((u) => push(u, rect.width, rect.height));
+    });
+  }
+
+  // Collect gallery entries from the page. `withBackgrounds` adds the costly CSS
+  // background-image scan; merges pass false (the cheap <img> + <picture> walk) so an
+  // incremental re-collect — which runs on every MutationObserver hit and once per
+  // hydration step (~80x during "Load all") — never forces a whole-document style recalc.
+  function collect(withBackgrounds) {
     const seen = new Set();
     const out = [];
-    const min = MIN();
-
     const push = (rawUrl, w, h, fullRaw) => {
       if (!rawUrl || isSkippableDataUri(rawUrl)) return;
       const url = resolveUrl(rawUrl, location.href);
@@ -253,15 +300,7 @@
 
     eachGalleryImg((e) => push(e.url, e.w, e.h, e.full));
     eachPictureSource(push); // <picture> fallback sources: full === url
-
-    // CSS background-image
-    document.querySelectorAll('*').forEach((el) => {
-      const urls = parseBackgroundImageUrls(getComputedStyle(el).backgroundImage);
-      if (!urls.length) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < min || rect.height < min) return;
-      urls.forEach((u) => push(u, rect.width, rect.height));
-    });
+    if (withBackgrounds) eachBackgroundImage(push);
 
     return out;
   }
@@ -412,18 +451,13 @@
   }
 
   function applyStylesheet() {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(css());
-    root.adoptedStyleSheets = [sheet];
+    OBR.adoptStyles(root, css());
   }
 
   /* -------------------------------------------------- build */
   function build() {
     if (built) return;
-    host = document.createElement('div');
-    host.id = 'obr-gallery-host';
-    document.documentElement.appendChild(host);
-    root = host.attachShadow({ mode: 'open' });
+    ({ host, root } = OBR.makeShadowHost('obr-gallery-host'));
 
     wrap = document.createElement('div');
     wrap.className = 'wrap';
@@ -479,6 +513,16 @@
     lbSecsEl = wrap.querySelector('.lb-secs-in');
     lbControls = wrap.querySelector('.lb-slideshow');
 
+    // The three debounced numeric settings. Speed has no live-apply (autoStep reads it
+    // each frame); slideshow seconds re-aims the running dwell; column width relays out
+    // the masonry only when the column COUNT actually changes (flex columns auto-resize).
+    speedSetting = makeNumSetting({ key: 'galleryAutoScrollSpeed', min: 20, max: 400, fallback: 60, field: autoSpeedEl });
+    slideSecsSetting = makeNumSetting({ key: 'gallerySlideSeconds', min: 1, max: 30, fallback: 3, field: lbSecsEl, applyLive: applySlideSecsLive });
+    colWidthSetting = makeNumSetting({
+      key: 'galleryColWidth', min: 140, max: 420, fallback: 240, field: rangeEl,
+      applyLive: () => { if (active && columnCount() !== cols.length) layoutAll(true); },
+    });
+
     wrap.querySelector('.close').addEventListener('click', close);
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(); });
     wrap.querySelector('.report').addEventListener('click', () => {
@@ -508,24 +552,21 @@
       e.stopPropagation(); toggleSlideshow();
       e.currentTarget.blur(); // drop focus so arrow / +/- keys keep driving the lightbox, not the button
     });
-    // Slideshow seconds: live while typing (scheduleSlide re-reads it), clamp + persist on change.
-    lbSecsEl.addEventListener('input', () => {
-      const v = parseInt(lbSecsEl.value, 10);
-      if (Number.isFinite(v)) { settings.gallerySlideSeconds = Math.max(1, Math.min(30, v)); applySlideSecsLive(); }
-    });
-    lbSecsEl.addEventListener('change', () => setSlideSecs(parseInt(lbSecsEl.value, 10)));
+    // Slideshow seconds: live while typing (setLive re-aims the running dwell; the field
+    // isn't normalized so a partial entry like "1" before "12" isn't clobbered), clamp +
+    // persist on change.
+    lbSecsEl.addEventListener('input', () => slideSecsSetting.setLive(parseInt(lbSecsEl.value, 10)));
+    lbSecsEl.addEventListener('change', () => slideSecsSetting.set(parseInt(lbSecsEl.value, 10)));
 
-    rangeEl.addEventListener('input', () => {
-      const v = parseInt(rangeEl.value, 10);
-      settings.galleryColWidth = v;
-      OBR.saveSettings({ galleryColWidth: v });
-      // Only re-lay-out when the column COUNT changes (flex columns auto-resize width).
-      // Keep the user where they were reading — a rebuild otherwise snaps to the top.
-      if (active && columnCount() !== cols.length) layoutAll(true);
-    });
-    // Drop focus after the user finishes dragging the slider, so Page/Home/End/space
-    // drive the gallery scroll again instead of nudging the slider value.
-    rangeEl.addEventListener('pointerup', () => rangeEl.blur());
+    // Column width: the slider value is always in range, so apply+debounce-persist on every
+    // input tick (dragging fires `input` dozens of times/sec — a raw save-per-tick would spam
+    // chrome.storage.sync and race its own read-modify-write). Flush on release/change.
+    rangeEl.addEventListener('input', () => colWidthSetting.set(parseInt(rangeEl.value, 10)));
+    // Finish the drag: flush the pending persist so the final width lands in storage right
+    // away (a reopen reads it), and drop focus so Page/Home/End/space drive the gallery
+    // scroll again instead of nudging the slider value.
+    rangeEl.addEventListener('pointerup', () => { colWidthSetting.flush(); rangeEl.blur(); });
+    rangeEl.addEventListener('change', colWidthSetting.flush); // keyboard arrows / programmatic set
 
     wrap.querySelector('.rescan').addEventListener('click', () => hydratePage(true));
     wrap.querySelector('.autoscroll').addEventListener('click', (e) => {
@@ -534,11 +575,8 @@
     });
     // Typing in the speed field applies live (autoStep reads settings each frame); persist
     // on change (blur / Enter / spinner) so a multi-keystroke entry isn't saved per keystroke.
-    autoSpeedEl.addEventListener('input', () => {
-      const v = parseInt(autoSpeedEl.value, 10);
-      if (Number.isFinite(v)) settings.galleryAutoScrollSpeed = Math.max(20, Math.min(400, v));
-    });
-    autoSpeedEl.addEventListener('change', () => setAutoSpeed(parseInt(autoSpeedEl.value, 10)));
+    autoSpeedEl.addEventListener('input', () => speedSetting.setLive(parseInt(autoSpeedEl.value, 10)));
+    autoSpeedEl.addEventListener('change', () => speedSetting.set(parseInt(autoSpeedEl.value, 10)));
     scrollerEl.addEventListener('scroll', onScrollerScroll, { passive: true });
     // Any real user scroll gesture takes over: cancel hands-free auto-scroll. Listen on
     // wheel/touchmove (user-gesture-only) NOT scroll — our own scrollTop writes fire scroll.
@@ -764,7 +802,7 @@
   }
 
   function render() {
-    images = collect();
+    images = collect(true); // initial render: include the CSS background-image scan
     if (lbStrip && lightboxIndex < 0) lbStrip.replaceChildren(); // rebuild the strip fresh on next open
     if (scrollerEl) scrollerEl.scrollTop = 0;
     countEl.textContent = images.length + ' images';
@@ -774,11 +812,13 @@
 
   // Re-collect and APPEND any images not already shown (lazy/late/inserted) to the
   // shortest column, without disturbing existing tiles or the user's selection.
-  function mergeNewImages() {
+  // `withBackgrounds` runs the costly CSS background-image scan too — passed only by the
+  // end of a full "Load all" sweep; the frequent incremental merges skip it (cheap path).
+  function mergeNewImages(withBackgrounds) {
     if (!active || !built) return 0;
     const have = new Set(images.map((im) => im.url));
     let added = 0;
-    collect().forEach((im) => {
+    collect(withBackgrounds).forEach((im) => {
       if (have.has(im.url)) return;
       have.add(im.url);
       if (!cols.length) buildColumns(); // was empty-state
@@ -872,11 +912,24 @@
           noGrow = 0;
         }
       }
+      // A full "Load all" folds in CSS background-images once at the end (the per-step merges
+      // skip the costly getComputedStyle scan), so the explicit "load everything" stays faithful.
+      if (toBottom && active) added += mergeNewImages(true);
     } catch (e) {
       /* ignore — partial hydration is fine */
     } finally {
       de.style.overflow = active ? 'hidden' : ''; // re-lock (gallery still open)
       sweeping = false;
+      // A progressive chunk that surfaced NO new images means there's nothing more to
+      // pull here right now — pause auto-prefetch and let auto-scroll reach its stop
+      // condition. The atBottom/no-growth check inside the loop misses the nasty case
+      // where an infinite-scroll page keeps GROWING (so it never looks "at bottom") yet
+      // yields no gallery-worthy images: without this, auto-scroll would hammer
+      // hydratePage forever ("keeps showing Load more"). Self-heals — mergeNewImages()
+      // flips softDone back to false the instant late/inserted images actually arrive
+      // (MutationObserver), and the explicit "give me more" gestures (PageDown,
+      // auto-scroll's one bottom-retry) clear it too.
+      if (!toBottom && active && added === 0) softDone = true;
       if (btn) btn.disabled = false;
       setStatus(added ? `+${added} images` : (fullyHydrated ? 'All images loaded' : ''));
       setTimeout(() => setStatus(''), 2500);
@@ -973,29 +1026,6 @@
     btn.title = autoScroll ? 'Stop auto-scroll (A)' : 'Auto-scroll down through the gallery (A)';
   }
 
-  // Single source of truth for the speed: clamp to [20,400], apply live (autoStep reads
-  // settings each frame), persist to storage.sync so it survives a reopen / new session,
-  // and reflect into the toolbar field. Drives the field, the +/- keys, and the options page.
-  function setAutoSpeed(value) {
-    const next = Math.max(20, Math.min(400, Number.isFinite(value) ? value : (settings.galleryAutoScrollSpeed || 60)));
-    if (autoSpeedEl) autoSpeedEl.value = next; // normalize the field (clamp / strip junk)
-    settings.galleryAutoScrollSpeed = next;    // live — autoStep reads it next frame
-    // Always (re)schedule the persist — the live `input` handler already set
-    // settings.galleryAutoScrollSpeed, so a `next === cur` short-circuit here would silently drop
-    // the save on the normal type/spinner edit path. Debounce it (key-repeat on +/- and field
-    // typing fire many calls, and chrome.storage.sync throttles writes); same-value re-saves collapse.
-    clearTimeout(autoSpeedSaveTimer);
-    autoSpeedSaveTimer = setTimeout(() => OBR.saveSettings({ galleryAutoScrollSpeed: next }), 400);
-  }
-  // Flush a pending debounced speed persist immediately (e.g. on close, before a reopen
-  // reads storage). No-op if nothing is pending.
-  function flushAutoSpeed() {
-    if (!autoSpeedSaveTimer) return;
-    clearTimeout(autoSpeedSaveTimer); autoSpeedSaveTimer = null;
-    OBR.saveSettings({ galleryAutoScrollSpeed: settings.galleryAutoScrollSpeed });
-  }
-  function nudgeAutoSpeed(delta) { setAutoSpeed((settings.galleryAutoScrollSpeed || 60) + delta); }
-
   OBR._galleryAutoScroll = (on) => { on ? startAutoScroll() : stopAutoScroll(); }; // drive (tests)
   OBR._galleryAutoScrollOn = () => autoScroll;                                     // state (tests)
 
@@ -1084,26 +1114,6 @@
     btn.innerHTML = slideOn ? PAUSE_ICON : PLAY_ICON;
     btn.title = slideOn ? 'Pause slideshow (A)' : 'Start slideshow (A)';
   }
-  // Single source of truth for the slideshow dwell: clamp to [1,30]s, apply live to a running
-  // slideshow, persist to storage.sync (debounced), and reflect into the lightbox field.
-  function setSlideSecs(value) {
-    const next = Math.max(1, Math.min(30, Number.isFinite(value) ? value : (settings.gallerySlideSeconds || 3)));
-    if (lbSecsEl) lbSecsEl.value = next; // normalize the field (clamp / strip junk)
-    settings.gallerySlideSeconds = next;
-    applySlideSecsLive();                // re-aim a running slideshow's current dwell (no reset)
-    // Always (re)schedule the persist — the live `input` handler already set
-    // settings.gallerySlideSeconds, so a `next === cur` short-circuit here would silently drop
-    // the save on the normal type/spinner edit path. Debounced, so same-value re-saves collapse.
-    clearTimeout(slideSecsSaveTimer);
-    slideSecsSaveTimer = setTimeout(() => OBR.saveSettings({ gallerySlideSeconds: next }), 400);
-  }
-  function flushSlideSecs() {
-    if (!slideSecsSaveTimer) return;
-    clearTimeout(slideSecsSaveTimer); slideSecsSaveTimer = null;
-    OBR.saveSettings({ gallerySlideSeconds: settings.gallerySlideSeconds });
-  }
-  function nudgeSlideSecs(delta) { setSlideSecs((settings.gallerySlideSeconds || 3) + delta); }
-
   OBR._gallerySlideshow = (on) => { on ? startSlideshow() : stopSlideshow(); }; // drive (tests)
   OBR._gallerySlideshowOn = () => slideOn;                                      // state (tests)
 
@@ -1160,8 +1170,9 @@
   function close() {
     if (!active) return;
     stopAutoScroll(); // cancel the rAF before hiding the host (no orphan scrollTop writes)
-    flushAutoSpeed();  // persist a just-edited speed before a reopen reads storage
-    flushSlideSecs();  // persist a just-edited slideshow dwell too
+    speedSetting.flush();     // persist a just-edited speed before a reopen reads storage
+    slideSecsSetting.flush(); // persist a just-edited slideshow dwell too
+    colWidthSetting.flush();  // persist a just-dragged column width too
     stopWatching();
     closeLightbox();
     host.style.display = 'none';
@@ -1253,8 +1264,8 @@
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(-1); }
       // A toggles the slideshow; +/- nudge its per-image dwell (guard ctrl/meta so browser zoom still works).
       else if ((e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); toggleSlideshow(); }
-      else if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); nudgeSlideSecs(+1); }
-      else if ((e.key === '-' || e.key === '_') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); nudgeSlideSecs(-1); }
+      else if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); slideSecsSetting.nudge(+1); }
+      else if ((e.key === '-' || e.key === '_') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); slideSecsSetting.nudge(-1); }
     } else if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation(); close();
     } else if (scrollerEl && (e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1262,9 +1273,9 @@
       // controls (size slider, select-all checkbox) don't use a / + / -, so there's no clash.
       e.preventDefault(); e.stopPropagation(); toggleAutoScroll();
     } else if (scrollerEl && (e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault(); e.stopPropagation(); nudgeAutoSpeed(+20); // guard ctrl/meta so browser zoom still works
+      e.preventDefault(); e.stopPropagation(); speedSetting.nudge(+20); // guard ctrl/meta so browser zoom still works
     } else if (scrollerEl && (e.key === '-' || e.key === '_') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault(); e.stopPropagation(); nudgeAutoSpeed(-20);
+      e.preventDefault(); e.stopPropagation(); speedSetting.nudge(-20);
     } else if (scrollerEl && !isFormFocused()) {
       // The overlay scroll-locks the page and the grid scrolls inside its own (unfocused)
       // container, so PageUp/Down/Home/End/space/arrows have no native target — drive it.
