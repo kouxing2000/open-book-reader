@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-29
+
 ### Added
 - Reader: realistic **page-turn animations** for the two-page text reader — a soft paper
   **curl** (default) and a rigid **book** 3D flip, alongside plain **slide** and instant
@@ -73,6 +75,7 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.0.0
 [0.3.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v0.3.1
