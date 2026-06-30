@@ -184,12 +184,19 @@ test('?site= scopes the rules + picks lists to one site, and "Show all" clears i
   expect(new URL(page.url()).search).toBe('');
 });
 
-test('a site stashed in storage.local scopes a freshly-opened options page, then is cleared (the ⚙ deep-link path)', async ({ page, serviceWorker, extensionId }) => {
+test('a site stashed in storage.local scopes a freshly-opened options page, then is cleared (the ⚙ deep-link path)', async ({ page, context, serviceWorker, extensionId }) => {
   // Mirror the REAL flow: the SERVICE WORKER writes the picks + stashes the site (background.js
   // does this on the ⚙ message) with NO options page open yet — so nothing consumes the stash
   // early — then openOptionsPage() loads a fresh page that must come up scoped to that site.
-  // (Setting the stash from an already-open options page would let its own onChanged listener
-  // eat it before this fresh load, which is not how the SW→openOptionsPage path behaves.)
+  //
+  // The fresh-profile fixture auto-opens an ONBOARDING options tab (onInstalled→openOptionsPage)
+  // whose storage.onChanged listener would race-consume the stash before our reload (flaky). So
+  // wait for onboarding, navigate our own page off any options URL, and close every options tab —
+  // leaving ZERO listeners live when we stash, exactly like a ⚙ click with no options tab open.
+  await expect.poll(() => context.pages().some((p) => p.url().includes('/options.html')), { timeout: 8000 }).toBe(true);
+  await page.goto('about:blank'); // drop our page's listener if it IS the onboarding tab
+  for (const p of context.pages()) { if (p.url().includes('/options.html')) await p.close(); }
+
   await serviceWorker.evaluate(() => new Promise((res) => chrome.storage.sync.set({
     obr_picks: { 'example.com': { sel: '#a', t: 2 }, 'other.test': { sel: '#b', t: 1 } },
   }, res)));
