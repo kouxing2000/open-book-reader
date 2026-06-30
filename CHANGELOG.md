@@ -11,6 +11,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-30
+
+### Added
+- Reader: **content override** for when extraction grabs the wrong block — three escalating,
+  zero-new-permission ways to fix it. Read your **text selection**; **⌖ Pick** the exact block on
+  the page (uBlock-style hover-highlight, click to read it); or **save a per-site** choice that
+  auto-applies when you return. A "Wrong content?" hint now appears **only when the parse looks
+  suspect** (it failed, or kept less than half of a content-rich page) rather than on every page;
+  the ⌖ Pick button is always available. Options lists, edits, and removes saved picks.
+
+### Changed
+- Reader: **page text is fully selectable everywhere.** The click-to-flip page edges no longer sit
+  over the text and block selection — edge-clicks still turn the page, but a drag or double-click
+  selection near the edge no longer flips it.
+
+### Fixed
+- Reader: opening no longer leaves an **unclosable overlay** if it is interrupted mid-init
+  (e.g. the gallery takes over during load).
+- Reader: guard `open()` against **concurrent re-initialization** (rapid double-trigger / mode switch).
+- Options: clicking ⚙ now **reuses the existing options tab** instead of opening a new one each time.
+- Gallery: hands-free auto-scroll now **stops on infinite-scroll pages** that keep growing without
+  surfacing new images (and self-heals when images later arrive).
+- Gallery: the column-width slider no longer **spams `storage.sync`** on every drag (debounced).
+
+### Security
+- Reader: harden the **HTML sanitizer** — close gaps found in the content-override review and
+  **normalize control/whitespace characters** in URL schemes, so an obfuscated `javascript:` URL
+  (control or tab characters hidden inside the scheme) can no longer slip the filter.
+
 ## [1.1.0] - 2026-06-29
 
 ### Added
@@ -75,7 +104,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.0
 [1.1.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.0.0
 [0.3.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v0.3.1
