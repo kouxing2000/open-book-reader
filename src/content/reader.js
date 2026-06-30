@@ -41,6 +41,9 @@
   // The article Readability last parsed (held so Print can reuse it without re-parsing).
   let lastArticle = null;
   let printing = false; // re-entrancy guard for printReader (the native print dialog is modal)
+  // Generation token for the async open(): a newer open() or a close() bumps it, so an
+  // earlier in-flight open() aborts after its next await instead of double-initializing.
+  let openGen = 0;
   // Where the current content came from, driving the ⌖ Pick hint banner:
   // 'whole' (whole page) | 'selection' (read a text selection) | 'pick-manual'
   // (just picked a block — offer to save) | 'pick-saved' (a saved per-site pick
@@ -1540,7 +1543,9 @@
   /* ---------------------------------------------------------------- open/close */
   async function open() {
     if (active) return;
+    const gen = ++openGen; // claim this open; abort below if a newer open()/close() supersedes us
     settings = await OBR.loadSettings();
+    if (gen !== openGen) return;
     if (OBR.closeGallery) OBR.closeGallery(); // ensure image mode isn't also showing
     build();
     applyStylesheet();
@@ -1560,6 +1565,7 @@
     let savedArticle = null;
     if (!sel && OBR.loadPick) {
       const savedSel = await OBR.loadPick(OBR.normalizeHost(location.href));
+      if (gen !== openGen) return;
       // null if the saved selector matches nothing now (stale) → falls through to whole page.
       savedArticle = savedSel ? extractFromSelector(savedSel) : null;
     }
@@ -1591,6 +1597,7 @@
     // race that would flush spread 0 over the real saved position.) The read is a
     // few ms on a real storage backend.
     restoreFraction = posKey && OBR.loadPosition ? await OBR.loadPosition(posKey) : null;
+    if (gen !== openGen) return;
 
     savedScrollY = window.scrollY;
     host.style.display = '';
@@ -1599,10 +1606,11 @@
     showChrome(); // show controls briefly, then auto-hide
     requestAnimationFrame(() => layout(false));
     watchMedia(); // re-paginate once late-loading images / fonts settle
-
+    OBR._opensCompleted = (OBR._opensCompleted || 0) + 1; // test hook: full inits that ran to completion
   }
 
   function close() {
+    openGen++; // invalidate any in-flight open() (e.g. the gallery taking over mid-open)
     if (!active) return;
     if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
