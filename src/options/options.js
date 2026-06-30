@@ -273,17 +273,32 @@
     chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
   });
 
-  // ?site=<host> filter bar: announce the scope and let the user drop it ("Show all").
-  if (filterSite) {
+  // The "scope" bar announces the current filterSite and offers "Show all"; it also primes
+  // the add-rule input. Re-run whenever the scope changes (?site, a stashed site, a live change).
+  function setFilterBar() {
     const bar = document.getElementById('siteFilterBar');
-    document.getElementById('siteFilterName').textContent = filterSite;
-    bar.hidden = false;
-    const hostInput = document.getElementById('siteHost');
-    if (hostInput && !hostInput.value) hostInput.value = filterSite; // prime "add rule" for this site
+    if (filterSite) {
+      document.getElementById('siteFilterName').textContent = filterSite;
+      bar.hidden = false;
+      const hostInput = document.getElementById('siteHost');
+      if (hostInput && !hostInput.value) hostInput.value = filterSite; // prime "add rule" for this site
+    } else {
+      bar.hidden = true;
+    }
   }
+  function applySiteFilter(site) {
+    let h = '';
+    if (site) { try { h = OBR.normalizeHost(site); } catch (e) { h = ''; } }
+    filterSite = h;
+    setFilterBar();
+    renderSites();
+    renderPicks();
+  }
+  setFilterBar(); // initial ?site scope (the data renders below already respect filterSite)
+
   document.getElementById('siteFilterClear').addEventListener('click', () => {
     filterSite = '';
-    document.getElementById('siteFilterBar').hidden = true;
+    setFilterBar();
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* drop the ?site param */ }
     renderSites();
     renderPicks();
@@ -296,4 +311,27 @@
   });
 
   OBR.loadPicks().then((p) => { picks = p || {}; renderPicks(); });
+
+  // The reader/gallery ⚙ routes through openOptionsPage() (so an open options tab is focused,
+  // not duplicated) and hands the site to scope via a one-shot chrome.storage.local key, not a
+  // ?site= URL. Read + CLEAR it on load (an explicit ?site wins; clearing stops it lingering),
+  // and re-scope live when it changes — that last part is what lets an already-open tab follow a
+  // fresh ⚙ click instead of opening anew.
+  const SITE_STASH = 'obr_options_site';
+  const local = chrome.storage && chrome.storage.local;
+  function consumeStashedSite() {
+    if (!local) return;
+    try {
+      local.get(SITE_STASH, (d) => {
+        const site = d && d[SITE_STASH];
+        if (site) { local.remove(SITE_STASH); applySiteFilter(site); }
+      });
+    } catch (e) { /* local storage unavailable — ?site still works */ }
+  }
+  if (!filterSite) consumeStashedSite();
+  if (chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes[SITE_STASH] && changes[SITE_STASH].newValue) consumeStashedSite();
+    });
+  }
 })();

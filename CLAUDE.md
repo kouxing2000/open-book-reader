@@ -126,9 +126,12 @@ with an **editable CSS-selector field** (auto-save like every other setting: liv
 valid edits re-save via `OBR.savePick`; **Esc** cancels an in-progress edit, and a per-row **↶ Revert**
 — shown only when changed — restores the selector from when the page opened) and per-row remove;
 "Reset to defaults" clears them too. The reader/gallery **⚙ pass the current host** to
-`OBR.openOptions(host)` → the SW opens `options.html?site=<host>`, which **scopes the site-rules +
-saved-picks lists to that one site** (a "Show all" chip clears it; global settings stay visible) —
-a context deep-link, not a search box. Precedence: **selection ▶ saved pick ▶ whole
+`OBR.openOptions(host)`; the SW **stashes the host in `chrome.storage.session` then calls
+`openOptionsPage()`** (so an already-open options tab is FOCUSED, not duplicated — we can't dedupe via
+`tabs.query` without the forbidden `tabs` perm) and `options.js` consumes the stash on load + re-scopes
+live via `storage.onChanged`, which **scopes the site-rules + saved-picks lists to that one site** (a
+"Show all" chip clears it; global settings stay visible) — a context deep-link, not a search box. (A
+direct `options.html?site=<host>` URL still scopes too, for tests / hand-built links.) Precedence: **selection ▶ saved pick ▶ whole
 page**. The shared core
 is `parseBaseDoc(documentClone)` (whole page) and `scopedBaseDoc(el)` (full-doc clone whose body is a
 CLONE of `el`, so baseURI/relative-URL resolution survives and the live page is never mutated), with
@@ -264,8 +267,9 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   Vendored Readability is NOT a sanitizer (it keeps e.g. `<img onerror>`), so EVERY content path —
   the Readability pass in `parseBaseDoc` and the `rawFallback` for picked/selected subtrees — runs its
   HTML through `sanitizeContentHTML` (drops `<script>`/`<style>`/`<noscript>`, all inline `on*`
-  handlers, and `javascript:` URLs) before it becomes `article.content`. `escapeHTML` covers
-  title/byline only.
+  handlers, `<iframe srcdoc>` — inline HTML that runs in the page's own origin — and `javascript:`
+  URLs on `href`/`src`/`xlink:href`/`action`/`formaction`; `<iframe src>` embeds are kept) before it
+  becomes `article.content`. `escapeHTML` covers title/byline only.
 - Listeners (`keydown` capture, `resize`) attach once at injection and persist for the tab's lifetime;
   `close()` only hides the host (inert when `!active`). Don't add re-attach logic without also handling
   the double-injection guard.

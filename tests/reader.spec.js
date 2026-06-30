@@ -684,6 +684,24 @@ test.describe('content override', () => {
     expect(r.content).not.toMatch(/javascript:/i); // javascript: URL neutralized
   });
 
+  // Direct unit test of the sanitizer itself — no Readability in the loop (a substantial root
+  // gets ACCEPTED and cleaned by Readability, masking what sanitizeContentHTML does), so the
+  // full vector matrix is proven against the function in isolation.
+  test('_sanitizeContentHTML neutralizes every script vector but keeps src-based embeds', async ({ page }) => {
+    const r = await page.evaluate(() => OBR._sanitizeContentHTML(
+      '<p>hi</p><img src="x" onerror="boom()">'
+      + '<a href="javascript:boom()">a</a>'
+      + '<form action="javascript:boom()"><button formaction="javascript:boom()">b</button></form>'
+      + '<iframe srcdoc="<script>boom()<\/script>"></iframe>'
+      + '<iframe src="https://www.example.com/embed/abc"></iframe>' // a legit embed must survive
+      + '<svg><script>boom()<\/script></svg>'));
+    expect(r).not.toMatch(/onerror/i);          // inline handler
+    expect(r).not.toMatch(/javascript:/i);      // href + action + formaction
+    expect(r).not.toMatch(/srcdoc/i);           // inline-HTML iframe (page-origin) vector
+    expect(r).not.toMatch(/<script/i);          // both HTML and SVG <script> removed
+    expect(r).toMatch(/example\.com\/embed/);   // but src-based embeds are preserved
+  });
+
   test('_extractFromSelector merges every match of a multi-node selector', async ({ page }) => {
     const r = await page.evaluate(() => {
       const a = OBR._extractFromSelector('#real-article p'); // all three paragraphs
