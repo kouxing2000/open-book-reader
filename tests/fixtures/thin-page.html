@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Short post with a big comment thread</title>
+</head>
+<body>
+  <header><nav>Home · News · About</nav></header>
+
+  <!-- The genuine (short) article Readability extracts: ~120 words. -->
+  <article id="post">
+    <h1>A short note on tide tables</h1>
+    <p>The tide table on the harbour wall is repainted every spring by the same two volunteers, who
+    insist that the job is far harder than it looks because the numbers must be legible from a moving
+    boat and yet small enough to fit a single weathered board that nobody has ever agreed to replace.</p>
+    <p>Most visitors never read it, but the fishermen do, and they will tell you that a table painted a
+    hair too high or a column nudged a finger too far left has, more than once, sent a careless skipper
+    onto the bar at the worst possible hour of a falling tide on a grey and unforgiving morning.</p>
+  </article>
+
+  <!-- A large comment thread. Readability's unlikelyCandidates regex strips #comments, but the page
+       still HAS this prose (proseWordCount counts the <li>s) — so the extraction keeps far less than
+       half the page's real text, which is exactly the "suspect" signal the banner should fire on. -->
+  <section id="comments">
+    <h2>Comments</h2>
+    <ul>
+      <li>I grew up two streets from that harbour and I had completely forgotten about the painted board until this post brought the whole salt-stained memory rushing back to me in a single vivid instant.</li>
+      <li>My uncle was one of those volunteers for almost a decade and he complained about the brush quality every single year without fail, yet he never once let anyone else take the job from him.</li>
+      <li>There is a similar board on the north coast that was painted wrong in nineteen-eighty and apparently caused such confusion that the council finally paid for a proper enamel sign the following spring.</li>
+      <li>People underestimate how much skill goes into lettering that stays readable through years of weather, spray, and the relentless picking of gulls that seem to treat fresh paint as a personal challenge.</li>
+      <li>I would love to see photographs of the older boards if anyone in this thread happens to have any tucked away in a drawer, because the typography of those early hand-painted tables was genuinely beautiful.</li>
+      <li>The detail about reading the numbers from a moving boat is the part that stuck with me, because it reframes the whole thing as a design problem and not merely a quaint little seaside tradition.</li>
+      <li>Our sailing club tried to replace ours with a laminated printout one summer and it lasted exactly three weeks before the sun and the salt turned it into an unreadable curl of cloudy yellow plastic.</li>
+      <li>This is the kind of small, stubborn, deeply local craft that quietly disappears the moment the last person who cared about doing it properly finally decides that they are simply too old to climb the wall.</li>
+    </ul>
+  </section>
+
+  <footer><nav>Privacy · Terms</nav></footer>
+</body>
+</html>

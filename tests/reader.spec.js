@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, gotoWrongContent, injectReader, openReader, readState, clickInReader } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, injectReader, openReader, readState, clickInReader } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -626,6 +626,61 @@ test.describe('content override', () => {
     await openReader(page);
     const s = await readState(page);
     expect(s.contentText).toContain('DECOY-MARKER'); // the wrong block won, as designed
+  });
+
+  test('_wholeExtractionSuspect flags a failed/thin parse but not a full-size one', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      // Add a known, substantial amount of prose to the live page so proseWordCount is high.
+      const big = document.createElement('div');
+      big.innerHTML = ('<p>' + Array(60).fill('word').join(' ') + '</p>').repeat(8); // ~480 words
+      document.body.appendChild(big);
+      const live = OBR._articleWordCount();
+      const text = (n) => Array(n).fill('w').join(' ');
+      return {
+        live,
+        failed: OBR._wholeExtractionSuspect(null), // no article → placeholder showing
+        thin: OBR._wholeExtractionSuspect({ content: '<p>x</p>', textContent: text(Math.floor(live * 0.2)) }),
+        full: OBR._wholeExtractionSuspect({ content: '<p>x</p>', textContent: text(live) }),
+      };
+    });
+    expect(r.live).toBeGreaterThanOrEqual(200); // a substantial page, so the ratio test engages
+    expect(r.failed).toBe(true);  // failed parse is always suspect
+    expect(r.thin).toBe(true);    // kept ~20% of the page's prose → suspect
+    expect(r.full).toBe(false);   // kept ~all of it → confident, no nag
+  });
+
+  test('the "Wrong content?" banner stays quiet for a confident, full-size whole-page read', async ({ page }) => {
+    // The decoy is a LARGE wrong block (~70% of the page's prose), so the size heuristic can't
+    // tell it's wrong — the banner must NOT auto-nag; the ⌖ Pick toolbar button carries that case.
+    await openReader(page);
+    const r = await page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const hint = root.querySelector('.obr-pick-hint');
+      return {
+        bannerShown: hint.classList.contains('show'),
+        hasToolbarPick: !!root.querySelector('.obr-btn[data-act="pick"]'),
+      };
+    });
+    expect(r.bannerShown).toBe(false);   // no auto-nag on a full-size extraction
+    expect(r.hasToolbarPick).toBe(true); // the ⌖ Pick affordance is still available
+  });
+
+  // The positive direction: a genuinely suspect whole-page parse MUST surface the banner. Uses a
+  // separate fixture (short article + a big comment thread Readability strips) so the extraction
+  // keeps < half the page's prose → extractionSuspect = true. Guards against the gate being
+  // disabled/inverted (which the two tests above wouldn't catch).
+  test('the "Wrong content?" banner DOES pop when the whole-page parse is suspect (thin extraction)', async ({ page }) => {
+    await gotoThinPage(page);
+    await injectReader(page);
+    await page.evaluate(() => globalThis.OBR.open());
+    const r = await page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const hint = root.querySelector('.obr-pick-hint');
+      return { live: OBR._articleWordCount(), bannerShown: hint.classList.contains('show'), bannerText: hint.textContent };
+    });
+    expect(r.live).toBeGreaterThanOrEqual(200);   // a substantial page (the ratio gate engages)
+    expect(r.bannerShown).toBe(true);             // …yet extraction kept < half → banner pops
+    expect(r.bannerText).toContain('Wrong content?');
   });
 
   test('_extractFromNode scopes extraction to the chosen subtree', async ({ page }) => {
