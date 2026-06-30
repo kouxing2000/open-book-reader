@@ -1266,23 +1266,28 @@
     return { face, shade };
   }
 
-  function bookFlip(dir, src, next) {
+  // Shared prologue for both page-turn styles (book + curl). Snap the real strip to the
+  // destination synchronously (final state == the plain-flip path, which keeps the sync-read
+  // tests green), then build the flip overlay: a full-paper .obr-flip-layer with the
+  // stationary source page (forward: LEFT; backward: RIGHT) already appended. The caller
+  // builds + appends its own turning leaf, then paperEl.appendChild(layer). Returns the pieces.
+  function beginFlip(dir, src, next) {
     endActiveFlip();                 // fast-forward any in-flight turn to its settled state
     const fwd = dir > 0;
 
-    // 1. Snap the real strip (+ indicator / progress / persist) straight to the destination
-    //    with no slide, so the final state matches the plain-flip path synchronously.
+    // Snap the real strip (+ indicator / progress / persist) straight to the destination with
+    // no slide, so the final state matches the plain-flip path synchronously.
     pagesEl.style.transition = 'none';
     currentSpread = next;
     applySpread();
 
-    // 2. Geometry. A "page" is the full PAPER half — text column PLUS its white margins —
-    //    not just the text area, so the turning leaf matches the page the reader sees.
-    //    g = pageGeom() gives the paper-relative spine, page width/height, and the margins.
+    // Geometry. A "page" is the full PAPER half — text column PLUS its white margins — not
+    // just the text area, so the turning leaf matches the page the reader sees. pageGeom()
+    // gives the paper-relative spine, page width/height, and the margins.
     const stride = pagesPerSpread * (colW + colGap);
     const g = pageGeom();
 
-    // 3. The flip layer covers the WHOLE paper (margins included).
+    // The flip layer covers the WHOLE paper (margins included).
     const layer = document.createElement('div');
     layer.className = 'obr-flip-layer';
     layer.style.left = '0px';
@@ -1290,8 +1295,8 @@
     layer.style.width = g.paperW + 'px';
     layer.style.height = g.paperH + 'px';
 
-    // 4. The stationary page (forward: source LEFT page; backward: source RIGHT page) —
-    //    a full-page panel, opaque so the destination underneath doesn't bleed through.
+    // The stationary page (forward: source LEFT page; backward: source RIGHT page) — a
+    // full-page panel, opaque so the destination underneath doesn't bleed through.
     const staticLeft = fwd ? 0 : g.spineX;
     const staticBox = document.createElement('div');
     staticBox.className = 'obr-flip-static';
@@ -1299,10 +1304,19 @@
     staticBox.style.width = g.pageW + 'px';
     staticBox.style.height = g.paperH + 'px';
     staticBox.appendChild(makePagesClone(g.padX - staticLeft - src * stride, g.padY));
+    layer.appendChild(staticBox);    // staticBox first → the caller's leaf lays on top
 
-    // 5. The turning leaf = the right page, hinged at the spine. Two full-page faces; the
-    //    back is pre-rotated 180deg about ITS OWN center (the double reflection lands it
-    //    un-mirrored on the opposite page when the leaf lays down).
+    return { fwd, g, stride, layer, staticBox };
+  }
+
+  function bookFlip(dir, src, next) {
+    // Snap the real strip to the destination, then build the flip overlay (full-paper layer
+    // with the stationary source page already laid in). See beginFlip().
+    const { fwd, g, stride, layer } = beginFlip(dir, src, next);
+
+    // The turning leaf = the right page, hinged at the spine. Two full-page faces; the
+    // back is pre-rotated 180deg about ITS OWN center (the double reflection lands it
+    // un-mirrored on the opposite page when the leaf lays down).
     const sFront = fwd ? src : next;     // page shown on the front (toward the reader at rest)
     const sBack = fwd ? next : src;      // page shown on the back (after it lays down)
     const leaf = document.createElement('div');
@@ -1321,11 +1335,10 @@
     const toAngle = fwd ? -180 : 0;
     leaf.style.transform = `rotateY(${fromAngle}deg)`;
 
-    layer.appendChild(staticBox);
-    layer.appendChild(leaf);
+    layer.appendChild(leaf);         // staticBox already in layer (beginFlip); leaf lays on top
     paperEl.appendChild(layer);      // LAST child → real pagesEl stays first for querySelector
 
-    // 6. Animate (WAAPI — reliable finish hook + clean cancel for re-entrancy).
+    // Animate (WAAPI — reliable finish hook + clean cancel for re-entrancy).
     const dur = settings.transitionMs;
     const easing = 'cubic-bezier(.22,.61,.36,1)';
     const anim = leaf.animate(
@@ -1376,33 +1389,9 @@
   const CURL_DURATION = (ms) => Math.max(760, Math.round(ms * 1.9));
 
   function curlFlip(dir, src, next) {
-    endActiveFlip();
-    const fwd = dir > 0;
-
-    // Snap the real strip to the destination (final state == the plain flip, synchronously).
-    pagesEl.style.transition = 'none';
-    currentSpread = next;
-    applySpread();
-
-    const stride = pagesPerSpread * (colW + colGap);
-    const g = pageGeom();          // full PAGE geometry (text + margins), not just the text area
-
-    // Flip layer covers the WHOLE paper (margins included).
-    const layer = document.createElement('div');
-    layer.className = 'obr-flip-layer';
-    layer.style.left = '0px';
-    layer.style.top = '0px';
-    layer.style.width = g.paperW + 'px';
-    layer.style.height = g.paperH + 'px';
-
-    // Stationary full page (forward: source LEFT; backward: source RIGHT), opaque.
-    const staticLeft = fwd ? 0 : g.spineX;
-    const staticBox = document.createElement('div');
-    staticBox.className = 'obr-flip-static';
-    staticBox.style.left = staticLeft + 'px';
-    staticBox.style.width = g.pageW + 'px';
-    staticBox.style.height = g.paperH + 'px';
-    staticBox.appendChild(makePagesClone(g.padX - staticLeft - src * stride, g.padY));
+    // Snap the real strip to the destination, then build the flip overlay (full-paper layer
+    // with the stationary source page already laid in). See beginFlip().
+    const { fwd, g, stride, layer } = beginFlip(dir, src, next);
 
     // The curl leaf = the right page, hinged at the spine, rotates fromAngle -> toAngle.
     const sFront = fwd ? src : next;
@@ -1447,8 +1436,7 @@
       segs.push({ seg, shade });
     }
 
-    layer.appendChild(staticBox);
-    layer.appendChild(leaf);
+    layer.appendChild(leaf);         // staticBox already in layer (beginFlip); leaf lays on top
     paperEl.appendChild(layer);
 
     const dur = CURL_DURATION(settings.transitionMs);
