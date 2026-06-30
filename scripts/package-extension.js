@@ -47,6 +47,7 @@ const REQUIRED_FILES = [
   'src/background.js',
   'src/content/settings.js',
   'src/content/readability.js',
+  'src/content/reader.style.js',
   'src/content/reader.js',
   'src/content/zip.js',
   'src/content/gallery.js',

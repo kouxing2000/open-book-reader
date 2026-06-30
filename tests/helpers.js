@@ -10,6 +10,7 @@ const CONTENT = path.resolve(__dirname, '..', 'src', 'content');
 export const CONTENT_FILES = [
   path.join(CONTENT, 'settings.js'),
   path.join(CONTENT, 'readability.js'),
+  path.join(CONTENT, 'reader.style.js'),
   path.join(CONTENT, 'reader.js'),
 ];
 
@@ -102,7 +103,7 @@ export async function gotoIllustratedArticle(page) {
   );
 }
 
-/** Inject the three content scripts (mirrors background.js FILES order). */
+/** Inject the content scripts (mirrors background.js FILES order). */
 export async function injectReader(page) {
   for (const file of CONTENT_FILES) {
     await page.addScriptTag({ path: file });

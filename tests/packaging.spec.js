@@ -21,6 +21,7 @@ test('package-extension.js produces a clean, complete zip', () => {
   // Shippable files present, manifest at the zip root.
   expect(entries).toContain('manifest.json');
   expect(entries).toContain('src/background.js');
+  expect(entries).toContain('src/content/reader.style.js');
   expect(entries).toContain('src/content/reader.js');
   expect(entries).toContain('icons/icon128.png');
 

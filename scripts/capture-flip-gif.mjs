@@ -32,7 +32,7 @@ const PORT = 5178;
 const GIF_WIDTH = 720;   // GIFs are heavy; keep the inline-embed fallback small
 const FPS = 12;
 
-const CONTENT_FILES = ['settings.js', 'readability.js', 'reader.js', 'zip.js', 'gallery.js'].map((f) =>
+const CONTENT_FILES = ['settings.js', 'readability.js', 'reader.style.js', 'reader.js', 'zip.js', 'gallery.js'].map((f) =>
   path.join(CONTENT, f)
 );
 

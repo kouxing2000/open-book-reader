@@ -14,6 +14,7 @@ const OBR = globalThis.OBR;
 const FILES = [
   'src/content/settings.js',     // defines globalThis.OBR.DEFAULTS
   'src/content/readability.js',  // bundled Mozilla Readability (Apache-2.0)
+  'src/content/reader.style.js', // reader stylesheet (OBR._readerCSS); loads before reader.js
   'src/content/reader.js',       // text engine; exposes OBR.toggle()
   'src/content/zip.js',          // OBR._buildZip (used by gallery's ZIP download)
   'src/content/gallery.js'       // image-gallery mode; exposes OBR.toggleGallery()
