@@ -3,9 +3,16 @@
   const OBR = globalThis.OBR;
   const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColWidth', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
-  const CHECKBOXES = ['galleryAutoLoad', 'printSourceUrl'];
+  const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'printSourceUrl'];
   const savedEl = document.getElementById('saved');
   let saveTimer;
+
+  // Optional ?site=<host> deep-link (the reader/gallery ⚙ pass the current site): scope the
+  // site-rules + saved-picks lists to one site, with a "Show all" toggle. '' = show everything.
+  let filterSite = (() => {
+    try { const s = new URLSearchParams(location.search).get('site'); return s ? OBR.normalizeHost(s) : ''; }
+    catch (e) { return ''; }
+  })();
 
   function flashSaved() {
     savedEl.classList.add('show');
@@ -87,14 +94,23 @@
   function renderSites() {
     const wrap = document.getElementById('sites');
     wrap.textContent = '';
-    if (!rules.length) {
+    // Keep each rule's ORIGINAL index (removeRule / mode-change splice by index) when the
+    // site filter hides the rest. A rule matches the filtered site if its glob would apply.
+    let list = rules.map((rule, i) => ({ rule, i }));
+    if (filterSite) list = list.filter(({ rule }) =>
+      // Show a rule if its glob matches the site host (whole-site / subdomain rules) OR its
+      // pattern's host-part equals the site (so PATH-scoped rules like `host/blog/*` show too —
+      // filterSite is always a bare host, which `host/blog/*` wouldn't otherwise match).
+      OBR.matchSiteRule('http://' + filterSite + '/', [rule])
+      || OBR.normalizeHost(String(rule.match).split('/')[0]) === filterSite);
+    if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'site-empty';
-      empty.textContent = 'No per-site rules yet.';
+      empty.textContent = filterSite ? 'No rule for ' + filterSite + ' yet.' : 'No per-site rules yet.';
       wrap.appendChild(empty);
       return;
     }
-    rules.forEach((rule, i) => {
+    list.forEach(({ rule, i }) => {
       const row = document.createElement('div');
       row.className = 'site-row';
 
@@ -135,15 +151,119 @@
     if (e.key === 'Enter') { e.preventDefault(); addRule(); }
   });
 
+  /* ------------------------------------------------ saved content picks */
+  // The per-site "read THIS block" overrides (the ⌖ Pick result), stored separately
+  // from settings under chrome.storage.sync's obr_picks. View + remove only here;
+  // they're created in the reader.
+  let picks = {}; // { host: { sel, t } }
+
+  function renderPicks() {
+    const wrap = document.getElementById('picks');
+    wrap.textContent = '';
+    let hosts = Object.keys(picks).sort();
+    if (filterSite) hosts = hosts.filter((h) => h === filterSite); // picks are keyed by exact host
+    const countEl = document.getElementById('picksCount');
+    if (countEl) countEl.textContent = hosts.length ? '(' + hosts.length + ')' : '';
+    if (!hosts.length) {
+      const empty = document.createElement('div');
+      empty.className = 'site-empty';
+      empty.textContent = filterSite
+        ? 'No saved pick for ' + filterSite + ' yet. Use the ⌖ Pick button on that site.'
+        : 'No saved picks yet. Use the ⌖ Pick button in the reader, then “Save for this site”.';
+      wrap.appendChild(empty);
+      return;
+    }
+    hosts.forEach((host) => {
+      const row = document.createElement('div');
+      row.className = 'pick-row';
+
+      // Head line: host + remove.
+      const head = document.createElement('div');
+      head.className = 'pick-head';
+      const h = document.createElement('span');
+      h.className = 'pick-host'; h.textContent = host;
+      const remove = document.createElement('button');
+      remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = 'Remove this saved pick';
+      remove.addEventListener('click', () => {
+        OBR.clearPick(host).then(() => { delete picks[host]; renderPicks(); flashSaved(); });
+      });
+      head.append(h, remove);
+
+      // Edit line: an editable CSS selector + live ✓/✗ validity + a revert button.
+      // `original` is the value when this page opened — the ↶ revert target, captured
+      // once so it survives the in-place auto-saves below.
+      const original = (picks[host] && picks[host].sel) || '';
+      const editLine = document.createElement('div');
+      editLine.className = 'pick-edit';
+      const input = document.createElement('input');
+      input.type = 'text'; input.className = 'pick-sel-input'; input.spellcheck = false;
+      input.value = original;
+      input.setAttribute('aria-label', 'CSS selector for ' + host);
+      input.placeholder = 'e.g. .article-body  or  main article';
+      const mark = document.createElement('span');
+      mark.className = 'pick-valid';
+      const revert = document.createElement('button');
+      revert.className = 'ghost pick-revert'; revert.textContent = '↶';
+      revert.title = 'Revert to the selector from when this page opened';
+
+      // Syntax-only check (this page isn't the target site, so we can't match-test):
+      // a selector is "valid" if document.querySelector doesn't throw on it.
+      const validity = () => {
+        const v = input.value.trim();
+        let ok = false;
+        if (v) { try { document.querySelector(v); ok = true; } catch (e) { ok = false; } }
+        mark.textContent = v ? (ok ? '✓' : '✗') : '';
+        mark.className = 'pick-valid ' + (v ? (ok ? 'ok' : 'bad') : '');
+        input.classList.toggle('invalid', !!v && !ok);
+        return ok;
+      };
+      // Show ↶ only when the field differs from the load-time value (something to undo).
+      const refresh = () => { validity(); revert.style.display = input.value.trim() === original ? 'none' : ''; };
+      const save = (v) => { picks[host].sel = v; OBR.savePick(host, v).then((ok) => { if (ok !== false) flashSaved(); }); };
+      const commit = () => {
+        const v = input.value.trim();
+        if (v && validity() && v !== (picks[host].sel || '')) save(v); // skip empty / broken / unchanged
+        refresh();
+      };
+      input.addEventListener('input', refresh);
+      input.addEventListener('change', commit); // fires on blur / Enter when the value changed
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }           // commit
+        else if (e.key === 'Escape') {                                          // cancel the in-progress edit
+          e.preventDefault();
+          input.value = (picks[host] && picks[host].sel) || ''; // back to last SAVED value
+          refresh();
+        }
+      });
+      revert.addEventListener('click', () => {
+        input.value = original;
+        if (original !== (picks[host].sel || '')) save(original); // re-persist the original
+        refresh();
+        input.focus();
+      });
+      refresh();
+
+      editLine.append(input, mark, revert);
+      row.append(head, editLine);
+      wrap.appendChild(row);
+    });
+  }
+
   document.getElementById('reset').addEventListener('click', () => {
-    chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {
-      OBR.loadSettings().then((s) => {
-        SLIDERS.forEach((k) => { setSliderFromSetting(k, s[k]); reflectValue(k); });
-        SELECTS.forEach((k) => { document.getElementById(k).value = s[k]; });
-        CHECKBOXES.forEach((k) => { document.getElementById(k).checked = !!s[k]; });
-        rules = [];
-        renderSites();
-        flashSaved();
+    // Reset to defaults wipes the settings blob (incl. site rules) AND the separate
+    // saved-pick map — a full clear of the user's customizations.
+    chrome.storage.sync.remove(OBR.PICKS_KEY, () => {
+      chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {
+        OBR.loadSettings().then((s) => {
+          SLIDERS.forEach((k) => { setSliderFromSetting(k, s[k]); reflectValue(k); });
+          SELECTS.forEach((k) => { document.getElementById(k).value = s[k]; });
+          CHECKBOXES.forEach((k) => { document.getElementById(k).checked = !!s[k]; });
+          rules = [];
+          renderSites();
+          picks = {};
+          renderPicks();
+          flashSaved();
+        });
       });
     });
   });
@@ -153,9 +273,27 @@
     chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
   });
 
+  // ?site=<host> filter bar: announce the scope and let the user drop it ("Show all").
+  if (filterSite) {
+    const bar = document.getElementById('siteFilterBar');
+    document.getElementById('siteFilterName').textContent = filterSite;
+    bar.hidden = false;
+    const hostInput = document.getElementById('siteHost');
+    if (hostInput && !hostInput.value) hostInput.value = filterSite; // prime "add rule" for this site
+  }
+  document.getElementById('siteFilterClear').addEventListener('click', () => {
+    filterSite = '';
+    document.getElementById('siteFilterBar').hidden = true;
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* drop the ?site param */ }
+    renderSites();
+    renderPicks();
+  });
+
   OBR.loadSettings().then((s) => {
     bind(s);
     rules = s.siteRules || [];
     renderSites();
   });
+
+  OBR.loadPicks().then((p) => { picks = p || {}; renderPicks(); });
 })();

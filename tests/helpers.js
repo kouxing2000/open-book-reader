@@ -76,6 +76,14 @@ export async function gotoPictureArticle(page) {
   await page.goto('/picture-article.html');
 }
 
+/** Load the "wrong content" fixture: a genuine short article (#real-article, REAL-MARKER)
+ *  plus a much larger decoy block (#decoy, DECOY-MARKER) that whole-page extraction latches
+ *  onto. Used to exercise the selection / element-picker / saved-pick override paths. */
+export async function gotoWrongContent(page) {
+  await page.addInitScript(storageShim);
+  await page.goto('/wrong-content.html');
+}
+
 /** Load the illustrated-article fixture (real prose + 12 figures) and wait for the
  *  figures to decode, so OBR._imageCount and OBR._articleWordCount both see real data. */
 export async function gotoIllustratedArticle(page) {

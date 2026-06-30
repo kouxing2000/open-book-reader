@@ -102,6 +102,40 @@ positions persist to `chrome.storage.LOCAL` (NOT sync — per-device, can be man
 sync quota) as one bounded, LRU-pruned map `obr_positions` keyed by `origin+pathname`. No new
 permission — `storage` already covers `storage.local`.
 
+**Content override — when extraction picks the WRONG block** (`reader.js`, plus pick storage in
+`settings.js`). Readability is a guesser; the manual override has three escalating layers, all
+zero-new-permission. (1) **Selection** — if text is selected when the reader opens (and the
+`readSelection` setting is on, default), read EXACTLY that selection: `extractFromSelection` wraps
+`range.cloneContents()` and runs it through the scoped path. (2) **Element picker** — the ⌖ Pick
+toolbar button (and the "Wrong content?" hint banner) starts `startPicker()`: a uBlock-style hover-to-
+highlight over the REAL page in a SEPARATE shadow host (`#obr-pick-host`), with the reader hidden and
+page scroll unlocked (the same toggles `open()`/`close()` and the gallery's `hydratePage` use); a
+click re-renders in place via `endPicker(node)` → `extractFromNode`. The reader keydown handler gates
+on `pickerActive` so the picker owns Escape/arrows while it's up. (3) **Saved pick** — "Save for this
+site" stores a CSS selector per host in `chrome.storage.SYNC` (`obr_picks`, bounded/LRU to `PICKS_MAX`,
+follows the user across devices like the site mode-rules). `OBR._cssPathFor` builds the selector
+preferring the SHORTEST readable+robust anchor (unique id → lone `<main>`/`<article>` → `[role]` →
+semantic/stable class, by `rankClasses`) and only falls back to a brittle `nth-of-type` `structuralPath`
+when nothing readable is unique — so a saved pick tends to survive markup changes and keep matching the
+site's other pages. `open()` resolves it (when there's no live selection) via `extractFromSelector`,
+which uses `querySelectorAll`: 0 matches → fall through to whole page (stale selector), 1 → that block,
+N>1 → all matches MERGED — so a multi-block selector like `.intro, .post-body` reads every region as
+one document (this is what makes editing flexible without a multi-select picker). "Use full page" /
+"Clear pick" escape. The Options page lists saved picks (`#picks`, via `OBR.loadPicks`/`OBR.clearPick`)
+with an **editable CSS-selector field** (auto-save like every other setting: live ✓/✗ syntax check,
+valid edits re-save via `OBR.savePick`; **Esc** cancels an in-progress edit, and a per-row **↶ Revert**
+— shown only when changed — restores the selector from when the page opened) and per-row remove;
+"Reset to defaults" clears them too. The reader/gallery **⚙ pass the current host** to
+`OBR.openOptions(host)` → the SW opens `options.html?site=<host>`, which **scopes the site-rules +
+saved-picks lists to that one site** (a "Show all" chip clears it; global settings stay visible) —
+a context deep-link, not a search box. Precedence: **selection ▶ saved pick ▶ whole
+page**. The shared core
+is `parseBaseDoc(documentClone)` (whole page) and `scopedBaseDoc(el)` (full-doc clone whose body is a
+CLONE of `el`, so baseURI/relative-URL resolution survives and the live page is never mutated), with
+`rawFallback(el)` (the node's own script-stripped HTML) when Readability rejects a small root. Tests:
+`tests/fixtures/wrong-content.html` (a genuine `#real-article` vs a larger `#decoy`) drives the
+selection / picker / saved-pick specs in `reader.spec.js`.
+
 **Lazy / progressive images** (`gallery.js`): collection is placeholder-aware — an `<img>` showing
 only a placeholder with a `data-*` lazy URL contributes the lazy URL and skips the size filter
 (`eachGalleryImg`, shared by `collect()` / `imageCount()`). A `MutationObserver` + delayed re-collects
@@ -226,8 +260,12 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   executing a keyboard shortcut grants `activeTab`, which makes `tab.url` available via
   `chrome.tabs.query`. Adding `tabs` broadens permissions for nothing and is a Web Store review flag.
 - `readability.js` is third-party vendored code — keep it pristine; fixes go upstream.
-- `reader.js` injects `article.content` (Readability-sanitized HTML) via `innerHTML` into the Shadow
-  DOM — the intended trust model (Readability strips scripts). `escapeHTML` covers title/byline only.
+- `reader.js` injects `article.content` via `innerHTML` into the Shadow DOM (and the print iframe).
+  Vendored Readability is NOT a sanitizer (it keeps e.g. `<img onerror>`), so EVERY content path —
+  the Readability pass in `parseBaseDoc` and the `rawFallback` for picked/selected subtrees — runs its
+  HTML through `sanitizeContentHTML` (drops `<script>`/`<style>`/`<noscript>`, all inline `on*`
+  handlers, and `javascript:` URLs) before it becomes `article.content`. `escapeHTML` covers
+  title/byline only.
 - Listeners (`keydown` capture, `resize`) attach once at injection and persist for the tab's lifetime;
   `close()` only hides the host (inert when `!active`). Don't add re-attach logic without also handling
   the double-injection guard.
