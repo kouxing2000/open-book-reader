@@ -524,7 +524,7 @@
     });
 
     wrap.querySelector('.close').addEventListener('click', close);
-    wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(); });
+    wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(OBR.normalizeHost(location.href)); });
     wrap.querySelector('.report').addEventListener('click', () => {
       if (OBR.reportBroken) OBR.reportBroken({
         source: 'gallery-toolbar', mode: 'images',

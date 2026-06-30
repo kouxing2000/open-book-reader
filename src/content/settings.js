@@ -30,6 +30,10 @@
                            // (instant). prefers-reduced-motion forces instant regardless.
                            // 'curl'/'book' fall back to 'slide' for odd / single-page
                            // layouts (no center spine to hinge on).
+    readSelection: true,   // text reader: if text is selected when the reader opens, read
+                           // ONLY that selection instead of the whole page (a manual override
+                           // for when auto-extraction picks the wrong content). The selection
+                           // is read exactly as highlighted. Off = always read the whole page.
     printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
                            // so the saved copy links back to the article. Off = omit it
                            // (e.g. when sharing a PDF and you'd rather not expose the URL).
@@ -198,10 +202,13 @@
   // Ask the background service worker to open the options page. Content scripts can't
   // call chrome.runtime.openOptionsPage themselves (it's SW/extension-page only), so the
   // ⚙ button in the reader/gallery relays through a message. No-op in the test harness.
-  OBR.openOptions = function () {
+  // `site` (optional): a host to focus — the options page filters its site-rules + saved-picks
+  // lists to that site (with a "Show all" toggle). The reader/gallery pass the current host so
+  // opening settings from a page jumps straight to that site's overrides.
+  OBR.openOptions = function (site) {
     try {
       if (globalThis.chrome && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({ type: 'obr-open-options' }, () => { void chrome.runtime.lastError; });
+        chrome.runtime.sendMessage({ type: 'obr-open-options', site: site || '' }, () => { void chrome.runtime.lastError; });
       }
     } catch (e) { /* messaging unavailable */ }
   };
@@ -406,6 +413,99 @@
     });
     saveChain = saveChain.then(run, run); // chain through failures too
     return saveChain;
+  };
+
+  /* --------------------------------------------------------------- saved picks
+   * Per-site "read THIS block" override — the result of the ⌖ element picker. A
+   * small map keyed by normalized host -> { sel, t }, where `sel` is a CSS selector
+   * for the chosen content node. Stored in chrome.storage.SYNC (like the site
+   * mode-rules) so a site customization follows the user across devices; bounded by
+   * BOTH entry count (PICKS_MAX) and serialized bytes (PICKS_MAX_BYTES), LRU-dropping
+   * oldest, so it stays under the 8KB sync per-item quota even with long selectors. On
+   * a later visit the reader resolves `sel` and extracts from that node; a stale
+   * selector simply misses and falls back to whole-page. */
+  OBR.PICKS_KEY = 'obr_picks';
+  OBR.PICKS_MAX = 50;
+  OBR.PICKS_MAX_BYTES = 7500; // headroom under chrome.storage.sync QUOTA_BYTES_PER_ITEM (8192)
+
+  function syncArea() {
+    try { return (globalThis.chrome && chrome.storage && chrome.storage.sync) || null; }
+    catch (e) { return null; }
+  }
+
+  // The whole saved-pick map { host: { sel, t } } — for the Options list view.
+  OBR.loadPicks = function () {
+    return new Promise((resolve) => {
+      const area = syncArea();
+      if (!area) return resolve({});
+      try {
+        area.get(OBR.PICKS_KEY, (data) => resolve((data && data[OBR.PICKS_KEY]) || {}));
+      } catch (e) { resolve({}); }
+    });
+  };
+
+  // Resolve to the saved CSS selector string for `host`, or null when none/unavailable.
+  OBR.loadPick = function (host) {
+    return new Promise((resolve) => {
+      const area = syncArea();
+      if (!area || !host) return resolve(null);
+      try {
+        area.get(OBR.PICKS_KEY, (data) => {
+          const map = (data && data[OBR.PICKS_KEY]) || {};
+          const e = map[host];
+          resolve(e && typeof e.sel === 'string' ? e.sel : null);
+        });
+      } catch (e) { resolve(null); }
+    });
+  };
+
+  // Serialize pick writes (read-modify-write of the shared map), mirroring saveChain.
+  let picksChain = Promise.resolve();
+
+  // Resolves to TRUE on a confirmed write, FALSE on any failure (quota, unavailable,
+  // lastError) — so callers can tell the user instead of falsely reporting "saved".
+  OBR.savePick = function (host, sel, now) {
+    const run = () => new Promise((resolve) => {
+      const area = syncArea();
+      if (!area || !host || !sel) return resolve(false);
+      const stamp = typeof now === 'number' ? now : Date.now();
+      try {
+        area.get(OBR.PICKS_KEY, (data) => {
+          const map = (data && data[OBR.PICKS_KEY]) || {};
+          map[host] = { sel: String(sel), t: stamp };
+          const byAge = () => Object.keys(map).sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
+          // Bound BOTH entry count and serialized BYTES (a long structuralPath selector can be
+          // 100+ chars), LRU-dropping oldest, so we stay under the 8KB sync per-item quota.
+          let keys = byAge();
+          while (keys.length > OBR.PICKS_MAX) delete map[keys.shift()];
+          while (keys.length > 1 && JSON.stringify(map).length > OBR.PICKS_MAX_BYTES) delete map[(keys = byAge()).shift()];
+          try {
+            area.set({ [OBR.PICKS_KEY]: map },
+              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
+          } catch (e) { resolve(false); }
+        });
+      } catch (e) { resolve(false); }
+    });
+    picksChain = picksChain.then(run, run);
+    return picksChain;
+  };
+
+  OBR.clearPick = function (host) {
+    const run = () => new Promise((resolve) => {
+      const area = syncArea();
+      if (!area || !host) return resolve();
+      try {
+        area.get(OBR.PICKS_KEY, (data) => {
+          const map = (data && data[OBR.PICKS_KEY]) || {};
+          if (host in map) {
+            delete map[host];
+            try { area.set({ [OBR.PICKS_KEY]: map }, resolve); } catch (e) { resolve(); }
+          } else resolve();
+        });
+      } catch (e) { resolve(); }
+    });
+    picksChain = picksChain.then(run, run);
+    return picksChain;
   };
 
   // Estimated reading minutes from a word count (220 wpm). 0 when there's no

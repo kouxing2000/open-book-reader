@@ -43,6 +43,26 @@
     .site-row .site-host { flex: 1; font-size: 13px; font-variant-numeric: tabular-nums; word-break: break-all; }
     .site-row .site-remove { padding: 4px 9px; line-height: 1; }
     .site-empty { font-size: 12.5px; opacity: .5; padding: 8px 0; }
+    .pick-row { padding: 9px 0; border-bottom: 1px solid rgba(127,127,127,.12); }
+    .pick-head { display: flex; align-items: center; gap: 10px; }
+    .pick-head .pick-host { flex: 1; font-size: 13px; word-break: break-all; }
+    .pick-edit { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .pick-sel-input { flex: 1; min-width: 0; font-size: 12px; padding: 5px 8px; border-radius: 6px;
+      border: 1px solid rgba(127,127,127,.35); background: rgba(127,127,127,.06); color: inherit;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pick-sel-input.invalid { border-color: #d9534f; }
+    .pick-valid { width: 1.1em; text-align: center; font-size: 13px; opacity: .9; }
+    .pick-valid.ok { color: #2e9e5b; }
+    .pick-valid.bad { color: #d9534f; }
+    .pick-revert { padding: 4px 9px; line-height: 1; font-size: 14px; }
+    /* Keep long lists from ballooning the page — scroll within a bounded box instead. */
+    #picks, #sites { max-height: 340px; overflow-y: auto; }
+    .subhead-count { opacity: .5; font-weight: 400; font-size: 12px; }
+    /* ?site= scope banner. */
+    .site-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin: 0 0 18px; padding: 10px 14px; border-radius: 10px; font-size: 13.5px;
+      background: rgba(124,108,255,.12); border: 1px solid rgba(124,108,255,.38); }
+    .site-filter[hidden] { display: none; }
     details.guide { border: 1px solid rgba(127,127,127,.2); border-radius: 10px; padding: 2px 14px; margin: 12px 0 22px; background: rgba(127,127,127,.05); }
     details.guide > summary { cursor: pointer; font-size: 15px; font-weight: 600; padding: 10px 0; list-style: none; }
     details.guide > summary::-webkit-details-marker { display: none; }
@@ -59,6 +79,11 @@
 </head>
 <body>
   <h1>📖 Open Book Reader</h1>
+
+  <div id="siteFilterBar" class="site-filter" hidden>
+    <span>Showing site rules &amp; picks for <b id="siteFilterName"></b></span>
+    <button class="ghost" id="siteFilterClear">Show all</button>
+  </div>
 
   <details class="guide" id="guide">
     <summary>How to use &amp; shortcuts</summary>
@@ -153,9 +178,25 @@
     </div>
 
     <div class="row">
+      <label>Read selected text <span class="hint">If you've selected text on the page when you open the reader, read just that selection instead of the whole page - a quick override for when auto-extraction grabs the wrong content. Off = always read the whole page.</span></label>
+      <span><input type="checkbox" id="readSelection" /></span>
+    </div>
+
+    <div class="row">
       <label>Include source URL in print <span class="hint">When you 🖨 Print / Save as PDF, add a footer with the page's full URL so the saved copy links back to the article. Off = omit it.</span></label>
       <span><input type="checkbox" id="printSourceUrl" /></span>
     </div>
+
+    <div class="subhead">
+      Saved content picks <span id="picksCount" class="subhead-count"></span>
+      <span class="hint">When the reader grabs the wrong block, the <b>⌖ Pick</b> button lets you choose
+      the real content and <b>Save for this site</b>. Saved picks are listed here and reused
+      automatically on that site. You can <b>edit the CSS selector</b> to fine-tune it: a class like
+      <code>.article-body</code> is more robust than the auto-generated path, and a selector that
+      matches several blocks (e.g. <code>.intro, .post-body</code>) reads them all. The ✓/✗ marks
+      whether the selector is valid. Remove one to go back to automatic extraction.</span>
+    </div>
+    <div id="picks"></div>
   </section>
 
   <section class="card">

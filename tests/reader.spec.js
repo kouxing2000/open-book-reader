@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, injectReader, openReader, readState, clickInReader } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, injectReader, openReader, readState, clickInReader } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -590,4 +590,184 @@ test('settings persist across a full page reload', async ({ page }) => {
   await openReader(page);
 
   expect((await readState(page)).theme).toBe('light');
+});
+
+/* ----------------------------------- content override: selection / picker / saved pick.
+ * Uses the wrong-content fixture: #real-article (REAL-MARKER) is the genuine article;
+ * #decoy (DECOY-MARKER) is a larger block the whole-page extractor latches onto. */
+test.describe('content override', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoWrongContent(page);
+    await injectReader(page);
+  });
+
+  // Centre of the first REAL-MARKER paragraph, in viewport coords (for the picker).
+  const realParaPoint = (page) => page.evaluate(() => {
+    const r = document.querySelector('#real-article p').getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  });
+
+  test('whole-page extraction grabs the decoy (the bug this feature recovers from)', async ({ page }) => {
+    await openReader(page);
+    const s = await readState(page);
+    expect(s.contentText).toContain('DECOY-MARKER'); // the wrong block won, as designed
+  });
+
+  test('_extractFromNode scopes extraction to the chosen subtree', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const a = OBR._extractFromNode(document.getElementById('real-article'));
+      return { text: a && a.textContent };
+    });
+    expect(r.text).toContain('REAL-MARKER');
+    expect(r.text).not.toContain('DECOY-MARKER');
+  });
+
+  test('_cssPathFor builds a selector that round-trips to the element', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const el = document.getElementById('real-article');
+      const sel = OBR._cssPathFor(el);
+      return { sel, roundTrips: sel ? document.querySelector(sel) === el : false };
+    });
+    expect(r.sel).toBe('#real-article');
+    expect(r.roundTrips).toBe(true);
+  });
+
+  test('_cssPathFor prefers a readable class over a brittle nth-of-type path', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = '<section><p>a</p><p>b</p></section>'
+        + '<div class="reader-body-zone"><p>z</p></div>';
+      document.body.appendChild(wrap);
+      const el = wrap.querySelector('.reader-body-zone');
+      const sel = OBR._cssPathFor(el);
+      return { sel, roundTrips: sel ? document.querySelector(sel) === el : false };
+    });
+    expect(r.sel).toContain('reader-body-zone'); // used the stable class, not :nth-of-type
+    expect(r.sel).not.toContain('nth-of-type');
+    expect(r.roundTrips).toBe(true);
+  });
+
+  test('_cssPathFor uses a lone <article> landmark directly', async ({ page }) => {
+    const sel = await page.evaluate(() => {
+      const a = document.getElementById('real-article'); // the only <article> on the page
+      a.removeAttribute('id'); // force it past the id candidate
+      return OBR._cssPathFor(a);
+    });
+    expect(sel).toBe('article');
+  });
+
+  test('scoped extraction strips inline handlers and javascript: URLs (rawFallback is sanitized)', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const el = document.createElement('div'); // thin root → Readability bails → rawFallback path
+      el.innerHTML = '<p>hi</p><img src="x" onerror="window.__pwned=1">'
+        + '<a href="javascript:window.__pwned=1">x</a>';
+      document.body.appendChild(el);
+      const a = OBR._extractFromNode(el);
+      return { content: (a && a.content) || '' };
+    });
+    expect(r.content).not.toMatch(/onerror/i);     // inline handler stripped
+    expect(r.content).not.toMatch(/javascript:/i); // javascript: URL neutralized
+  });
+
+  test('_extractFromSelector merges every match of a multi-node selector', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const a = OBR._extractFromSelector('#real-article p'); // all three paragraphs
+      return { text: a && a.textContent };
+    });
+    expect(r.text).toContain('REAL-MARKER'); // 1st paragraph
+    expect(r.text).toContain('brass key');   // 3rd paragraph → merged, not just the first match
+    expect(r.text).not.toContain('DECOY-MARKER');
+  });
+
+  test('reads ONLY the selected text when text is selected', async ({ page }) => {
+    await page.evaluate(() => {
+      const sel = getSelection();
+      sel.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById('real-article'));
+      sel.addRange(range);
+    });
+    await openReader(page);
+    const s = await readState(page);
+    expect(s.contentText).toContain('REAL-MARKER');
+    expect(s.contentText).not.toContain('DECOY-MARKER');
+  });
+
+  test('ignores the selection when readSelection is off (reads the whole page)', async ({ page }) => {
+    await page.evaluate(() => OBR.saveSettings({ readSelection: false }));
+    await page.evaluate(() => {
+      const sel = getSelection();
+      sel.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById('real-article'));
+      sel.addRange(range);
+    });
+    await openReader(page);
+    const s = await readState(page);
+    expect(s.contentText).toContain('DECOY-MARKER'); // selection ignored → whole-page result
+  });
+
+  test('the ⌖ Pick button enters picker mode and reads the clicked block', async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '.obr-btn[data-act="pick"]');
+
+    // Picker host is up and the reader is hidden so the page shows through.
+    const picking = await page.evaluate(() => ({
+      pickHostShown: !!document.getElementById('obr-pick-host')
+        && getComputedStyle(document.getElementById('obr-pick-host')).display !== 'none',
+      readerHidden: getComputedStyle(document.getElementById('obr-host')).display === 'none',
+    }));
+    expect(picking.pickHostShown).toBe(true);
+    expect(picking.readerHidden).toBe(true);
+
+    const p = await realParaPoint(page);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.click(p.x, p.y);
+
+    await expect.poll(() => readState(page).then((s) => s.contentText)).toContain('REAL-MARKER');
+    const s = await readState(page);
+    expect(s.contentText).not.toContain('DECOY-MARKER');
+    expect(s.hostDisplay).not.toBe('none'); // reader restored after the pick
+  });
+
+  test('Escape cancels the picker and leaves the original content untouched', async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    await page.keyboard.press('Escape');
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.getElementById('obr-host')).display))
+      .not.toBe('none'); // reader restored
+    const s = await readState(page);
+    expect(s.contentText).toContain('DECOY-MARKER'); // unchanged — cancel re-extracts nothing
+    const pickGone = await page.evaluate(() =>
+      getComputedStyle(document.getElementById('obr-pick-host')).display === 'none');
+    expect(pickGone).toBe(true);
+  });
+
+  test('saves a pick per site, auto-applies it on reopen, then clears it', async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    const p = await realParaPoint(page);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.click(p.x, p.y);
+    await expect.poll(() => readState(page).then((s) => s.contentText)).toContain('REAL-MARKER');
+
+    // Save for this site → persisted to chrome.storage.sync under obr_picks.
+    await clickInReader(page, '.obr-pick-hint [data-pick="save"]');
+    await expect
+      .poll(() => page.evaluate(() => new Promise((res) =>
+        chrome.storage.sync.get('obr_picks', (d) => res(Object.keys(d.obr_picks || {}).length)))))
+      .toBeGreaterThan(0);
+
+    // Reopen with no selection → the saved pick auto-applies (reads REAL, not DECOY).
+    await page.evaluate(() => OBR.close());
+    await openReader(page);
+    let s = await readState(page);
+    expect(s.contentText).toContain('REAL-MARKER');
+    expect(s.contentText).not.toContain('DECOY-MARKER');
+
+    // Clear the pick → falls back to the whole page (the decoy) again.
+    await clickInReader(page, '.obr-pick-hint [data-pick="clear"]');
+    await expect.poll(() => readState(page).then((x) => x.contentText)).toContain('DECOY-MARKER');
+  });
 });

@@ -256,7 +256,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // The reader/gallery overlay (a content script) can't call openOptionsPage itself —
   // that API exists only in the SW/extension pages. The ⚙ button relays here.
   if (msg.type === 'obr-open-options') {
-    try { chrome.runtime.openOptionsPage(); } catch (e) { /* */ }
+    try {
+      const site = msg.site && String(msg.site).trim();
+      // With a site, open the options page scoped to it (?site=...); else the normal page
+      // (openOptionsPage focuses an existing options tab — keep that for the unscoped case).
+      if (site) {
+        chrome.tabs.create({ url: chrome.runtime.getURL('src/options/options.html?site=' + encodeURIComponent(site)) });
+      } else {
+        chrome.runtime.openOptionsPage();
+      }
+    } catch (e) { /* */ }
     sendResponse({ ok: true });
     return true;
   }

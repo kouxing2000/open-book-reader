@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wrong Content Test Page</title>
+</head>
+<body>
+  <header><nav>Home · News · About</nav></header>
+
+  <!-- The GENUINE article. Short, in its own block with a stable id, near the top
+       so the element picker can reach it without scrolling. Marked REAL-MARKER. -->
+  <article id="real-article">
+    <h1>The Lighthouse Keeper</h1>
+    <p>REAL-MARKER The lighthouse keeper rose before dawn each morning to trim the wick and polish the
+    great lens, a ritual he had repeated for thirty winters without once resenting the early cold. The
+    light, he liked to say, did not keep itself, and the ships in the dark had no patience for excuses.</p>
+    <p>He kept a journal of the weather and the passing vessels, noting the names painted on their hulls
+    and the cargoes he could only guess at, and over the years the salt-stained pages became a quiet
+    chronicle of a coast that the maps never bothered to describe in such loving and stubborn detail.</p>
+    <p>When the automatic beacon finally replaced him, he did not protest, but he asked to keep the old
+    brass key, and he carried it in his coat until the end, a small heavy reminder that for thirty years
+    the safety of strangers had rested, every single night, in his careful and unfailing hands.</p>
+  </article>
+
+  <!-- A much larger DECOY block ("trending"), which the whole-page extractor latches
+       onto because it carries the most text. Marked DECOY-MARKER. -->
+  <div id="decoy">
+    <h2>Trending across the network</h2>
+    <p>DECOY-MARKER Investors spent the week parsing the central bank's latest guidance, and by Friday the
+    consensus had shifted toward a more cautious read of the months ahead, with several large funds
+    quietly rotating out of the sectors that had carried the rally and into the defensive names that
+    tend to weather a slowdown with less drama and fewer sleepless nights for their managers.</p>
+    <p>Across the ocean, negotiators emerged from another marathon session with little to show beyond a
+    joint statement promising further talks, the kind of diplomatic placeholder that satisfies no one
+    yet keeps the process technically alive, and analysts were left to read the body language of the
+    principals for clues the communique itself had been carefully drafted to withhold.</p>
+    <p>In technology, a much-anticipated product launch landed to mixed reviews, praised for its polish
+    and panned for its price, while a rival used the moment to leak details of its own forthcoming
+    device, ensuring that the news cycle would belong to the category rather than to any single company
+    for at least another restless and speculation-heavy week.</p>
+    <p>Sports offered its usual consolations and cruelties, as a veteran chasing one last title watched
+    it slip away in the closing minutes, and a newcomer nobody had picked seized the headlines instead,
+    reminding everyone why the games are played at all rather than simply simulated on the strength of
+    the statistics that the experts had assembled with such misplaced and public confidence.</p>
+    <p>Culture critics argued, as they always do, about whether the season's most talked-about film
+    deserved its acclaim or merely its marketing budget, and the argument itself became a small cultural
+    event, generating more words than the film contained frames and proving once again that the
+    conversation about a thing now reliably outlasts and outweighs the thing itself.</p>
+    <p>Closer to home, a city council meeting that should have been routine stretched past midnight as
+    residents lined up to speak about a proposed development, their testimony ranging from the technical
+    to the tearful, and the vote, when it finally came, pleased neither side completely and so was
+    pronounced, by the weary chair, very nearly a fair compromise.</p>
+  </div>
+
+  <footer><p>Footer boilerplate that should not appear in any extracted article.</p></footer>
+</body>
+</html>

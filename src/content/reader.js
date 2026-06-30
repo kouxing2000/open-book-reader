@@ -20,7 +20,10 @@
   const ICON_IMAGES = OBR.ICONS.images;
 
   let settings = Object.assign({}, OBR.DEFAULTS);
-  let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl;
+  let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, pickHintEl;
+  // Element-picker mode (the ⌖ Pick override): a separate Shadow host so its highlight
+  // box / instruction bar can't disturb the reader's styles, plus the live hover target.
+  let pickerActive = false, pickHost = null, pickRoot = null, pickBox = null, pickLabel = null, pickHoverNode = null;
   let active = false, built = false;
   let chromeTimer = null, overControls = false;
   let currentSpread = 0, totalSpreads = 1, totalColumns = 1;
@@ -38,6 +41,23 @@
   // The article Readability last parsed (held so Print can reuse it without re-parsing).
   let lastArticle = null;
   let printing = false; // re-entrancy guard for printReader (the native print dialog is modal)
+  // Where the current content came from, driving the ⌖ Pick hint banner:
+  // 'whole' (whole page) | 'selection' (read a text selection) | 'pick-manual'
+  // (just picked a block — offer to save) | 'pick-saved' (a saved per-site pick
+  // auto-applied — offer full-page / clear). pickNode is the live element a pick
+  // is reading from (so "Save for this site" can derive its selector).
+  let contentSource = 'whole', pickNode = null;
+
+  // The current usable text selection, or null. "Usable" = a non-collapsed
+  // selection with enough text to be a deliberate choice (guards against a stray
+  // click-drag selecting a word or two). Read straight off the live page.
+  function currentSelection() {
+    try {
+      const s = globalThis.getSelection && getSelection();
+      if (s && s.rangeCount && !s.isCollapsed && s.toString().trim().length >= 40) return s;
+    } catch (e) { /* getSelection unavailable */ }
+    return null;
+  }
 
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -217,6 +237,28 @@
     .obr-pages pre { white-space: pre-wrap; word-break: break-word; background: rgba(127,127,127,.12); padding: .7em; border-radius: 4px; break-inside: avoid; }
     .obr-doc-h1 { font-size: 1.7em; line-height: 1.2; margin: 0 0 .8em; }
     .obr-byline { opacity: .6; font-size: .85em; margin: 0 0 1.4em; }
+
+    /* "Wrong content?" / saved-pick affordance — a small pill above the footer.
+       Auto-hides with the chrome (shares .obr-chrome-hidden), dismissible. */
+    .obr-pick-hint {
+      position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%);
+      z-index: 12; display: none; align-items: center; gap: 9px;
+      padding: 7px 9px 7px 13px; border-radius: 11px; font-size: 12.5px;
+      background: rgba(var(--obr-bg),.98); color: inherit;
+      border: 1px solid rgba(127,127,127,.28); box-shadow: 0 6px 20px rgba(0,0,0,.30);
+      transition: opacity .25s ease, transform .25s ease; max-width: 92%;
+    }
+    .obr-pick-hint.show { display: flex; }
+    .obr-chrome-hidden .obr-pick-hint { opacity: 0; pointer-events: none;
+      transform: translateX(-50%) translateY(8px); }
+    .obr-pick-msg { opacity: .82; }
+    .obr-pick-hint .obr-btn { background: #7c6cff; color: #fff; padding: 5px 11px; }
+    .obr-pick-hint .obr-btn:hover { background: #6a59f2; }
+    .obr-pick-x {
+      border: none; cursor: pointer; background: transparent; color: inherit;
+      opacity: .55; font-size: 13px; padding: 4px 6px; border-radius: 6px; font-family: inherit;
+    }
+    .obr-pick-x:hover { opacity: 1; background: rgba(127,127,127,.18); }
     `;
   }
 
@@ -244,6 +286,7 @@
             <button class="obr-seg-btn is-active" data-act="text" aria-current="true" title="You are in text reader">${ICON_BOOK}<span>Text</span></button>
             <button class="obr-seg-btn" data-act="images" title="Switch to image gallery">${ICON_IMAGES}<span>Images</span><span class="obr-seg-badge" hidden></span></button>
           </span>
+          <button class="obr-btn" data-act="pick" title="Wrong content? Pick the block on the page">⌖ Pick</button>
           <button class="obr-btn" data-act="print" title="Print or save as PDF (P)">🖨 Print</button>
           <button class="obr-btn" data-act="report" title="Report a problem on this page (opens an email)">⚠ Report</button>
           <button class="obr-btn" data-act="settings" title="Open settings">⚙ Settings</button>
@@ -262,6 +305,7 @@
         <span class="obr-indicator"></span>
         <span class="obr-hint">← / → flip · ↑↓ / Space · +/− font · T theme · P print · Esc exit</span>
       </div>
+      <div class="obr-pick-hint"></div>
       <div class="obr-progress"><div class="obr-progress-fill"></div></div>`;
     root.appendChild(overlay);
 
@@ -272,6 +316,7 @@
     paperEl = overlay.querySelector('.obr-paper');
     indicatorEl = overlay.querySelector('.obr-indicator');
     progressFillEl = overlay.querySelector('.obr-progress-fill');
+    pickHintEl = overlay.querySelector('.obr-pick-hint');
 
     overlay.querySelector('.obr-zone-left').addEventListener('click', () => flip(-1));
     overlay.querySelector('.obr-zone-right').addEventListener('click', () => flip(1));
@@ -310,11 +355,12 @@
       source: 'reader-toolbar', mode: 'text',
       proseWords: OBR._articleWordCount ? OBR._articleWordCount() : undefined,
     });
-    if (act === 'settings') return OBR.openOptions && OBR.openOptions();
+    if (act === 'settings') return OBR.openOptions && OBR.openOptions(OBR.normalizeHost(location.href));
     if (act === 'theme') return cycleTheme();
     if (act === 'font+') return changeFont(1);
     if (act === 'font-') return changeFont(-1);
     if (act === 'columns') return cycleColumns();
+    if (act === 'pick') return startPicker();
     if (act === 'print') return printReader();
     if (act === 'text') return; // already in the text reader — active segment is a no-op
     if (act === 'images') { close(); if (OBR.openGallery) OBR.openGallery(); return; }
@@ -506,43 +552,448 @@
     return imageUrlSet(new DOMParser().parseFromString(html, 'text/html'));
   }
 
+  // Run the full extraction pipeline against a `base` DOCUMENT clone: hydrate lazy
+  // images, parse with Readability, then the image-rescue re-parse. Shared by the
+  // whole-page path (extractArticle) and the scoped paths (a picked node / a
+  // selection) so all three behave identically. `base` must be a Document (kept a
+  // clone of the live document, so baseURI/documentURI resolve relative URLs).
+  // Strip live-script vectors from an extracted-content HTML string: <script>/<style>/
+  // <noscript>, every inline on* handler, and javascript: URLs. Vendored Readability is NOT
+  // a sanitizer (it keeps e.g. <img onerror>), and we inject content via innerHTML into the
+  // reader's Shadow DOM and the print iframe — so EVERY content path (Readability and the
+  // rawFallback) runs through this, making the "no live handlers" trust model actually true.
+  // innerHTML never executes <script> or fires handlers on insertion; we remove on* before any
+  // later event (e.g. an <img onerror> after hydrateLazyImages rewrites its src) can fire.
+  function sanitizeContentHTML(html) {
+    try {
+      const doc = new DOMParser().parseFromString(html || '', 'text/html');
+      doc.querySelectorAll('script, style, noscript').forEach((n) => n.remove());
+      doc.querySelectorAll('*').forEach((n) => {
+        for (const a of Array.from(n.attributes)) {
+          const name = a.name.toLowerCase();
+          if (name.startsWith('on')) n.removeAttribute(a.name);
+          else if ((name === 'href' || name === 'src' || name === 'xlink:href')
+            && /^\s*javascript:/i.test(a.value)) n.removeAttribute(a.name);
+        }
+      });
+      return doc.body.innerHTML;
+    } catch (e) { return html; }
+  }
+
+  function parseBaseDoc(base) {
+    hydrateLazyImages(base);
+    // parse() mutates the document it's given, so hand each pass its own copy.
+    let article = new Readability(base.cloneNode(true)).parse();
+    if (!article || !article.content) return article || null;
+
+    // Rescue image-dominant posts (forums, photo threads). Readability is tuned
+    // for prose: its conditional cleaning discards blocks that are mostly images
+    // with little text, so an image-only post vanishes entirely. If the page is
+    // image-rich yet the clean pass yielded thin text AND kept under half those
+    // images, re-extract with conditional cleaning disabled and take whichever
+    // pass preserves more images. Keyed on image/text ratios only — no site,
+    // selector, or attribute name is hardcoded.
+    const pageImgs = imageUrlSet(base);
+    const keptImgs = imageUrlSetFromHtml(article.content);
+    const textLen = (article.textContent || '').replace(/\s+/g, '').length;
+    if (pageImgs.size >= 4 && keptImgs.size * 2 < pageImgs.size && textLen < 1500) {
+      const loose = new Readability(base.cloneNode(true));
+      // Disable conditional cleaning by clearing its flag. Reaches into the
+      // vendored Readability's internals (_flags / FLAG_CLEAN_CONDITIONALLY,
+      // present as of the bundled version); guard so a future upstream rename
+      // degrades to a normal parse instead of silently NaN-ing the flag.
+      if (typeof loose._flags === 'number' && loose.FLAG_CLEAN_CONDITIONALLY) {
+        loose._flags &= ~loose.FLAG_CLEAN_CONDITIONALLY;
+      }
+      const alt = loose.parse();
+      if (alt && alt.content && imageUrlSetFromHtml(alt.content).size > keptImgs.size) {
+        article = alt;
+      }
+    }
+    article.content = sanitizeContentHTML(article.content); // make the trust model real
+    return article;
+  }
+
   function extractArticle() {
     try {
-      const base = document.cloneNode(true);
-      hydrateLazyImages(base);
-      // parse() mutates the document it's given, so hand each pass its own copy.
-      let article = new Readability(base.cloneNode(true)).parse();
-      if (!article || !article.content) return article || null;
-
-      // Rescue image-dominant posts (forums, photo threads). Readability is tuned
-      // for prose: its conditional cleaning discards blocks that are mostly images
-      // with little text, so an image-only post vanishes entirely. If the page is
-      // image-rich yet the clean pass yielded thin text AND kept under half those
-      // images, re-extract with conditional cleaning disabled and take whichever
-      // pass preserves more images. Keyed on image/text ratios only — no site,
-      // selector, or attribute name is hardcoded.
-      const pageImgs = imageUrlSet(base);
-      const keptImgs = imageUrlSetFromHtml(article.content);
-      const textLen = (article.textContent || '').replace(/\s+/g, '').length;
-      if (pageImgs.size >= 4 && keptImgs.size * 2 < pageImgs.size && textLen < 1500) {
-        const loose = new Readability(base.cloneNode(true));
-        // Disable conditional cleaning by clearing its flag. Reaches into the
-        // vendored Readability's internals (_flags / FLAG_CLEAN_CONDITIONALLY,
-        // present as of the bundled version); guard so a future upstream rename
-        // degrades to a normal parse instead of silently NaN-ing the flag.
-        if (typeof loose._flags === 'number' && loose.FLAG_CLEAN_CONDITIONALLY) {
-          loose._flags &= ~loose.FLAG_CLEAN_CONDITIONALLY;
-        }
-        const alt = loose.parse();
-        if (alt && alt.content && imageUrlSetFromHtml(alt.content).size > keptImgs.size) {
-          article = alt;
-        }
-      }
-      return article;
+      return parseBaseDoc(document.cloneNode(true));
     } catch (e) {
       console.warn('[OpenBookReader] Readability failed:', e);
     }
     return null;
+  }
+
+  // Build a full-document clone whose <body> is exactly `el` (a clone of it). We
+  // clone the whole document (not just `el`) so the cloned <head> — and thus
+  // baseURI/documentURI — survives, letting Readability resolve relative image/
+  // link URLs against the real page just as the whole-page path does. importNode
+  // CLONES `el`, so the live page is never mutated.
+  function scopedBaseDoc(el) {
+    const base = document.cloneNode(true);
+    base.body.replaceChildren(base.importNode(el, true));
+    return base;
+  }
+
+  // Last-resort article object built straight from a node's own HTML, used when
+  // Readability rejects a small/odd scoped root (a short selection, a bare <div>).
+  // This path bypasses Readability, so it relies on the same sanitizeContentHTML pass
+  // the Readability path uses. Guarantees the user sees exactly what they picked/selected.
+  function rawFallback(el) {
+    const clone = el.cloneNode(true);
+    hydrateLazyImages(clone);
+    return {
+      title: document.title || '',
+      byline: '',
+      content: sanitizeContentHTML(clone.innerHTML),
+      textContent: clone.textContent || '',
+    };
+  }
+
+  // Extract from a single live element (a picked node or a selection wrapper):
+  // scope Readability to just that subtree, falling back to the node's raw HTML
+  // when Readability bails. Returns the article object or null.
+  function extractFromNode(el) {
+    if (!el) return null;
+    try {
+      const article = parseBaseDoc(scopedBaseDoc(el));
+      if (article && article.content) return article;
+      return rawFallback(el);
+    } catch (e) {
+      console.warn('[OpenBookReader] scoped extraction failed:', e);
+      try { return rawFallback(el); } catch (_) { return null; }
+    }
+  }
+
+  // Extract from the user's current text selection — honoring the EXACT selected
+  // range (not its container), so "read the selection" means just what's
+  // highlighted. cloneContents() gives a fragment of the selection; we wrap it and
+  // run it through the scoped path.
+  function extractFromSelection(sel) {
+    try {
+      if (!sel || !sel.rangeCount) return null;
+      const wrapper = document.createElement('div');
+      for (let i = 0; i < sel.rangeCount; i++) {
+        wrapper.appendChild(sel.getRangeAt(i).cloneContents());
+      }
+      return extractFromNode(wrapper);
+    } catch (e) {
+      console.warn('[OpenBookReader] selection extraction failed:', e);
+    }
+    return null;
+  }
+
+  // Exposed for tests (underscore = internal/testable, like _buildPrintDoc).
+  OBR._extractFromNode = extractFromNode;
+  OBR._extractFromSelection = extractFromSelection;
+
+  /* ------------------------------------------------------------ element picker
+   * A uBlock-Origin-style picker: hover the real page, the block under the cursor
+   * highlights, click reads it. The manual override for when auto-extraction (or a
+   * saved pick) chose the wrong content. Runs OVER the live page — so it hides the
+   * reader host and temporarily unlocks page scroll (the same toggles open()/close()
+   * and the gallery's hydratePage use), then restores them on exit. The live page is
+   * never mutated; extraction clones the picked node. */
+  function pickCss() {
+    return `
+    :host { all: initial; }
+    .obr-pickbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 2147483647; height: 40px;
+      display: flex; align-items: center; justify-content: center; gap: 14px;
+      background: rgba(20,21,26,.95); color: #f0ece0;
+      font: 13px/1.4 system-ui, -apple-system, sans-serif; box-shadow: 0 2px 12px rgba(0,0,0,.45);
+    }
+    .obr-pickbar b { color: #9b8cff; }
+    .obr-pickbar button { border: none; cursor: pointer; padding: 5px 13px; border-radius: 6px;
+      background: rgba(255,255,255,.16); color: inherit; font: inherit; }
+    .obr-pickbar button:hover { background: rgba(255,255,255,.30); }
+    .obr-pickbox { position: fixed; z-index: 2147483646; pointer-events: none;
+      background: rgba(124,108,255,.20); border: 2px solid #7c6cff; border-radius: 3px;
+      transition: left .04s linear, top .04s linear, width .04s linear, height .04s linear; }
+    .obr-picklabel { position: fixed; z-index: 2147483647; pointer-events: none;
+      padding: 2px 7px; border-radius: 4px; font: 11px/1.4 system-ui, sans-serif;
+      background: #7c6cff; color: #fff; white-space: nowrap;
+      max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+    [hidden] { display: none !important; }
+    `;
+  }
+
+  function buildPickHost() {
+    if (pickHost) return;
+    ({ host: pickHost, root: pickRoot } = OBR.makeShadowHost('obr-pick-host'));
+    const wrap = document.createElement('div');
+    wrap.innerHTML =
+      `<div class="obr-pickbar">
+         <span><b>Pick the content</b> — hover a block, click to read it. <b>↑</b> widen · <b>↓</b> narrow · <b>Esc</b> cancel</span>
+         <button class="obr-pickcancel">Cancel</button>
+       </div>
+       <div class="obr-pickbox" hidden></div>
+       <div class="obr-picklabel" hidden></div>`;
+    pickRoot.appendChild(wrap);
+    OBR.adoptStyles(pickRoot, pickCss());
+    pickBox = wrap.querySelector('.obr-pickbox');
+    pickLabel = wrap.querySelector('.obr-picklabel');
+    wrap.querySelector('.obr-pickcancel').addEventListener('click', () => endPicker(null));
+  }
+
+  function positionPickBox(el) {
+    const r = el.getBoundingClientRect();
+    pickBox.hidden = false;
+    pickBox.style.left = r.left + 'px';
+    pickBox.style.top = r.top + 'px';
+    pickBox.style.width = r.width + 'px';
+    pickBox.style.height = r.height + 'px';
+    const tag = el.tagName.toLowerCase();
+    const id = el.id ? '#' + el.id : '';
+    const txt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    pickLabel.hidden = false;
+    pickLabel.textContent = tag + id + (txt ? ' · ' + txt : '');
+    pickLabel.style.left = Math.max(2, r.left) + 'px';
+    pickLabel.style.top = Math.max(44, r.top - 20) + 'px'; // clear the 40px instruction bar
+  }
+
+  // elementFromPoint returns our own (open) shadow host retargeted to pickHost when the
+  // pointer is over the instruction bar; the box/label are pointer-events:none so they're
+  // transparent. Skip the host and the bare <html>/<body> so we highlight real blocks.
+  function pickTargetAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el || el === pickHost || (pickHost && pickHost.contains(el))) return null;
+    if (el === document.documentElement || el === document.body) return null;
+    return el;
+  }
+
+  function onPickMove(e) {
+    const el = pickTargetAt(e.clientX, e.clientY);
+    if (!el) return;
+    pickHoverNode = el;
+    positionPickBox(el);
+  }
+
+  function onPickClick(e) {
+    if (pickHost && pickHost.contains(e.target)) return; // let the Cancel button work
+    e.preventDefault();
+    e.stopPropagation();
+    const node = pickHoverNode || pickTargetAt(e.clientX, e.clientY);
+    if (node) endPicker(node);
+  }
+
+  function onPickScroll() {
+    if (pickHoverNode) positionPickBox(pickHoverNode);
+  }
+
+  function onPickKey(e) {
+    if (!pickerActive) return;
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopPropagation(); endPicker(null);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      const p = pickHoverNode && pickHoverNode.parentElement;
+      if (p && p !== document.documentElement && p !== document.body) { pickHoverNode = p; positionPickBox(p); }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault(); e.stopPropagation();
+      const c = pickHoverNode && pickHoverNode.firstElementChild;
+      if (c) { pickHoverNode = c; positionPickBox(c); }
+    }
+  }
+
+  function startPicker() {
+    if (pickerActive || !active) return;
+    endActiveFlip();
+    buildPickHost();
+    pickerActive = true;
+    pickHoverNode = null;
+    pickBox.hidden = true;
+    pickLabel.hidden = true;
+    pickHost.style.display = '';
+    // Reveal the real page: hide the reader and unlock scroll so the user can reach
+    // the content (restored in endPicker, mirroring open()/close()).
+    host.style.display = 'none';
+    document.documentElement.style.overflow = '';
+    document.addEventListener('mousemove', onPickMove, true);
+    document.addEventListener('click', onPickClick, true);
+    document.addEventListener('keydown', onPickKey, true);
+    window.addEventListener('scroll', onPickScroll, true);
+  }
+
+  function endPicker(node) {
+    if (!pickerActive) return;
+    pickerActive = false;
+    document.removeEventListener('mousemove', onPickMove, true);
+    document.removeEventListener('click', onPickClick, true);
+    document.removeEventListener('keydown', onPickKey, true);
+    window.removeEventListener('scroll', onPickScroll, true);
+    if (pickHost) pickHost.style.display = 'none';
+    // Restore the reader: re-lock scroll and show the host again.
+    document.documentElement.style.overflow = 'hidden';
+    host.style.display = '';
+    if (node) {
+      lastArticle = extractFromNode(node);
+      pickNode = node;
+      contentSource = 'pick-manual';
+      posKey = ''; // a one-shot manual pick: don't resume/persist the whole-page position
+      restoreFraction = null;
+      currentSpread = 0;
+      renderContent(lastArticle);
+      updatePickHint();
+      requestAnimationFrame(() => layout(false));
+      watchMedia();
+    } else {
+      // Cancelled: content is unchanged, but a window resize may have been skipped while
+      // the overlay was hidden — re-anchor to the current viewport so pagination is fresh.
+      requestAnimationFrame(() => layout(true));
+    }
+    showChrome();
+  }
+
+  /* ------------------------------------------------------------ pick hint banner */
+  // Render the small affordance above the footer for the current contentSource.
+  // 'whole' invites the picker; 'pick-manual' offers to save; 'pick-saved' offers to
+  // drop back to the full page or clear the saved pick. 'selection' shows nothing.
+  function updatePickHint() {
+    if (!pickHintEl) return;
+    let html = '';
+    if (contentSource === 'whole') {
+      html = `<span class="obr-pick-msg">Wrong content?</span>
+        <button class="obr-btn" data-pick="start">⌖ Pick the block</button>`;
+    } else if (contentSource === 'pick-manual') {
+      html = `<span class="obr-pick-msg">Reading the block you picked.</span>
+        <button class="obr-btn" data-pick="save">Save for this site</button>`;
+    } else if (contentSource === 'pick-saved') {
+      html = `<span class="obr-pick-msg">Auto-picked content for this site.</span>
+        <button class="obr-btn" data-pick="fullpage">Use full page</button>
+        <button class="obr-btn" data-pick="clear">Clear pick</button>`;
+    }
+    if (!html) { pickHintEl.classList.remove('show'); pickHintEl.innerHTML = ''; return; }
+    html += `<button class="obr-pick-x" data-pick="dismiss" title="Dismiss">✕</button>`;
+    pickHintEl.innerHTML = html;
+    pickHintEl.querySelectorAll('[data-pick]').forEach((b) =>
+      b.addEventListener('click', () => handlePickHint(b.dataset.pick)));
+    pickHintEl.classList.add('show');
+  }
+
+  function handlePickHint(action) {
+    if (action === 'dismiss') return pickHintEl.classList.remove('show');
+    if (action === 'start') return startPicker();
+    if (action === 'save') return saveCurrentPick();
+    if (action === 'fullpage') return reExtractWholePage();
+    if (action === 'clear') return clearCurrentPick();
+  }
+
+  /* ------------------------------------------------------ saved-pick selectors */
+  // Class names that read as semantic content containers — preferred over utility/
+  // hashed classes so a saved selector is both robust and human-readable.
+  const SEMANTIC_CLASS = /(content|article|post|entry|body|main|story|prose|read|text)/i;
+
+  // el's classes that are plausibly stable (no hashes / build-tool gibberish), ranked
+  // semantic-first then shortest. These make a selector survive layout tweaks and other
+  // pages of the same site far better than an nth-of-type path does.
+  function rankClasses(el) {
+    const list = Array.prototype.filter.call(el.classList || [], (c) =>
+      /^[A-Za-z][\w-]*$/.test(c) && c.length >= 3 && c.length <= 40 && !/\d{4,}/.test(c) && !/^css-/i.test(c));
+    return list.sort((a, b) => (SEMANTIC_CLASS.test(b) - SEMANTIC_CLASS.test(a)) || (a.length - b.length));
+  }
+
+  // Last-resort exact path: walk up to the nearest unique id, emitting tag:nth-of-type
+  // segments. Brittle (breaks on layout change / differs per page) but always exact.
+  function structuralPath(el) {
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && node !== document.documentElement) {
+      if (node.id && document.querySelectorAll('#' + CSS.escape(node.id)).length === 1) {
+        parts.unshift('#' + CSS.escape(node.id));
+        break;
+      }
+      const tag = node.tagName.toLowerCase();
+      const parent = node.parentElement;
+      if (!parent) { parts.unshift(tag); break; }
+      const sameTag = Array.prototype.filter.call(parent.children, (c) => c.tagName === node.tagName);
+      parts.unshift(sameTag.length > 1 ? tag + ':nth-of-type(' + (sameTag.indexOf(node) + 1) + ')' : tag);
+      node = parent;
+    }
+    const sel = parts.join(' > ');
+    try { return document.querySelector(sel) === el ? sel : null; } catch (e) { return null; }
+  }
+
+  // Build a CSS selector for persisting a pick. Prefer the SHORTEST readable selector
+  // that uniquely identifies `el` on this page — a unique id, then a lone <main>/<article>
+  // or [role], then a tag+stable-class / bare class — because those also tend to keep
+  // matching across the site's other pages and survive markup changes. Falls back to an
+  // exact structural path only when nothing readable is unique. Returns null if even that
+  // can't round-trip (then we don't offer Save). Exposed for tests.
+  function cssPathFor(el) {
+    if (!el || el.nodeType !== 1) return null;
+    try {
+      const uniq = (sel) => {
+        try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === el; }
+        catch (e) { return false; }
+      };
+      const tag = el.tagName.toLowerCase();
+      const role = el.getAttribute('role');
+      const cands = [];
+      if (el.id) cands.push('#' + CSS.escape(el.id));
+      if (tag === 'main' || tag === 'article') cands.push(tag);
+      if (role) cands.push(tag + '[role="' + role + '"]', '[role="' + role + '"]');
+      for (const cls of rankClasses(el)) cands.push(tag + '.' + CSS.escape(cls), '.' + CSS.escape(cls));
+      for (const c of cands) if (uniq(c)) return c;
+      return structuralPath(el);
+    } catch (e) { return null; }
+  }
+  OBR._cssPathFor = cssPathFor;
+
+  // Resolve a saved selector to an article. 0 matches → null (caller falls back to the
+  // whole page); 1 → that block; N>1 → all matches MERGED in document order (so a
+  // multi-matching selector like ".intro, .body" reads every region as one document).
+  // This is what makes the editable selector flexible without a multi-select picker.
+  function extractFromSelector(sel) {
+    if (!sel) return null;
+    let nodes;
+    try { nodes = document.querySelectorAll(sel); } catch (e) { return null; }
+    if (!nodes || !nodes.length) return null;
+    if (nodes.length === 1) return extractFromNode(nodes[0]);
+    const wrapper = document.createElement('div');
+    nodes.forEach((n) => wrapper.appendChild(n.cloneNode(true)));
+    return extractFromNode(wrapper);
+  }
+  OBR._extractFromSelector = extractFromSelector;
+
+  // Transient one-line message in the hint banner (e.g. a save confirmation/error).
+  function flashPickMsg(msg) {
+    if (!pickHintEl) return;
+    pickHintEl.innerHTML = `<span class="obr-pick-msg">${escapeHTML(msg)}</span>`
+      + `<button class="obr-pick-x" data-pick="dismiss" title="Dismiss">✕</button>`;
+    pickHintEl.querySelector('[data-pick]').addEventListener('click', () => pickHintEl.classList.remove('show'));
+    pickHintEl.classList.add('show');
+  }
+
+  // Re-render with the whole-page extraction (the "Use full page" affordance). Does
+  // NOT clear a saved pick — it's a one-shot escape for this session.
+  function reExtractWholePage() {
+    lastArticle = extractArticle();
+    pickNode = null;
+    contentSource = 'whole';
+    posKey = OBR.positionKey ? OBR.positionKey() : '';
+    restoreFraction = null;
+    currentSpread = 0;
+    renderContent(lastArticle);
+    updatePickHint();
+    requestAnimationFrame(() => layout(false));
+    watchMedia();
+  }
+
+  function saveCurrentPick() {
+    if (!pickNode) return;
+    const sel = cssPathFor(pickNode);
+    if (!sel) return flashPickMsg('Could not save - this block has no stable selector. Re-pick a parent block.');
+    if (!OBR.savePick) return;
+    OBR.savePick(OBR.normalizeHost(location.href), sel).then((ok) => {
+      if (ok === false) return flashPickMsg('Could not save - storage is full. Remove some saved picks in Options.');
+      contentSource = 'pick-saved'; // now the durable per-site pick
+      updatePickHint();
+    });
+  }
+
+  function clearCurrentPick() {
+    if (OBR.clearPick) OBR.clearPick(OBR.normalizeHost(location.href));
+    reExtractWholePage();
   }
 
   // "Article-ness" signal for the toolbar auto-mode (gallery.js `_autoToggle`): the
@@ -589,7 +1040,7 @@
     const byline = article && article.byline ? article.byline : '';
     const body = article
       ? article.content
-      : '<p>Could not extract a readable article from this page. Try selecting the text first, or this page may not be article-shaped.</p>';
+      : '<p>Could not extract a readable article from this page. Select the text and reopen, or use the ⌖ Pick button to choose the content block yourself.</p>';
     titleEl.textContent = title || '';
     // Estimated reading time from the live-DOM prose word count (handles CJK too).
     const words = OBR._articleWordCount ? OBR._articleWordCount() : 0;
@@ -1096,8 +1547,41 @@
     overlay.className = 'obr-overlay ' + resolveTheme();
     updateColumnsBtn();
     updateImagesBadge();
-    lastArticle = extractArticle();
+
+    // Choose the content source. An explicit text selection wins — read EXACTLY
+    // what's highlighted (gated by the readSelection setting). Otherwise the whole
+    // page. (A saved per-site pick slots in between these in Phase 3.) An ad-hoc
+    // selection is transient, so it doesn't resume or persist the whole-page
+    // reading position (posKey stays empty → no load, no save).
+    // currentSelection() is read SYNC first (before any await) so a later await can't
+    // race the user's selection. A saved per-site pick is only consulted when there's
+    // no live selection.
+    const sel = settings.readSelection ? currentSelection() : null;
+    let savedArticle = null;
+    if (!sel && OBR.loadPick) {
+      const savedSel = await OBR.loadPick(OBR.normalizeHost(location.href));
+      // null if the saved selector matches nothing now (stale) → falls through to whole page.
+      savedArticle = savedSel ? extractFromSelector(savedSel) : null;
+    }
+    if (sel) {
+      lastArticle = extractFromSelection(sel);
+      pickNode = null;
+      contentSource = 'selection';
+      posKey = '';
+    } else if (savedArticle) {
+      lastArticle = savedArticle;
+      pickNode = null;
+      contentSource = 'pick-saved';
+      // Resume the picked-content reading independently of the whole-page position.
+      posKey = OBR.positionKey ? OBR.positionKey() + '#pick' : '';
+    } else {
+      lastArticle = extractArticle();
+      pickNode = null;
+      contentSource = 'whole';
+      posKey = OBR.positionKey ? OBR.positionKey() : '';
+    }
     renderContent(lastArticle);
+    updatePickHint();
 
     // Resume where the user last left off in this article (null if never read or
     // storage unavailable). Held as a fraction; layout() re-anchors it through the
@@ -1106,7 +1590,6 @@
     // page — not flash page 1 then jump. (It also avoids a close()-before-resume
     // race that would flush spread 0 over the real saved position.) The read is a
     // few ms on a real storage backend.
-    posKey = OBR.positionKey ? OBR.positionKey() : '';
     restoreFraction = posKey && OBR.loadPosition ? await OBR.loadPosition(posKey) : null;
 
     savedScrollY = window.scrollY;
@@ -1121,6 +1604,7 @@
 
   function close() {
     if (!active) return;
+    if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); // drop any pending late-image relayout for this open
     // Flush the reading position now (don't wait out the debounce — the tab may go away).
@@ -1143,13 +1627,13 @@
   /* ---------------------------------------------------------------- events */
   let resizeTimer;
   window.addEventListener('resize', () => {
-    if (!active) return;
+    if (!active || pickerActive) return; // don't relayout against the hidden overlay mid-pick
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => layout(true), 150);
+    resizeTimer = setTimeout(() => { if (!pickerActive) layout(true); }, 150);
   });
 
   document.addEventListener('keydown', (e) => {
-    if (!active) return;
+    if (!active || pickerActive) return; // picker owns the keyboard while it's up
     switch (e.key) {
       case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
         e.preventDefault(); e.stopPropagation(); flip(1); break;
@@ -1168,8 +1652,9 @@
   // Live-apply settings changed elsewhere (e.g. the Options page) to an open reader.
   if (globalThis.chrome && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'sync' || !active || !built || !changes[OBR.STORAGE_KEY]) return;
+      if (area !== 'sync' || !active || pickerActive || !built || !changes[OBR.STORAGE_KEY]) return;
       OBR.loadSettings().then((s) => {
+        if (pickerActive) return; // overlay is hidden mid-pick; re-apply on the next open instead
         const wasHidden = overlay.classList.contains('obr-chrome-hidden');
         settings = s;
         overlay.className = 'obr-overlay ' + resolveTheme() + (wasHidden ? ' obr-chrome-hidden' : '');
