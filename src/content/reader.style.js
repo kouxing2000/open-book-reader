@@ -83,9 +83,6 @@
     .obr-overlay.dark .obr-spine { background: linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,.30) 45%, rgba(0,0,0,.55) 50%, rgba(0,0,0,.30) 55%, rgba(0,0,0,0) 100%); }
     .obr-spine.hidden { display: none; }
 
-    .obr-zone { position: absolute; top: 0; bottom: 0; width: 28%; cursor: pointer; z-index: 2; }
-    .obr-zone-left { left: 0; } .obr-zone-right { right: 0; }
-
     /* Realistic 3D page turn (settings.pageTurn === 'book'): a transient leaf cloned from
        .obr-pages rotates about the center spine on top of the real strip. It lives in its
        OWN layer that is a sibling of .obr-viewport (not inside it) because the viewport's

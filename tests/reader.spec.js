@@ -193,13 +193,34 @@ test('Home and End jump to the first and last spread', async ({ page }) => {
   expect(home.translateX).toBe(0);
 });
 
-test('the right click-zone advances the page', async ({ page }) => {
+test('clicking near the right edge advances the page', async ({ page }) => {
   await openReader(page);
   const start = await readState(page);
 
-  await clickInReader(page, '.obr-zone-right');
+  // No blocking overlay any more — a plain click in the right edge band turns the page.
+  const vp = page.viewportSize();
+  await page.mouse.click(Math.round(vp.width * 0.9), Math.round(vp.height * 0.5));
   const after = await readState(page);
   expect(after.translateX).toBeLessThan(start.translateX);
+});
+
+test('a click in the edge band does not turn the page while text is selected', async ({ page }) => {
+  await openReader(page);
+  const start = await readState(page);
+
+  // Select content inside the reader's (open) shadow DOM, then fire a click in the right edge
+  // band WITHOUT a preceding mousedown (which would collapse the selection). The flip guard must
+  // win — otherwise double-click-to-select-a-word near the edge would flip the page mid-selection.
+  await page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const p = root.querySelector('.obr-pages p') || root.querySelector('p');
+    const sel = root.getSelection ? root.getSelection() : getSelection();
+    sel.removeAllRanges();
+    const r = document.createRange(); r.selectNodeContents(p); sel.addRange(r);
+    p.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: window.innerWidth * 0.9, clientY: window.innerHeight * 0.5 }));
+  });
+  const after = await readState(page);
+  expect(after.translateX).toBe(start.translateX); // selection present → no flip
 });
 
 /* ---------------------------------------------------- 3D "book" page turn ----
@@ -500,6 +521,26 @@ test('two open() calls in flight at once initialize only once (re-entrancy guard
   expect(s.totalColumns).toBeGreaterThan(0); // a single, consistent pagination
 });
 
+test('an open() aborted after build() leaves no unclosable overlay', async ({ page }) => {
+  // The openGen guard can abort open() AFTER build() has appended #obr-host but BEFORE
+  // active=true (e.g. the gallery takes over mid-open). Since close()/Escape/✕ all bail on
+  // !active, a host left visible by such an abort would be a wedged, unclosable overlay.
+  // Simulate the abort at the loadPosition await (which runs after build()+renderContent)
+  // by having it close() first — bumping openGen so the open() that follows aborts.
+  await page.evaluate(async () => {
+    const orig = OBR.loadPosition;
+    OBR.loadPosition = () => { OBR.close(); return Promise.resolve(null); }; // concurrent takeover
+    try { await OBR.open(); } finally { OBR.loadPosition = orig; }
+  });
+  expect((await readState(page)).hostDisplay).toBe('none'); // aborted open must not leave it shown
+
+  // …and the reader still works afterward — open shows it, Escape closes it (no permanent wedge).
+  await openReader(page);
+  expect((await readState(page)).hostDisplay).not.toBe('none');
+  await page.keyboard.press('Escape');
+  expect((await readState(page)).hostDisplay).toBe('none');
+});
+
 test('the ⚙ Settings button asks the SW to open the options page', async ({ page }) => {
   await openReader(page);
   // The reader runs in the test's main world without a real chrome.runtime; install a
@@ -755,6 +796,19 @@ test.describe('content override', () => {
     expect(r).not.toMatch(/srcdoc/i);           // inline-HTML iframe (page-origin) vector
     expect(r).not.toMatch(/<script/i);          // both HTML and SVG <script> removed
     expect(r).toMatch(/example\.com\/embed/);   // but src-based embeds are preserved
+  });
+
+  test('_sanitizeContentHTML strips javascript: obscured by control/whitespace chars in the scheme', async ({ page }) => {
+    // Browsers normalize away leading C0-control/space and embedded TAB/LF/CR before resolving a
+    // URL scheme, so these all execute despite a naive /^\s*javascript:/ check. <iframe src> is
+    // kept (legit embeds), so an obfuscated javascript: there would auto-run on insertion.
+    const r = await page.evaluate(() => OBR._sanitizeContentHTML(
+      '<a href="java\tscript:boom()">a</a>'         // embedded TAB
+      + '<a href="\u0001javascript:boom()">b</a>'   // leading C0 control
+      + '<a href="javascript\r:boom()">c</a>'       // CR before the colon
+      + '<iframe src="java\tscript:boom()"></iframe>'));
+    expect(r).not.toMatch(/javascript/i); // every obfuscated scheme neutralized
+    expect(r).not.toMatch(/boom/i);       // payload removed along with the attribute
   });
 
   test('_extractFromSelector merges every match of a multi-node selector', async ({ page }) => {
