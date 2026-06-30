@@ -485,6 +485,21 @@ test('OBR.toggle() opens, closes, and reopens', async ({ page }) => {
   expect((await readState(page)).hostDisplay).not.toBe('none');
 });
 
+test('two open() calls in flight at once initialize only once (re-entrancy guard)', async ({ page }) => {
+  // Fire two open()s synchronously (before the first's awaits resolve) and AWAIT BOTH to
+  // completion — so the count is final, not racing the assertion. Without the generation
+  // guard both run to completion (count 2); with it, only the latest does (count 1).
+  await page.evaluate(async () => {
+    globalThis.OBR._opensCompleted = 0;
+    await Promise.all([OBR.open(), OBR.open()]);
+  });
+  expect(await page.evaluate(() => OBR._opensCompleted)).toBe(1);
+  const s = await readState(page);
+  expect(s.present).toBe(true);
+  expect(s.indicator).toContain('pages');
+  expect(s.totalColumns).toBeGreaterThan(0); // a single, consistent pagination
+});
+
 test('the ⚙ Settings button asks the SW to open the options page', async ({ page }) => {
   await openReader(page);
   // The reader runs in the test's main world without a real chrome.runtime; install a
