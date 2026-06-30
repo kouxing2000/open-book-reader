@@ -89,6 +89,11 @@
   function build() {
     if (built) return;
     ({ host, root } = OBR.makeShadowHost('obr-host'));
+    // Stay hidden until open() reveals it at the very end. open() can abort AFTER build()
+    // but BEFORE active=true (the openGen guard, e.g. the gallery taking over mid-open);
+    // since close()/Escape/✕ all bail on !active, a visible host left by such an abort would
+    // be an unclosable overlay. Initializing hidden makes "visible ⟺ active" hold regardless.
+    host.style.display = 'none';
 
     overlay = document.createElement('div');
     overlay.className = 'obr-overlay ' + resolveTheme();
@@ -116,8 +121,6 @@
         <div class="obr-paper">
           <div class="obr-viewport"><div class="obr-pages"></div></div>
           <div class="obr-spine"></div>
-          <div class="obr-zone obr-zone-left"></div>
-          <div class="obr-zone obr-zone-right"></div>
         </div>
       </div>
       <div class="obr-footer">
@@ -137,8 +140,21 @@
     progressFillEl = overlay.querySelector('.obr-progress-fill');
     pickHintEl = overlay.querySelector('.obr-pick-hint');
 
-    overlay.querySelector('.obr-zone-left').addEventListener('click', () => flip(-1));
-    overlay.querySelector('.obr-zone-right').addEventListener('click', () => flip(1));
+    // Click near the left/right edge turns the page. We listen on the content itself (NOT a
+    // blocking overlay) so the page text stays fully selectable — a drag-select leaves a
+    // non-collapsed selection, which suppresses the flip; a plain click in the edge band still
+    // turns. Clicks on links/buttons/chrome are left to their own handlers.
+    overlay.addEventListener('click', (e) => {
+      if (!active || pickerActive) return;
+      if (e.target.closest('a, button, input, label, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
+      // The content is in an open shadow root; window.getSelection() can't see selections inside
+      // it, so use shadowRoot.getSelection() (Chrome) and fall back to the document selection.
+      const sel = root.getSelection ? root.getSelection() : (globalThis.getSelection && getSelection());
+      if (sel && !sel.isCollapsed && String(sel).trim()) return; // mid text-selection → don't flip
+      const w = window.innerWidth;
+      if (e.clientX < w * 0.28) flip(-1);
+      else if (e.clientX > w * 0.72) flip(1);
+    });
     overlay.querySelectorAll('.obr-btn, .obr-seg-btn').forEach((b) =>
       b.addEventListener('click', () => handleAction(b.dataset.act)));
 
@@ -395,9 +411,15 @@
           // embeds like videos still work). Keep no equivalent for <iframe src> so
           // legit https embeds survive.
           if (name.startsWith('on') || name === 'srcdoc') n.removeAttribute(a.name);
-          else if ((name === 'href' || name === 'src' || name === 'xlink:href'
-            || name === 'action' || name === 'formaction') // form*action can also carry javascript:
-            && /^\s*javascript:/i.test(a.value)) n.removeAttribute(a.name);
+          else if (name === 'href' || name === 'src' || name === 'xlink:href'
+            || name === 'action' || name === 'formaction') { // form*action can also carry javascript:
+            // Browsers strip leading C0-control/space AND every embedded TAB/LF/CR before
+            // resolving a URL scheme, so "java\tscript:", "\x01javascript:", "javascript\r:"
+            // all execute despite a bare /^\s*javascript:/ check (\s misses C0 controls and
+            // mid-scheme chars). Normalize the same way before testing.
+            const v = a.value.replace(/[\u0000-\u0020]+/g, '');
+            if (/^javascript:/i.test(v)) n.removeAttribute(a.name);
+          }
         }
       });
       return doc.body.innerHTML;
