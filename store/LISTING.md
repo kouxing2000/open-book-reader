@@ -68,7 +68,7 @@ a reading utility, not educational content — Tools fits.)
 **Description** (plain text — the store field does NOT render markdown):
 
 ```
-Open Book Reader turns any long web article into a calm, two-page reading experience — like an open book, right on top of the page.
+Open Book Reader turns any long web article into a calm, two-page reading experience — like an open book, right on top of the page. It's free, fully open source, and private by design: reading happens entirely in your browser, and nothing is ever sent to the developer.
 
 Click the toolbar icon and it picks the right view for the page automatically: the two-page reader for articles, the image gallery for picture-heavy pages. Or go straight to one — Alt+B always opens the reader, Alt+Shift+B always opens the gallery.
 
@@ -84,6 +84,7 @@ READING THAT FEELS LIKE A BOOK
 • Adjustable font size and line height; serif or sans-serif
 • Fills the window by default, with an optional max width for a comfortable line length
 • Print the clean article — or save it as a tidy PDF — in one click (or press P)
+• Grabbed the wrong part of the page? Pick the exact block to read (or select text first), and save that choice per site
 • Controls auto-hide while you read and reappear when you move the mouse
 
 A SECOND MODE: IMAGE GALLERY
@@ -97,7 +98,11 @@ PRIVATE BY DESIGN
 • Article reading and extraction happen entirely in your browser
 • The only time it touches the network is when you click to download images from the gallery
 • Your settings sync across your own signed-in devices via Chrome's storage
-• Open source — don't take our word for it; read every line and verify the privacy claims yourself at https://github.com/kouxing2000/open-book-reader
+
+OPEN SOURCE — DON'T JUST TRUST US, VERIFY
+• The entire extension is on GitHub under the MIT license: https://github.com/kouxing2000/open-book-reader
+• No build step and no minification — third-party code (like Mozilla Readability) is vendored in readable form, so what's published is exactly what runs in your browser; read every line and confirm the privacy claims yourself
+• Found a bug or have an idea? Open an issue or a pull request
 
 Your reading, your pages. Slow down and enjoy the long form.
 ```
@@ -117,6 +122,7 @@ Your reading, your pages. Slow down and enjoy the long form.
 | `activeTab` | Granted when the user clicks the toolbar icon or presses Alt+B; lets the extension read the current tab to render the reading view. |
 | `scripting` | Inject the reader/gallery engine into the page on user gesture. |
 | `storage` | Persist the user's reading preferences (theme, font size, columns, gallery column width). |
+| `contextMenus` | Add a right-click menu to open the reader or gallery on the current page and set per-site "always open as Reader/Gallery" rules. |
 | `downloads` (optional) | Save images the user explicitly downloads from the image-gallery mode. |
 | Host `<all_urls>` (optional) | Fetch image bytes cross-origin to bundle a user-requested ZIP of selected gallery images. Nothing is sent anywhere. |
 
