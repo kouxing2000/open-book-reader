@@ -37,9 +37,10 @@ import path from 'node:path';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONTENT = path.resolve(HERE, '..', 'src', 'content');
-// Same files, same order as background.js FILES (settings defines OBR; reader needs
-// DEFAULTS + Readability before it runs).
-const FILES = ['settings.js', 'readability.js', 'reader.js', 'gallery.js'];
+// Same order as background.js FILES (settings defines OBR; reader.style defines
+// OBR._readerCSS; reader needs DEFAULTS + Readability before it runs). zip.js is omitted
+// — the proxy has no ZIP-download path.
+const FILES = ['settings.js', 'readability.js', 'reader.style.js', 'reader.js', 'gallery.js'];
 
 // A real page has no `chrome.storage`, so without this the engine's settings,
 // site rules, and per-article reading position (resume) all silently no-op.

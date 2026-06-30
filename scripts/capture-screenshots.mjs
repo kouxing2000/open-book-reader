@@ -24,7 +24,7 @@ const OUT = path.join(ROOT, 'store-assets');
 const W = 1280, H = 800;
 const PORT = 5177;
 
-const CONTENT_FILES = ['settings.js', 'readability.js', 'reader.js', 'zip.js', 'gallery.js'].map((f) =>
+const CONTENT_FILES = ['settings.js', 'readability.js', 'reader.style.js', 'reader.js', 'zip.js', 'gallery.js'].map((f) =>
   path.join(CONTENT, f)
 );
 
