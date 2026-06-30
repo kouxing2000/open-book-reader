@@ -14,6 +14,7 @@ test('the options page shows the how-to-use guide with the trigger + shortcut do
   await expect(guide).toContainText('Toolbar icon');
   await expect(guide).toContainText('Right-click');
   await expect(guide).toContainText('Per-site rules');
+  await expect(guide).toContainText('Picked the wrong content'); // the override docs are discoverable
   // Both shipped shortcuts are documented: Alt+B and Alt+Shift+B each end in <kbd>B</kbd>.
   await expect(guide.locator('kbd', { hasText: /^B$/ })).toHaveCount(2);
   await expect(guide.locator('kbd', { hasText: 'Esc' }).first()).toBeVisible();
@@ -181,6 +182,33 @@ test('?site= scopes the rules + picks lists to one site, and "Show all" clears i
   await expect(page.locator('#picks .pick-host')).toHaveCount(2);
   await expect(page.locator('#sites .site-host')).toHaveCount(3);
   expect(new URL(page.url()).search).toBe('');
+});
+
+test('savePick bounds the map by bytes (not just count) and reports success', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  const r = await page.evaluate(async () => {
+    // A ~200-char selector so 50 entries serialize to ~12.5KB — over BOTH the 7500-byte
+    // budget AND the 8192 sync per-item quota. Count-pruning alone would leave 50 entries
+    // (~12.5KB, which would actually fail the quota and resolve false); byte-pruning must
+    // drop the count BELOW PICKS_MAX to fit. Monotonic `now` makes LRU deterministic
+    // (site0 oldest → dropped; site59 newest → kept).
+    const long = 'body ' + '> div:nth-of-type(7) '.repeat(9) + '> article';
+    let lastOk;
+    for (let i = 0; i < 60; i++) lastOk = await OBR.savePick('site' + i + '.example.com', long + ' /*' + i + '*/', 1000 + i);
+    const map = await new Promise((res) => chrome.storage.sync.get('obr_picks', (d) => res(d.obr_picks || {})));
+    return {
+      lastOk,
+      count: Object.keys(map).length,
+      bytes: JSON.stringify(map).length,
+      keptNewest: !!map['site59.example.com'],
+      droppedOldest: !map['site0.example.com'],
+    };
+  });
+  expect(r.lastOk).toBe(true);               // a confirmed write resolves true (byte-prune kept it under quota)
+  expect(r.bytes).toBeLessThanOrEqual(7500); // PICKS_MAX_BYTES
+  expect(r.count).toBeLessThan(50);          // byte-pruning dropped BELOW PICKS_MAX — proves it fired
+  expect(r.keptNewest).toBe(true);
+  expect(r.droppedOldest).toBe(true);        // LRU dropped the oldest
 });
 
 test('reset to defaults also clears saved content picks', async ({ page, extensionId }) => {
