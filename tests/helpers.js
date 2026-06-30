@@ -84,6 +84,14 @@ export async function gotoWrongContent(page) {
   await page.goto('/wrong-content.html');
 }
 
+/** Load the "thin extraction" fixture: a short real article plus a big comment thread that
+ *  Readability strips (#comments) — so the whole-page parse keeps far less than half the page's
+ *  prose and reads as "suspect", firing the Wrong content? banner. */
+export async function gotoThinPage(page) {
+  await page.addInitScript(storageShim);
+  await page.goto('/thin-page.html');
+}
+
 /** Load the illustrated-article fixture (real prose + 12 figures) and wait for the
  *  figures to decode, so OBR._imageCount and OBR._articleWordCount both see real data. */
 export async function gotoIllustratedArticle(page) {

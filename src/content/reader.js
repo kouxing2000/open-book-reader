@@ -50,6 +50,10 @@
   // auto-applied — offer full-page / clear). pickNode is the live element a pick
   // is reading from (so "Save for this site" can derive its selector).
   let contentSource = 'whole', pickNode = null;
+  // Whether a WHOLE-page extraction looks wrong (failed, or kept far less text than the live
+  // page's prose) — the only case the "Wrong content?" banner auto-pops for. Confident parses
+  // stay quiet; the ⌖ Pick toolbar button remains the always-available affordance.
+  let extractionSuspect = false;
 
   // The current usable text selection, or null. "Usable" = a non-collapsed
   // selection with enough text to be a deliberate choice (guards against a stray
@@ -855,14 +859,19 @@
 
   /* ------------------------------------------------------------ pick hint banner */
   // Render the small affordance above the footer for the current contentSource.
-  // 'whole' invites the picker; 'pick-manual' offers to save; 'pick-saved' offers to
-  // drop back to the full page or clear the saved pick. 'selection' shows nothing.
+  // 'whole' invites the picker ONLY when the extraction looks suspect (extractionSuspect);
+  // 'pick-manual' offers to save; 'pick-saved' offers to drop back to the full page or clear
+  // the saved pick. 'selection', and a confident whole-page read, show nothing.
   function updatePickHint() {
     if (!pickHintEl) return;
     let html = '';
     if (contentSource === 'whole') {
-      html = `<span class="obr-pick-msg">Wrong content?</span>
-        <button class="obr-btn" data-pick="start">⌖ Pick the block</button>`;
+      // Only nag when the parse looks wrong — a confident whole-page read shows nothing
+      // (the ⌖ Pick toolbar button stays available for the rare same-size wrong block).
+      if (extractionSuspect) {
+        html = `<span class="obr-pick-msg">Wrong content?</span>
+          <button class="obr-btn" data-pick="start">⌖ Pick the block</button>`;
+      }
     } else if (contentSource === 'pick-manual') {
       html = `<span class="obr-pick-msg">Reading the block you picked.</span>
         <button class="obr-btn" data-pick="save">Save for this site</button>`;
@@ -979,6 +988,7 @@
     lastArticle = extractArticle();
     pickNode = null;
     contentSource = 'whole';
+    extractionSuspect = false; // the user explicitly chose the full page — don't second-guess it
     posKey = OBR.positionKey ? OBR.positionKey() : '';
     restoreFraction = null;
     currentSpread = 0;
@@ -1038,6 +1048,34 @@
     return total;
   }
   OBR._articleWordCount = proseWordCount;
+
+  // CJK-aware word count of a plain string — same TOKENIZATION as wordsIn (so the ratio below
+  // isn't skewed by a Latin-vs-CJK scoring mismatch). Note it counts ALL of the extracted text,
+  // whereas proseWordCount counts only substantial leaf p/blockquote/li blocks — a deliberate
+  // asymmetry that inflates `kept`, biasing toward NOT flagging (fewer false nags).
+  function countWords(text) {
+    const t = (text || '').trim();
+    if (!t) return 0;
+    return (t.match(CJK_RE) || []).length + (t.replace(CJK_RE, ' ').match(/\S+/g) || []).length;
+  }
+  // Does a whole-page extraction look wrong? True when it failed outright (placeholder showing),
+  // or when it kept far less text than the live page actually has in prose — the "grabbed a
+  // sidebar / related-list / truncated teaser" cases. A wrong block of SIMILAR size won't trip
+  // this (the page's prose total includes it), so the ⌖ Pick button still covers that. It's a
+  // HEURISTIC, not a guarantee: a short article on a comment-heavy page (Readability strips the
+  // comments, proseWordCount counts them) can read as suspect and nag on a correct extraction —
+  // acceptable, since the banner is non-blocking and the ⌖ Pick button is always there. Exposed
+  // for tests.
+  const SUSPECT_MIN_PROSE = 200;   // only judge pages with a substantial amount of real prose
+  const SUSPECT_KEEP_RATIO = 0.5;  // kept < half the page's prose ⇒ probably the wrong block
+  function wholeExtractionSuspect(article) {
+    if (!article || !article.content) return true;
+    let live = 0;
+    try { live = proseWordCount(); } catch (e) { live = 0; }
+    const kept = countWords(article.textContent);
+    return live >= SUSPECT_MIN_PROSE && kept < live * SUSPECT_KEEP_RATIO;
+  }
+  OBR._wholeExtractionSuspect = wholeExtractionSuspect;
 
   function escapeHTML(s) {
     return String(s).replace(/[&<>"]/g, (c) =>
@@ -1575,6 +1613,7 @@
       // null if the saved selector matches nothing now (stale) → falls through to whole page.
       savedArticle = savedSel ? extractFromSelector(savedSel) : null;
     }
+    extractionSuspect = false; // only the whole-page branch (below) may set it true
     if (sel) {
       lastArticle = extractFromSelection(sel);
       pickNode = null;
@@ -1591,6 +1630,7 @@
       pickNode = null;
       contentSource = 'whole';
       posKey = OBR.positionKey ? OBR.positionKey() : '';
+      extractionSuspect = wholeExtractionSuspect(lastArticle); // only auto-nag when it looks wrong
     }
     renderContent(lastArticle);
     updatePickHint();

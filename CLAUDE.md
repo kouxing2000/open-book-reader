@@ -111,7 +111,14 @@ toolbar button (and the "Wrong content?" hint banner) starts `startPicker()`: a 
 highlight over the REAL page in a SEPARATE shadow host (`#obr-pick-host`), with the reader hidden and
 page scroll unlocked (the same toggles `open()`/`close()` and the gallery's `hydratePage` use); a
 click re-renders in place via `endPicker(node)` → `extractFromNode`. The reader keydown handler gates
-on `pickerActive` so the picker owns Escape/arrows while it's up. (3) **Saved pick** — "Save for this
+on `pickerActive` so the picker owns Escape/arrows while it's up. The "Wrong content?" banner does NOT
+auto-pop on every whole-page open — only when the extraction looks **suspect** (`wholeExtractionSuspect`:
+it failed/returned the placeholder, OR — on a page with **≥200 prose words** (`proseWordCount`) — the
+extracted text totals **< half** that prose, the "grabbed a sidebar / teaser / truncated" cases). A
+confident or same-size-wrong parse stays quiet; the permanent ⌖ Pick toolbar button is the
+always-available affordance, and an explicit "Use full page" (`reExtractWholePage`) clears the suspect
+flag so it won't second-guess the user's choice. It's a heuristic — a short post on a comment-heavy page
+can false-positive (acceptable: non-blocking hint, ⌖ Pick always there). (3) **Saved pick** — "Save for this
 site" stores a CSS selector per host in `chrome.storage.SYNC` (`obr_picks`, bounded/LRU to `PICKS_MAX`,
 follows the user across devices like the site mode-rules). `OBR._cssPathFor` builds the selector
 preferring the SHORTEST readable+robust anchor (unique id → lone `<main>`/`<article>` → `[role]` →
