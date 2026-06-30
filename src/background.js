@@ -258,12 +258,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'obr-open-options') {
     try {
       const site = msg.site && String(msg.site).trim();
-      // With a site, open the options page scoped to it (?site=...); else the normal page
-      // (openOptionsPage focuses an existing options tab — keep that for the unscoped case).
-      if (site) {
-        chrome.tabs.create({ url: chrome.runtime.getURL('src/options/options.html?site=' + encodeURIComponent(site)) });
+      // Always route through openOptionsPage() so an already-open options tab is FOCUSED,
+      // not duplicated (clicking ⚙ N times must not spawn N tabs). We can't dedupe with
+      // tabs.query(url) without the `tabs` permission — chrome-extension:// pages aren't
+      // covered by <all_urls> — and adding `tabs` is a deliberate non-goal. So the site
+      // scope rides a one-shot key in chrome.storage.local instead of a ?site= URL:
+      // options.js reads + clears it on load, and a storage.onChanged listener re-scopes a
+      // tab already open. (storage.local, not session — session doesn't reliably survive the
+      // SW→page handoff; the key is consumed immediately so it never lingers.)
+      const openPage = () => { try { chrome.runtime.openOptionsPage(); } catch (e) { /* */ } };
+      if (site && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ obr_options_site: site }, openPage); // stash, THEN open
       } else {
-        chrome.runtime.openOptionsPage();
+        openPage();
       }
     } catch (e) { /* */ }
     sendResponse({ ok: true });

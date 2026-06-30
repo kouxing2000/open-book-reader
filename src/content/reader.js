@@ -574,8 +574,13 @@
       doc.querySelectorAll('*').forEach((n) => {
         for (const a of Array.from(n.attributes)) {
           const name = a.name.toLowerCase();
-          if (name.startsWith('on')) n.removeAttribute(a.name);
-          else if ((name === 'href' || name === 'src' || name === 'xlink:href')
+          // srcdoc carries inline HTML that an <iframe> runs in THIS page's origin —
+          // a path our <script>/on* stripping above never sees. Drop it (src-based
+          // embeds like videos still work). Keep no equivalent for <iframe src> so
+          // legit https embeds survive.
+          if (name.startsWith('on') || name === 'srcdoc') n.removeAttribute(a.name);
+          else if ((name === 'href' || name === 'src' || name === 'xlink:href'
+            || name === 'action' || name === 'formaction') // form*action can also carry javascript:
             && /^\s*javascript:/i.test(a.value)) n.removeAttribute(a.name);
         }
       });
@@ -686,6 +691,7 @@
   }
 
   // Exposed for tests (underscore = internal/testable, like _buildPrintDoc).
+  OBR._sanitizeContentHTML = sanitizeContentHTML;
   OBR._extractFromNode = extractFromNode;
   OBR._extractFromSelection = extractFromSelection;
 

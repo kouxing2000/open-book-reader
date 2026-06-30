@@ -184,6 +184,43 @@ test('?site= scopes the rules + picks lists to one site, and "Show all" clears i
   expect(new URL(page.url()).search).toBe('');
 });
 
+test('a site stashed in storage.local scopes a freshly-opened options page, then is cleared (the ⚙ deep-link path)', async ({ page, serviceWorker, extensionId }) => {
+  // Mirror the REAL flow: the SERVICE WORKER writes the picks + stashes the site (background.js
+  // does this on the ⚙ message) with NO options page open yet — so nothing consumes the stash
+  // early — then openOptionsPage() loads a fresh page that must come up scoped to that site.
+  // (Setting the stash from an already-open options page would let its own onChanged listener
+  // eat it before this fresh load, which is not how the SW→openOptionsPage path behaves.)
+  await serviceWorker.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_picks: { 'example.com': { sel: '#a', t: 2 }, 'other.test': { sel: '#b', t: 1 } },
+  }, res)));
+  await serviceWorker.evaluate(() => new Promise((res) => chrome.storage.local.set({ obr_options_site: 'example.com' }, res)));
+  await page.goto(optionsUrl(extensionId)); // fresh load, no ?site=
+  await expect(page.locator('#siteFilterBar')).toBeVisible();
+  await expect(page.locator('#siteFilterName')).toHaveText('example.com');
+  await expect(page.locator('#picks .pick-host')).toHaveText(['example.com']);
+  // The stash is consumed so a LATER plain open isn't stuck on a stale site.
+  await expect
+    .poll(() => page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.get('obr_options_site', (d) => res(d.obr_options_site || null)))))
+    .toBe(null);
+});
+
+test('a storage.local site change re-scopes an already-open options tab (so ⚙ need not duplicate it)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_picks: { 'example.com': { sel: '#a', t: 2 }, 'other.test': { sel: '#b', t: 1 } },
+  }, res)));
+  await page.reload();
+  await expect(page.locator('#picks .pick-host')).toHaveCount(2); // unscoped to start
+
+  // The user clicks ⚙ from example.com while this tab is already open → SW stashes the site.
+  // The onChanged listener must re-scope live (no new tab).
+  await page.evaluate(() => new Promise((res) => chrome.storage.local.set({ obr_options_site: 'example.com' }, res)));
+  await expect(page.locator('#siteFilterBar')).toBeVisible();
+  await expect(page.locator('#siteFilterName')).toHaveText('example.com');
+  await expect(page.locator('#picks .pick-host')).toHaveText(['example.com']);
+});
+
 test('savePick bounds the map by bytes (not just count) and reports success', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
   const r = await page.evaluate(async () => {
