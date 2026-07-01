@@ -1033,6 +1033,10 @@
   }
 
   function flip(dir) {
+    // Flush any queued late-media re-pagination first, so we turn from the CURRENT page
+    // count — not a stale one measured before a slow image finished (which can reject a
+    // valid turn near the end, or land it on the wrong page).
+    if (mediaTimer && !activeFlip) { clearTimeout(mediaTimer); mediaTimer = null; runMediaRelayout(); }
     const next = currentSpread + dir;
     if (next < 0 || next >= totalSpreads) return;
     restoreFraction = null; // user is navigating — stop re-anchoring to the resume point
@@ -1129,6 +1133,22 @@
     layer.style.width = g.paperW + 'px';
     layer.style.height = g.paperH + 'px';
 
+    // The destination page REVEALED as the leaf turns (forward: dest RIGHT; backward:
+    // dest LEFT) — a frozen clone, so the whole turn is one coherent snapshot of exactly
+    // what the reader sees and turns to. Without it, this half is drawn from the LIVE strip
+    // and can visibly reflow mid-turn if a slow image finishes (and can disagree with the
+    // leaf's already-frozen back face). It sits at the BOTTOM of the layer so the leaf lays
+    // on top and sweeps it into view; the live strip (re-anchored by any deferred relayout)
+    // reappears only once the turn ends and the layer is removed.
+    const destLeft = fwd ? g.spineX : 0;
+    const destBox = document.createElement('div');
+    destBox.className = 'obr-flip-static';
+    destBox.style.left = destLeft + 'px';
+    destBox.style.width = g.pageW + 'px';
+    destBox.style.height = g.paperH + 'px';
+    destBox.appendChild(makePagesClone(g.padX - destLeft - next * stride, g.padY));
+    layer.appendChild(destBox);      // bottom of the stack → revealed as the leaf lifts
+
     // The stationary page (forward: source LEFT page; backward: source RIGHT page) — a
     // full-page panel, opaque so the destination underneath doesn't bleed through.
     const staticLeft = fwd ? 0 : g.spineX;
@@ -1138,7 +1158,7 @@
     staticBox.style.width = g.pageW + 'px';
     staticBox.style.height = g.paperH + 'px';
     staticBox.appendChild(makePagesClone(g.padX - staticLeft - src * stride, g.padY));
-    layer.appendChild(staticBox);    // staticBox first → the caller's leaf lays on top
+    layer.appendChild(staticBox);    // staticBox next → the caller's leaf lays on top
 
     return { fwd, g, stride, layer, staticBox };
   }
@@ -1332,9 +1352,22 @@
   // count comes out short, and the tail of the article becomes unreachable (a
   // blank spread you can't flip past). So re-measure (keeping the current spread)
   // whenever a still-loading image finishes or the fonts settle.
+  // Run a queued late-media re-pagination — but NEVER on top of an in-flight page turn.
+  // A turn is a static snapshot of the strip (cloned columns) animating for up to ~760ms;
+  // re-paginating under it swaps the content out mid-swing (the turn lands on the wrong
+  // page) and layout()'s endActiveFlip() would abort the animation partway. The real strip
+  // is already snapped to the turn's destination, so deferring the re-measure until the
+  // turn settles is invisible — just retry a beat later.
+  function runMediaRelayout() {
+    if (!active || !built) return;
+    if (activeFlip) { scheduleMediaRelayout(); return; } // let the turn finish, then re-measure
+    layout(true);
+  }
   function scheduleMediaRelayout() {
     clearTimeout(mediaTimer);
-    mediaTimer = setTimeout(() => { if (active && built) layout(true); }, 80);
+    // Null the id when it fires so `mediaTimer` is a reliable "relayout pending" flag for
+    // flip()'s flush (runMediaRelayout may re-arm it via this same path when it defers).
+    mediaTimer = setTimeout(() => { mediaTimer = null; runMediaRelayout(); }, 80);
   }
 
   function watchMedia() {
@@ -1482,7 +1515,7 @@
     if (!active) return;
     if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
-    clearTimeout(mediaTimer); // drop any pending late-image relayout for this open
+    clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
     // Flush the reading position now (don't wait out the debounce — the tab may go away).
     clearTimeout(saveTimer);
     if (posKey && totalColumns >= 1 && OBR.savePosition) {
