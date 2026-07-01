@@ -29,19 +29,31 @@
        so the page reads through them, and slide away when the mouse is idle. */
     .obr-topbar {
       position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-      height: 52px; display: flex;
-      align-items: center; justify-content: space-between; padding: 0 18px; gap: 12px;
+      min-height: 52px; display: flex;
+      align-items: center; justify-content: space-between; padding: 6px 18px; gap: 12px;
       font-size: 13px;
       background: linear-gradient(to bottom, rgba(var(--obr-bg),.96) 38%, rgba(var(--obr-bg),0) 100%);
       transition: opacity .25s ease, transform .25s ease;
     }
     .obr-chrome-hidden .obr-topbar { opacity: 0; transform: translateY(-100%); pointer-events: none; }
     .obr-chrome-hidden .obr-footer { opacity: 0; transform: translateY(100%); pointer-events: none; }
-    .obr-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; max-width: 55%; }
-    .obr-controls { display: flex; gap: 6px; }
+    /* The title is the only shrinkable item on the row, so it ellipsizes to make room for
+       the controls (which stay full size on one line — flex:none + per-button nowrap). */
+    .obr-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; max-width: 55%; min-width: 0; }
+    .obr-controls { display: flex; gap: 6px; flex: none; justify-content: flex-end; }
+    /* Too narrow to hold the buttons beside the title (split / zoomed / small window):
+       drop the whole controls block onto its own row and let the buttons wrap there, so the
+       bar grows (min-height) and Settings/Close stay reachable instead of overflowing off
+       the right edge. ~840px ≈ the controls' natural width + margins — revisit if the button
+       set changes. Buttons still never char-wrap; only the block reflows. */
+    @media (max-width: 840px) {
+      .obr-topbar { flex-wrap: wrap; }
+      .obr-controls { flex-basis: 100%; flex-wrap: wrap; }
+    }
     .obr-btn {
       border: none; cursor: pointer; padding: 6px 10px; border-radius: 6px;
       font-size: 13px; background: rgba(0,0,0,.10); color: inherit; font-family: inherit;
+      white-space: nowrap; flex: none;
     }
     .obr-btn:hover { background: rgba(0,0,0,.22); }
     .obr-overlay.dark .obr-btn { background: rgba(255,255,255,.12); }
@@ -50,7 +62,7 @@
        raised brand-accent "thumb" on the current side. The depth (inset track vs.
        lifted thumb) makes it read as a physical toggle — this side is selected,
        tap the other to switch — rather than two flat buttons. */
-    .obr-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 9px;
+    .obr-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 9px; flex: none;
       background: rgba(0,0,0,.12); border: 1px solid rgba(0,0,0,.08);
       box-shadow: inset 0 1px 2px rgba(0,0,0,.20); transition: opacity .25s ease; }
     .obr-overlay.dark .obr-seg { background: rgba(0,0,0,.38); border-color: rgba(255,255,255,.08);
