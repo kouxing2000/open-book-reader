@@ -158,8 +158,12 @@ infinite scroll; restores the user's scroll on `close()`. Demo: `tests/fixtures/
 **Masonry is JS, not CSS multi-column** (`buildColumns`/`placeTile`/`layoutAll`): a flex row of `.col`
 divs, each tile appended to the currently-shortest column (estimated by aspect ratio). Required so
 incrementally-merged images never re-flow already-placed tiles (CSS `column-*` rebalances all items on
-every append, scrambling reading order). `layoutAll` rebuilds only on initial render, column-width
-change, or a resize that changes the column count.
+every append, scrambling reading order). `layoutAll` rebuilds only on initial render, a Size-slider
+change, or a resize that changes the column count. **The Size slider picks a column COUNT, not a px
+width** (`galleryColumns`, `columnCount`/`maxCols`/`syncSizeSlider`): the columns are flex, so within a
+count every width renders identically — a count slider makes every notch meaningful. It's inverted
+(fuller bar = larger images = fewer columns) and clamped to `maxCols` (what fits at `MIN_TILE` px), so
+"biggest" is a 2-up grid on every screen and never a single full-width image (that's the lightbox).
 
 **Gallery downloads** (the only network feature): content scripts can't call `chrome.downloads` or
 fetch cross-origin, so `gallery.js` messages `background.js` — `obr-download-one` →
