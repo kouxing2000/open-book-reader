@@ -780,6 +780,16 @@
   function tileTop(t) {
     return t.getBoundingClientRect().top - scrollerEl.getBoundingClientRect().top + scrollerEl.scrollTop;
   }
+  // Bring the tile at index i to (roughly) the middle of the grid viewport. Used when the
+  // lightbox closes so paging through the big view carries the reading spot back to the wall —
+  // the image you just looked at ends up on screen instead of the one you opened from.
+  function scrollGridToIndex(i) {
+    if (!active || i < 0 || !scrollerEl || !gridEl) return;
+    const t = gridEl.querySelector('.tile[data-idx="' + i + '"]');
+    if (!t) return; // tile not built yet (shouldn't happen — every image has one)
+    const mid = tileTop(t) - Math.max(0, (scrollerEl.clientHeight - t.offsetHeight) / 2);
+    scrollerEl.scrollTop = Math.max(0, mid);
+  }
   // Lay every known image into fresh columns (initial render, resize, column-width change).
   // `keepScroll` anchors the topmost visible tile so a rebuild doesn't snap to the top.
   function layoutAll(keepScroll) {
@@ -1135,10 +1145,12 @@
     if (slideOn) scheduleSlide();  // (re)arm the dwell after any navigation while playing
   }
   function closeLightbox() {
+    const lastIdx = lightboxIndex; // remember where paging through the big view left off
     lbEl.classList.remove('open');
     lightboxIndex = -1;
     clearTimeout(stripTimer);
     stopSlideshow();
+    scrollGridToIndex(lastIdx); // carry that position back so the just-viewed image is on screen
   }
   function step(dir) {
     if (lightboxIndex < 0 || !images.length) return;
