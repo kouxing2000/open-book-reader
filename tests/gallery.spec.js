@@ -199,6 +199,35 @@ test.describe('image gallery', () => {
     expect((await galleryState(page)).hostDisplay).not.toBe('none'); // gallery still open
   });
 
+  test('closing the lightbox carries the just-viewed image back onto the grid', async ({ page }) => {
+    await openGallery(page);
+    // Force the wall to overflow so there's a scroll position worth restoring.
+    await page.evaluate(() => { document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll').style.maxHeight = '120px'; });
+
+    // Open at the first image (grid parked at the top), then page to the LAST image.
+    await clickInGallery(page, '.tile >> nth=0');
+    const before = (await galleryState(page)).scrollTop;
+    await page.keyboard.press('ArrowLeft'); // 1 -> wrap to the last image
+    expect((await galleryState(page)).lbCounter).toBe('6 / 6');
+
+    await page.keyboard.press('Escape');
+    expect((await galleryState(page)).lbOpen).toBe(false);
+
+    // Without the fix the grid stays where the lightbox opened (the top). It should now have
+    // scrolled down so the last image — the one just viewed — is on screen.
+    const after = (await galleryState(page)).scrollTop;
+    expect(after).toBeGreaterThan(before);
+    const lastVisible = await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      const s = r.querySelector('.scroll');
+      const tiles = r.querySelectorAll('.tile');
+      const t = tiles[tiles.length - 1];
+      const sr = s.getBoundingClientRect(), tr = t.getBoundingClientRect();
+      return tr.bottom > sr.top && tr.top < sr.bottom; // the last tile intersects the viewport
+    });
+    expect(lastVisible).toBe(true);
+  });
+
   test('filmstrip renders one thumb per image and is shown on open', async ({ page }) => {
     await openGallery(page);
     await clickInGallery(page, '.tile >> nth=0');
