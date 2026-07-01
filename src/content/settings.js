@@ -37,7 +37,8 @@
     printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
                            // so the saved copy links back to the article. Off = omit it
                            // (e.g. when sharing a PDF and you'd rather not expose the URL).
-    galleryColWidth: 240,  // image-gallery mode: masonry column width (px)
+    galleryColumns: 4,     // image-gallery mode: masonry column COUNT (fewer = larger images;
+                           // clamped per screen so "biggest" is a 2-up grid everywhere)
     galleryMinSize: 80,    // image-gallery mode: ignore images smaller than this (px)
     galleryAutoLoad: true, // image-gallery mode: progressively hydrate the page's lazy
                            // images as you near the end of the grid (prefetch). Off =

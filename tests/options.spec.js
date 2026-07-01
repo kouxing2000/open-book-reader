@@ -40,7 +40,7 @@ test('settings are grouped into Reader / Image gallery / Smart open cards', asyn
   // A representative control lives in each group (print under Reader, gallery
   // column under Image gallery, per-site rules under Smart open).
   await expect(cards.nth(0).locator('#printSourceUrl')).toBeVisible();
-  await expect(cards.nth(1).locator('#galleryColWidth')).toBeVisible();
+  await expect(cards.nth(1).locator('#galleryColumns')).toBeVisible();
   await expect(cards.nth(2).locator('#siteHost')).toBeVisible();
 });
 

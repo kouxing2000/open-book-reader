@@ -1,7 +1,7 @@
 /* Open Book Reader — options page logic */
 (function () {
   const OBR = globalThis.OBR;
-  const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColWidth', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
+  const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
   const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'printSourceUrl'];
   const savedEl = document.getElementById('saved');

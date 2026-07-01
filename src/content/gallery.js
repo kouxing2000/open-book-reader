@@ -149,7 +149,7 @@
   let slideStartTs = 0;            // when the current image's dwell began (ms) — for elapsed-aware re-aim
   // Debounced, clamped numeric settings wired to their form fields (created in build()):
   // auto-scroll speed, slideshow seconds, masonry column width. See makeNumSetting.
-  let speedSetting = null, slideSecsSetting = null, colWidthSetting = null;
+  let speedSetting = null, slideSecsSetting = null, sizePersistTimer = null;
 
   const MIN = () => settings.galleryMinSize || 80;
 
@@ -330,7 +330,6 @@
 
   /* -------------------------------------------------- styles */
   function css() {
-    const colW = settings.galleryColWidth || 240;
     return `
     :host { all: initial; }
     * { box-sizing: border-box; }
@@ -461,7 +460,6 @@
 
     wrap = document.createElement('div');
     wrap.className = 'wrap';
-    const colW = settings.galleryColWidth || 240;
     wrap.innerHTML = `
       <div class="bar">
         <span class="title">🖼 Images</span>
@@ -476,7 +474,7 @@
         <label class="autospeed" title="Auto-scroll speed in pixels/second — type a value, use the arrows, or press + / -"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="Auto-scroll speed (px/sec)"> px/s</label>
         <span class="status"></span>
         <span class="spacer"></span>
-        <label>Size <input type="range" class="range" min="140" max="420" step="20" value="${colW}"></label>
+        <label>Size <input type="range" class="range" min="2" step="1" aria-label="Image size (drag right for larger images / fewer columns)"></label>
         <span class="seg" role="group" aria-label="Reading mode">
           <button class="seg-btn switch" data-act="text" title="Switch to text reader">${ICON_BOOK}<span>Text</span></button>
           <button class="seg-btn is-active" data-act="images" aria-current="true" title="You are in image gallery">${ICON_IMAGES}<span>Images</span></button>
@@ -513,15 +511,11 @@
     lbSecsEl = wrap.querySelector('.lb-secs-in');
     lbControls = wrap.querySelector('.lb-slideshow');
 
-    // The three debounced numeric settings. Speed has no live-apply (autoStep reads it
-    // each frame); slideshow seconds re-aims the running dwell; column width relays out
-    // the masonry only when the column COUNT actually changes (flex columns auto-resize).
+    // The two debounced numeric settings. Speed has no live-apply (autoStep reads it each
+    // frame); slideshow seconds re-aims the running dwell. (The Size slider is its own thing —
+    // it picks a column COUNT, not a px width; see syncSizeSlider / sizeFromSlider below.)
     speedSetting = makeNumSetting({ key: 'galleryAutoScrollSpeed', min: 20, max: 400, fallback: 60, field: autoSpeedEl });
     slideSecsSetting = makeNumSetting({ key: 'gallerySlideSeconds', min: 1, max: 30, fallback: 3, field: lbSecsEl, applyLive: applySlideSecsLive });
-    colWidthSetting = makeNumSetting({
-      key: 'galleryColWidth', min: 140, max: 420, fallback: 240, field: rangeEl,
-      applyLive: () => { if (active && columnCount() !== cols.length) layoutAll(true); },
-    });
 
     wrap.querySelector('.close').addEventListener('click', close);
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(OBR.normalizeHost(location.href)); });
@@ -558,15 +552,15 @@
     lbSecsEl.addEventListener('input', () => slideSecsSetting.setLive(parseInt(lbSecsEl.value, 10)));
     lbSecsEl.addEventListener('change', () => slideSecsSetting.set(parseInt(lbSecsEl.value, 10)));
 
-    // Column width: the slider value is always in range, so apply+debounce-persist on every
-    // input tick (dragging fires `input` dozens of times/sec — a raw save-per-tick would spam
-    // chrome.storage.sync and race its own read-modify-write). Flush on release/change.
-    rangeEl.addEventListener('input', () => colWidthSetting.set(parseInt(rangeEl.value, 10)));
-    // Finish the drag: flush the pending persist so the final width lands in storage right
+    // Size: pick a column count. Apply live + debounce-persist on every input tick (dragging
+    // fires `input` dozens of times/sec — a raw save-per-tick would spam chrome.storage.sync
+    // and race its own read-modify-write). Flush on release/change.
+    rangeEl.addEventListener('input', sizeFromSlider);
+    // Finish the drag: flush the pending persist so the final count lands in storage right
     // away (a reopen reads it), and drop focus so Page/Home/End/space drive the gallery
     // scroll again instead of nudging the slider value.
-    rangeEl.addEventListener('pointerup', () => { colWidthSetting.flush(); rangeEl.blur(); });
-    rangeEl.addEventListener('change', colWidthSetting.flush); // keyboard arrows / programmatic set
+    rangeEl.addEventListener('pointerup', () => { flushSize(); rangeEl.blur(); });
+    rangeEl.addEventListener('change', flushSize); // keyboard arrows / programmatic set
 
     wrap.querySelector('.rescan').addEventListener('click', () => hydratePage(true));
     wrap.querySelector('.autoscroll').addEventListener('click', (e) => {
@@ -588,7 +582,9 @@
     addEventListener('resize', () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        if (active && built && images.length && columnCount() !== cols.length) layoutAll(true);
+        if (!active || !built) return;
+        syncSizeSlider(); // the column ceiling (and the clamped count) move with the viewport
+        if (images.length && columnCount() !== cols.length) layoutAll(true);
       }, 150);
     });
     wrap.querySelector('.selall-cb').addEventListener('change', (e) => toggleSelectAll(e.target.checked));
@@ -741,11 +737,35 @@
   }
 
   /* ---- JS masonry: columns we append into, never re-flowing placed tiles ---- */
-  function columnCount() {
-    const colW = settings.galleryColWidth || 240;
+  // The Size slider picks a COLUMN COUNT, not a px width — the columns are flex (`flex: 1 1 0`),
+  // so within one count every width renders identically; only the count is visible. A count
+  // slider makes every notch meaningful (a width slider wastes its whole low-count end on the
+  // "2 columns" plateau). MIN_TILE caps how many columns fit, so the slider adapts per screen.
+  const MIN_TILE = 140; // narrowest a tile may get before we stop offering more columns
+  function maxCols() {
     const inner = (scrollerEl ? scrollerEl.clientWidth : 0) - 24; // .scroll padding
-    return Math.max(1, Math.floor((inner + 12) / (colW + 12)));
+    return Math.max(2, Math.floor((inner + 12) / (MIN_TILE + 12)));
   }
+  function columnCount() {
+    return Math.min(Math.max(2, settings.galleryColumns || 4), maxCols()); // 2 .. fits-on-screen
+  }
+  // Reflect the stored count onto the slider for THIS screen. The value is inverted so a fuller
+  // bar = larger images = fewer columns, and the top of the track is always a 2-up grid.
+  function syncSizeSlider() {
+    if (!rangeEl) return;
+    const mx = maxCols();
+    rangeEl.max = mx;
+    rangeEl.value = 2 + mx - columnCount();
+  }
+  // Slider moved: derive the count (inverse of syncSizeSlider), relayout if it changed, persist.
+  function sizeFromSlider() {
+    const mx = maxCols();
+    settings.galleryColumns = Math.min(Math.max(2, 2 + mx - parseInt(rangeEl.value, 10)), mx);
+    if (active && columnCount() !== cols.length) layoutAll(true);
+    clearTimeout(sizePersistTimer);
+    sizePersistTimer = setTimeout(() => { sizePersistTimer = null; OBR.saveSettings({ galleryColumns: settings.galleryColumns }); }, 400);
+  }
+  function flushSize() { if (!sizePersistTimer) return; clearTimeout(sizePersistTimer); sizePersistTimer = null; OBR.saveSettings({ galleryColumns: settings.galleryColumns }); }
   function columnPx(n) {
     const inner = (scrollerEl ? scrollerEl.clientWidth : 0) - 24;
     return Math.max(80, (inner - (n - 1) * 12) / n);
@@ -815,6 +835,7 @@
     images = collect(true); // initial render: include the CSS background-image scan
     if (lbStrip && lightboxIndex < 0) lbStrip.replaceChildren(); // rebuild the strip fresh on next open
     if (scrollerEl) scrollerEl.scrollTop = 0;
+    syncSizeSlider(); // reflect the stored column count (max + value) for this screen
     countEl.textContent = images.length + ' images';
     layoutAll();
     updateSelUI();
@@ -1165,7 +1186,6 @@
     if (OBR.close) OBR.close(); // ensure the text reader isn't also showing
     build();
     applyStylesheet();
-    if (rangeEl) rangeEl.value = settings.galleryColWidth || 240;
     if (autoSpeedEl) autoSpeedEl.value = settings.galleryAutoScrollSpeed || 60; // reflect the persisted speed
     if (lbSecsEl) lbSecsEl.value = settings.gallerySlideSeconds || 3;           // reflect the persisted slideshow secs
     savedPageX = window.scrollX; savedPageY = window.scrollY; // restored on close
@@ -1184,7 +1204,7 @@
     stopAutoScroll(); // cancel the rAF before hiding the host (no orphan scrollTop writes)
     speedSetting.flush();     // persist a just-edited speed before a reopen reads storage
     slideSecsSetting.flush(); // persist a just-edited slideshow dwell too
-    colWidthSetting.flush();  // persist a just-dragged column width too
+    flushSize();              // persist a just-dragged size (column count) too
     stopWatching();
     closeLightbox();
     host.style.display = 'none';

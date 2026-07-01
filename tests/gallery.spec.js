@@ -403,26 +403,27 @@ test.describe('image gallery', () => {
     expect(r.meta.imageCount).toBeGreaterThan(0);
   });
 
-  test('column-width slider changes column count and persists', async ({ page }) => {
+  test('the Size slider changes column count and persists it (as a count, not px)', async ({ page }) => {
     await openGallery(page);
-    const narrow = (await galleryState(page)).cols; // ~5 cols at the 240px default
+    const before = (await galleryState(page)).cols; // the default (4, clamped to the screen)
+    expect(before).toBeGreaterThan(2);              // sanity: the default isn't already the minimum
     await page.evaluate(() => {
       const r = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.range');
-      r.value = '420';
+      r.value = r.max; // fully right = biggest images = fewest columns
       r.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect((await galleryState(page)).cols).toBeLessThan(narrow); // wider tiles → fewer columns
+    expect((await galleryState(page)).cols).toBe(2); // 2-up at the top of the range
 
     // The persist is debounced (dragging fires `input` repeatedly, which would otherwise
     // spam chrome.storage.sync) — poll for the write to land rather than reading it
     // synchronously. Same approach as the auto-scroll-speed persistence tests.
     await expect
       .poll(() => page.evaluate(() => new Promise((r) =>
-        chrome.storage.sync.get('obr_settings', (d) => r((d.obr_settings || {}).galleryColWidth)))))
-      .toBe(420);
+        chrome.storage.sync.get('obr_settings', (d) => r((d.obr_settings || {}).galleryColumns)))))
+      .toBe(2);
   });
 
-  test('column-width slider preserves scroll position (does not snap to top)', async ({ page }) => {
+  test('the Size slider preserves scroll position (does not snap to top)', async ({ page }) => {
     await openGallery(page);
     // Force overflow and scroll into the wall so there's a position worth protecting.
     await page.evaluate(() => { document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll').style.maxHeight = '160px'; });
@@ -431,10 +432,10 @@ test.describe('image gallery', () => {
     expect(before).toBeGreaterThan(0);
     const colsBefore = (await galleryState(page)).cols;
 
-    // Change column width enough to force a column-count change -> a full relayout.
+    // Drag to the fewest columns (largest tiles) to force a column-count change -> a full relayout.
     await page.evaluate(() => {
       const r = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.range');
-      r.value = '420';
+      r.value = r.max;
       r.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
@@ -443,6 +444,44 @@ test.describe('image gallery', () => {
     expect((await galleryState(page)).cols).toBeLessThan(colsBefore);
     const after = await page.evaluate(() => document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll').scrollTop);
     expect(after).toBeGreaterThan(0); // did NOT snap back to the top
+  });
+
+  test('the Size slider tops out at a 2-column grid on any screen width', async ({ page }) => {
+    // The ceiling is derived from the viewport, so "biggest" always means 2-up — not a fixed
+    // px cap that lands on 3-4 columns on a wide monitor (or a single full-width image).
+    for (const width of [820, 1400, 2200]) {
+      await page.setViewportSize({ width, height: 900 });
+      await openGallery(page);
+      const cols = await page.evaluate(() => {
+        const r = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.range');
+        r.value = r.max; // drag the knob fully to the right
+        r.dispatchEvent(new Event('input', { bubbles: true }));
+        return document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.col').length;
+      });
+      expect(cols, `${width}px viewport`).toBe(2);
+      await page.evaluate(() => globalThis.OBR.closeGallery());
+    }
+  });
+
+  test('every Size notch changes the column count (no dead zone)', async ({ page }) => {
+    // The old px-width slider wasted its whole low-count end on the "2 columns" plateau. A
+    // count slider must move the layout by exactly one column per notch across the range.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await openGallery(page);
+    const counts = await page.evaluate(() => {
+      const root = document.getElementById('obr-gallery-host').shadowRoot;
+      const r = root.querySelector('.range');
+      const seen = [];
+      for (let v = +r.min; v <= +r.max; v++) {
+        r.value = v; r.dispatchEvent(new Event('input', { bubbles: true }));
+        seen.push(root.querySelectorAll('.col').length);
+      }
+      return seen;
+    });
+    // Filling the bar drops the count by exactly one each notch, ending at a 2-up grid.
+    expect(counts[0]).toBeGreaterThan(2); // leftmost = most columns (smallest images)
+    for (let i = 1; i < counts.length; i++) expect(counts[i]).toBe(counts[i - 1] - 1);
+    expect(counts[counts.length - 1]).toBe(2); // fully right = biggest = 2 columns
   });
 });
 
