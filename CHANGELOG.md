@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-01
+
+### Changed
+- Gallery: the **Size slider now picks a column count**, not a pixel width — every notch changes
+  the layout, and "biggest" is a 2-up grid on any screen (never a single full-width image; that is
+  what the lightbox is for).
+
+### Fixed
+- Gallery: closing the lightbox now **returns the grid to the image you were viewing** instead of
+  jumping back to the top.
+- Reader: **toolbar buttons no longer wrap their labels** letter-by-letter on some pages. On a
+  narrow / split / zoomed window the controls now flow onto their own row so **Settings and Close
+  stay reachable** instead of sliding off the edge.
+- Reader: a **slow-loading image no longer disrupts a page-turn.** The turn is now a coherent
+  snapshot of the page you are on and the one you are turning to, and a late re-pagination waits for
+  the turn to finish rather than aborting it mid-swing or landing on the wrong page.
+
 ## [1.2.0] - 2026-06-30
 
 ### Added
@@ -104,7 +121,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.1
 [1.2.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.0
 [1.1.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.0.0

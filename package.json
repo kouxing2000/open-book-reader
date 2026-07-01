@@ -1,6 +1,6 @@
 {
   "name": "open-book-reader",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Release tooling for the Open Book Reader Chrome extension. The shipped extension is zero-dependency vanilla JS; these devDependencies are build/publish tooling only and are NOT bundled into the extension.",
   "license": "MIT",
