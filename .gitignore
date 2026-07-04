@@ -23,3 +23,7 @@ REFACTOR-PLAN.md
 # Internal portfolio/marketing metadata + store metrics — kept locally, not published (RULE #1)
 .meta/
 metrics/
+
+# Claude Code: commit shared project skills/settings (version-controlled, travel with
+# the repo), but keep PERSONAL local settings out (RULE #1 covers secrets, not dev docs).
+.claude/settings.local.json

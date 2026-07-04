@@ -14,6 +14,8 @@
   },
   "type": "module",
   "scripts": {
+    "verify:locales": "node scripts/verify-locales.mjs",
+    "pretest": "node scripts/verify-locales.mjs",
     "test": "playwright test",
     "test:headed": "HEADED=true playwright test --project=chromium",
     "test:ui": "playwright test --ui",
