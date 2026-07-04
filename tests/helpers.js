@@ -3,9 +3,17 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTENT = path.resolve(__dirname, '..', 'src', 'content');
+
+// The default-locale message catalog, injected into the page so OBR.t (chrome.i18n)
+// resolves to real English text in the test's MAIN world — which, unlike a real
+// content-script world, has no chrome.i18n. Same reason the storage shim exists.
+const EN_MESSAGES = JSON.parse(
+  readFileSync(path.resolve(__dirname, '..', '_locales', 'en', 'messages.json'), 'utf8')
+);
 
 export const CONTENT_FILES = [
   path.join(CONTENT, 'settings.js'),
@@ -64,9 +72,35 @@ export function storageShim() {
   };
 }
 
+/**
+ * chrome.i18n shim for the page's main world (no chrome.i18n there). Resolves keys
+ * from the passed default-locale catalog and replicates getMessage's placeholder
+ * substitution ($NAME$ -> subs[n], per the entry's placeholders block), so OBR.t
+ * returns the real localized text the assertions expect instead of throwing.
+ */
+export function i18nShim(messages) {
+  globalThis.chrome = globalThis.chrome || {};
+  globalThis.chrome.i18n = {
+    getUILanguage: () => 'en',
+    getMessage(key, subs) {
+      if (key === '@@ui_locale') return 'en';
+      const entry = messages[key];
+      if (!entry) return '';
+      let msg = entry.message;
+      const args = subs == null ? [] : Array.isArray(subs) ? subs : [subs];
+      for (const [name, def] of Object.entries(entry.placeholders || {})) {
+        const idx = parseInt(String(def.content).replace(/^\$/, ''), 10) - 1;
+        msg = msg.replace(new RegExp('\\$' + name + '\\$', 'gi'), args[idx] != null ? String(args[idx]) : '');
+      }
+      return msg;
+    },
+  };
+}
+
 /** Navigate to the fixture article with the storage shim installed. */
 export async function gotoArticle(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.goto('/article.html');
 }
 
@@ -74,6 +108,7 @@ export async function gotoArticle(page) {
  *  <source srcset> behind a grey placeholder, plus a genuinely-empty placeholder figure). */
 export async function gotoPictureArticle(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.goto('/picture-article.html');
 }
 
@@ -82,6 +117,7 @@ export async function gotoPictureArticle(page) {
  *  onto. Used to exercise the selection / element-picker / saved-pick override paths. */
 export async function gotoWrongContent(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.goto('/wrong-content.html');
 }
 
@@ -90,6 +126,7 @@ export async function gotoWrongContent(page) {
  *  prose and reads as "suspect", firing the Wrong content? banner. */
 export async function gotoThinPage(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.goto('/thin-page.html');
 }
 
@@ -97,6 +134,7 @@ export async function gotoThinPage(page) {
  *  figures to decode, so OBR._imageCount and OBR._articleWordCount both see real data. */
 export async function gotoIllustratedArticle(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.goto('/illustrated-article.html');
   await page.waitForFunction(
     () => document.images.length >= 12 && Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0)
@@ -181,6 +219,7 @@ export function downloadShim() {
 /** Load the image-heavy fixture and wait for its <img>s to decode (natural size set). */
 export async function gotoImages(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.addInitScript(downloadShim);
   await page.goto('/images.html');
   await page.waitForFunction(
@@ -192,6 +231,7 @@ export async function gotoImages(page) {
  *  2 more appear only once the page is scrolled). Waits for the initial images. */
 export async function gotoLazyImages(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.addInitScript(downloadShim);
   await page.goto('/lazy-images.html');
   await page.waitForFunction(() => document.images.length >= 4 && Array.from(document.images).every((i) => i.complete));
@@ -202,6 +242,7 @@ export async function gotoLazyImages(page) {
  *  pin the progressive-hydration / auto-scroll stop behaviour on infinite-scroll pages. */
 export async function gotoGrowNoImages(page) {
   await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
   await page.addInitScript(downloadShim);
   await page.goto('/grow-no-images.html');
   await page.waitForFunction(() => document.images.length >= 4 && Array.from(document.images).every((i) => i.complete));

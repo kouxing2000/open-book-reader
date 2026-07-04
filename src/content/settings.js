@@ -16,7 +16,11 @@
   // missing/misspelled key rather than a silent blank). chrome.i18n is available
   // in content scripts and the SW with no extra permission.
   OBR.t = function (key, subs) {
-    return chrome.i18n.getMessage(key, subs) || key;
+    // chrome.i18n is present in content scripts / the SW, but NOT in a plain page
+    // main world (e.g. the test harness before its i18n shim loads) — guard so a
+    // missing i18n degrades to the key name instead of a hard TypeError.
+    var i18n = typeof chrome !== 'undefined' && chrome.i18n;
+    return (i18n && i18n.getMessage(key, subs)) || key;
   };
 
   OBR.STORAGE_KEY = 'obr_settings';
