@@ -263,7 +263,8 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   justification in the Developer Dashboard (the API can't set it) — the API fails with
   `400 "publish condition not met ... Privacy practices tab"`. Fill it BEFORE pushing a tag that adds
   a permission.
-- **Listing copy + IDs**: `store/LISTING.md` (source of truth to paste from). Public site (landing +
+- **Listing copy + IDs**: `.meta/LISTING.md` (gitignored — kept out of this public repo per RULE #1;
+  source of truth to paste from), with the localized detailed descriptions in `.meta/listings/<lang>.txt`. Public site (landing +
   privacy): `site/`, auto-deployed to GitHub Pages on push to `master` via `.github/workflows/pages.yml`
   → https://kouxing2000.github.io/open-book-reader/. Host the privacy policy publicly; note that rendered
   article media still fetch from the origin even though the extension makes no requests.

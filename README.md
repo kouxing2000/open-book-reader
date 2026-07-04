@@ -107,10 +107,10 @@ Pages → Build and deployment → Source = "GitHub Actions"**.)
 
 ## Store listing
 
-All Web Store listing copy + the asset→slot mapping live in **`store/LISTING.md`** — the
-source of truth to paste from when submitting a new version (item ID, description,
-permission justifications, privacy answers, URLs). Listing fields are dashboard-only; the
-API (`npm run deploy`) only uploads/publishes the package.
+Web Store listing copy (description, permission justifications, privacy answers, URLs,
+and the localized descriptions) is kept in the project's private `.meta/` — deliberately
+out of this public repo — since it's publishing/ops material, not code. Listing fields are
+dashboard-only; the API (`npm run deploy`) only uploads/publishes the package.
 
 ## Before publishing (checklist)
 
