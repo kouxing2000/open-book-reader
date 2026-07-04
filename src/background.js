@@ -151,7 +151,14 @@ chrome.runtime.onStartup.addListener(() => { createMenus(); });
 const FETCH_CONCURRENCY = 5;
 
 async function fetchBytesBase64(url) {
-  const res = await fetch(url);
+  // Send the site's own cookies (the cross-origin default is `omit`), so images behind a
+  // login/session gate resolve instead of 403-ing — the single-download path already uses the
+  // browser's cookie jar, so the ZIP looked randomly broken without this. The cookies go ONLY
+  // to the image's own origin, exactly as the browser already sends them when it renders that
+  // <img> on the page; nothing goes to the developer, so the privacy posture holds. (Referer-
+  // based hotlink protection still can't be satisfied from an SW fetch — those stay in the
+  // per-image "failed" count; the user can single-download them via chrome.downloads.)
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const buf = new Uint8Array(await res.arrayBuffer());
   let bin = '';

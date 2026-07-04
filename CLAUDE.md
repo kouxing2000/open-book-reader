@@ -12,8 +12,8 @@
 Chrome MV3 extension, two reading modes: a two-page open-book **text** reader (keyboard
 page-flipping) and an **image-gallery** mode (masonry wall + lightbox). Reading is fully local —
 no data collected, nothing sent to the developer. The one network case: when the user explicitly
-downloads gallery images (needs `downloads` + `host_permissions: <all_urls>` so the service worker
-can fetch image bytes cross-origin to build a ZIP).
+downloads gallery images (needs the OPTIONAL `downloads` + `<all_urls>` permissions — requested on
+first use, not held at install — so the service worker can fetch image bytes cross-origin to build a ZIP).
 
 Zero-dependency, zero-build: Chrome loads `manifest.json` + `src/` + `icons/` directly. Edit files,
 reload the unpacked extension. (`package.json`/`scripts/` are release tooling only — never bundled.)
@@ -168,8 +168,10 @@ count every width renders identically — a count slider makes every notch meani
 **Gallery downloads** (the only network feature): content scripts can't call `chrome.downloads` or
 fetch cross-origin, so `gallery.js` messages `background.js` — `obr-download-one` →
 `chrome.downloads.download` (no host perm needed); `obr-fetch-bytes` → SW `fetch` (needs
-`host_permissions`) returns base64, and the gallery builds the ZIP in-page (`OBR._buildZip`) and saves
-it via a blob `<a download>`. Hence `downloads` + `<all_urls>` in the manifest.
+`host_permissions`, sent with `credentials:'include'` so login-gated images resolve) returns base64,
+and the gallery builds the ZIP in-page (`OBR._buildZip`) and saves it via a blob `<a download>`. Hence
+`downloads` + `<all_urls>` as **optional** permissions (`optional_permissions` / `optional_host_permissions`),
+requested on first use — not held at install.
 
 **Report a problem** (`settings.js`: `OBR.reportBroken` + the pure, testable `OBR._buildReportMailto`):
 the ⚠ Report button opens a prefilled `mailto:` in the user's own mail client — the extension

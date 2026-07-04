@@ -14,10 +14,15 @@
     catch (e) { return ''; }
   })();
 
-  function flashSaved() {
+  // `ok` is saveSettings' success boolean (undefined from legacy callers = assume ok). On a
+  // failed write, say so instead of the dishonest "Saved ✓", and hold it a bit longer.
+  function flashSaved(ok) {
+    const failed = ok === false;
+    savedEl.textContent = failed ? "Couldn't save — try again" : 'Saved ✓';
+    savedEl.classList.toggle('error', failed);
     savedEl.classList.add('show');
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => savedEl.classList.remove('show'), 1200);
+    saveTimer = setTimeout(() => savedEl.classList.remove('show'), failed ? 2600 : 1200);
   }
 
   // maxBookWidth uses 0 = "Full" (fill window); the slider's top position represents it.
@@ -71,7 +76,7 @@
 
   function persistRules(next, then) {
     rules = next;
-    OBR.saveSettings({ siteRules: next }).then(() => { flashSaved(); if (then) then(); });
+    OBR.saveSettings({ siteRules: next }).then((ok) => { flashSaved(ok); if (then) then(); });
   }
 
   function modeSelect(value) {
@@ -332,6 +337,16 @@
   if (chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes[SITE_STASH] && changes[SITE_STASH].newValue) consumeStashedSite();
+      // Site rules can change under an open Options tab — a context-menu "Always open as…" on
+      // another tab, or a sync from another device. Without this refresh, a later edit here would
+      // write back a STALE rules array and silently drop those. Reload + re-render only when they
+      // actually differ, so our own writes don't trigger a self re-render.
+      if (area === 'sync' && changes[OBR.STORAGE_KEY]) {
+        OBR.loadSettings().then((s) => {
+          const next = s.siteRules || [];
+          if (JSON.stringify(next) !== JSON.stringify(rules)) { rules = next; renderSites(); }
+        });
+      }
     });
   }
 })();

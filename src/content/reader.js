@@ -1543,6 +1543,11 @@
 
   document.addEventListener('keydown', (e) => {
     if (!active || pickerActive) return; // picker owns the keyboard while it's up
+    // Let modifier combos fall through to the browser for zoom (Ctrl/Cmd+±) and new tab
+    // (Cmd+T). Print is the deliberate exception: Cmd/Ctrl+P stays captured so it runs the
+    // reader's CLEAN print (printReader) rather than the browser printing the clipped overlay
+    // spread — the exact output that feature exists to replace.
+    const mod = e.ctrlKey || e.metaKey || e.altKey;
     switch (e.key) {
       case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
         e.preventDefault(); e.stopPropagation(); flip(1); break;
@@ -1551,10 +1556,10 @@
       case 'Home': e.preventDefault(); endActiveFlip(); restoreFraction = null; currentSpread = 0; applySpread(); break;
       case 'End': e.preventDefault(); endActiveFlip(); restoreFraction = null; currentSpread = totalSpreads - 1; applySpread(); break;
       case 'Escape': e.preventDefault(); e.stopPropagation(); close(); break;
-      case '+': case '=': e.preventDefault(); changeFont(1); break;
-      case '-': case '_': e.preventDefault(); changeFont(-1); break;
-      case 't': case 'T': e.preventDefault(); cycleTheme(); break;
-      case 'p': case 'P': e.preventDefault(); printReader(); break;
+      case '+': case '=': if (mod) break; e.preventDefault(); changeFont(1); break;
+      case '-': case '_': if (mod) break; e.preventDefault(); changeFont(-1); break;
+      case 't': case 'T': if (mod) break; e.preventDefault(); cycleTheme(); break;
+      case 'p': case 'P': e.preventDefault(); printReader(); break; // capture Cmd/Ctrl+P too — clean print, not the clipped native one
     }
   }, true);
 

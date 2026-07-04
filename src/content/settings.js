@@ -343,15 +343,18 @@
           const savedRaw = (data && data[OBR.STORAGE_KEY]) || {};
           const nextRaw = Object.assign({}, savedRaw, partial);
           delete nextRaw.sites; // purge the legacy host-map once anything is written (see OBR.migrateSiteRules)
-          const merged = Object.assign({}, OBR.DEFAULTS, nextRaw);
           try {
-            chrome.storage.sync.set({ [OBR.STORAGE_KEY]: nextRaw }, () => resolve(merged));
+            // Resolve TRUE only on a confirmed write; FALSE on lastError (quota/throttle) or a
+            // throw, so the Options page can show an error instead of a false "Saved ✓" (mirrors
+            // OBR.savePick). No caller reads a settings object back — every call site ignores it.
+            chrome.storage.sync.set({ [OBR.STORAGE_KEY]: nextRaw },
+              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
           } catch (e) {
-            resolve(merged);
+            resolve(false);
           }
         });
       } catch (e) {
-        resolve(Object.assign({}, OBR.DEFAULTS, partial));
+        resolve(false);
       }
     });
     settingsChain = settingsChain.then(run, run); // chain through failures too
