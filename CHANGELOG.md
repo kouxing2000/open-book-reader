@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-04
+
+### Added
+- **Now available in 6 more languages** — Spanish, Portuguese (Brazil), German, Japanese, French,
+  and Russian. The reader and gallery, the right-click menu, and the Chrome Web Store title and
+  summary all follow your browser's language automatically (English stays the default).
+
+### Changed
+- Renamed to **"Open Book — Reader View"** — the same extension, with a clearer name that says what
+  it does and is easier to find in Chrome Web Store search.
+
 ## [1.2.1] - 2026-07-01
 
 ### Changed
@@ -121,7 +132,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.3.0
 [1.2.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.1
 [1.2.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.0
 [1.1.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.1.0
