@@ -102,19 +102,19 @@
         <span class="obr-doc-title"></span>
         <span class="obr-doc-meta"></span>
         <span class="obr-controls">
-          <button class="obr-btn" data-act="font-" title="Smaller font (−)">A−</button>
-          <button class="obr-btn" data-act="font+" title="Larger font (+)">A+</button>
-          <button class="obr-btn" data-act="theme" title="Cycle paper / light / dark (T)">Theme</button>
-          <button class="obr-btn" data-act="columns" title="Columns per spread (2 / 3 / 4)">⊞ 2</button>
-          <span class="obr-seg" role="group" aria-label="Reading mode">
-            <button class="obr-seg-btn is-active" data-act="text" aria-current="true" title="You are in text reader">${ICON_BOOK}<span>Text</span></button>
-            <button class="obr-seg-btn" data-act="images" title="Switch to image gallery">${ICON_IMAGES}<span>Images</span><span class="obr-seg-badge" hidden></span></button>
+          <button class="obr-btn" data-act="font-" title="${OBR.t('readerBtnFontSmallerTitle')}">A−</button>
+          <button class="obr-btn" data-act="font+" title="${OBR.t('readerBtnFontLargerTitle')}">A+</button>
+          <button class="obr-btn" data-act="theme" title="${OBR.t('readerBtnThemeTitle')}">${OBR.t('readerBtnThemeLabel')}</button>
+          <button class="obr-btn" data-act="columns" title="${OBR.t('readerBtnColumnsTitle')}">⊞ 2</button>
+          <span class="obr-seg" role="group" aria-label="${OBR.t('readerSegGroupLabel')}">
+            <button class="obr-seg-btn is-active" data-act="text" aria-current="true" title="${OBR.t('readerSegTextTitle')}">${ICON_BOOK}<span>${OBR.t('readerSegTextLabel')}</span></button>
+            <button class="obr-seg-btn" data-act="images" title="${OBR.t('readerSegImagesTitle')}">${ICON_IMAGES}<span>${OBR.t('readerSegImagesLabel')}</span><span class="obr-seg-badge" hidden></span></button>
           </span>
-          <button class="obr-btn" data-act="pick" title="Wrong content? Pick the block on the page">⌖ Pick</button>
-          <button class="obr-btn" data-act="print" title="Print or save as PDF (P)">🖨 Print</button>
-          <button class="obr-btn" data-act="report" title="Report a problem on this page (opens an email)">⚠ Report</button>
-          <button class="obr-btn" data-act="settings" title="Open settings">⚙ Settings</button>
-          <button class="obr-btn" data-act="close" title="Close reader (Esc)">✕ Close</button>
+          <button class="obr-btn" data-act="pick" title="${OBR.t('readerBtnPickTitle')}">${OBR.t('readerBtnPickLabel')}</button>
+          <button class="obr-btn" data-act="print" title="${OBR.t('readerBtnPrintTitle')}">${OBR.t('readerBtnPrintLabel')}</button>
+          <button class="obr-btn" data-act="report" title="${OBR.t('readerBtnReportTitle')}">${OBR.t('readerBtnReportLabel')}</button>
+          <button class="obr-btn" data-act="settings" title="${OBR.t('readerBtnSettingsTitle')}">${OBR.t('readerBtnSettingsLabel')}</button>
+          <button class="obr-btn" data-act="close" title="${OBR.t('readerBtnCloseTitle')}">${OBR.t('readerBtnCloseLabel')}</button>
         </span>
       </div>
       <div class="obr-book">
@@ -125,7 +125,7 @@
       </div>
       <div class="obr-footer">
         <span class="obr-indicator"></span>
-        <span class="obr-hint">← / → flip · ↑↓ / Space · +/− font · T theme · P print · Esc exit</span>
+        <span class="obr-hint">${OBR.t('readerFooterHint')}</span>
       </div>
       <div class="obr-pick-hint"></div>
       <div class="obr-progress"><div class="obr-progress-fill"></div></div>`;
@@ -235,10 +235,10 @@
   function buildPrintDoc({ title, byline, content, fontFamily, lineHeight, url }) {
     const t = escapeHTML(title || '');
     return '<!doctype html><html><head><meta charset="utf-8">'
-      + `<title>${t || 'Article'}</title><style>${printCSS({ fontFamily, lineHeight })}</style></head>`
+      + `<title>${t || OBR.t('readerPrintDefaultTitle')}</title><style>${printCSS({ fontFamily, lineHeight })}</style></head>`
       + `<body><h1>${t}</h1>`
       + (byline ? `<div class="obr-print-byline">${escapeHTML(byline)}</div>` : '')
-      + (content || '<p>Could not extract a readable article from this page.</p>')
+      + (content || `<p>${OBR.t('readerPrintNoArticle')}</p>`)
       + (url ? `<div class="obr-print-source">${escapeHTML(url)}</div>` : '')
       + '</body></html>';
   }
@@ -570,8 +570,8 @@
     const wrap = document.createElement('div');
     wrap.innerHTML =
       `<div class="obr-pickbar">
-         <span><b>Pick the content</b> — hover a block, click to read it. <b>↑</b> widen · <b>↓</b> narrow · <b>Esc</b> cancel</span>
-         <button class="obr-pickcancel">Cancel</button>
+         <span>${OBR.t('readerPickBarInstruction')}</span>
+         <button class="obr-pickcancel">${OBR.t('readerPickBarCancel')}</button>
        </div>
        <div class="obr-pickbox" hidden></div>
        <div class="obr-picklabel" hidden></div>`;
@@ -703,19 +703,19 @@
       // Only nag when the parse looks wrong — a confident whole-page read shows nothing
       // (the ⌖ Pick toolbar button stays available for the rare same-size wrong block).
       if (extractionSuspect) {
-        html = `<span class="obr-pick-msg">Wrong content?</span>
-          <button class="obr-btn" data-pick="start">⌖ Pick the block</button>`;
+        html = `<span class="obr-pick-msg">${OBR.t('readerHintWrongContent')}</span>
+          <button class="obr-btn" data-pick="start">${OBR.t('readerHintPickBlock')}</button>`;
       }
     } else if (contentSource === 'pick-manual') {
-      html = `<span class="obr-pick-msg">Reading the block you picked.</span>
-        <button class="obr-btn" data-pick="save">Save for this site</button>`;
+      html = `<span class="obr-pick-msg">${OBR.t('readerHintPickedBlock')}</span>
+        <button class="obr-btn" data-pick="save">${OBR.t('readerHintSaveForSite')}</button>`;
     } else if (contentSource === 'pick-saved') {
-      html = `<span class="obr-pick-msg">Auto-picked content for this site.</span>
-        <button class="obr-btn" data-pick="fullpage">Use full page</button>
-        <button class="obr-btn" data-pick="clear">Clear pick</button>`;
+      html = `<span class="obr-pick-msg">${OBR.t('readerHintAutoPicked')}</span>
+        <button class="obr-btn" data-pick="fullpage">${OBR.t('readerHintUseFullPage')}</button>
+        <button class="obr-btn" data-pick="clear">${OBR.t('readerHintClearPick')}</button>`;
     }
     if (!html) { pickHintEl.classList.remove('show'); pickHintEl.innerHTML = ''; return; }
-    html += `<button class="obr-pick-x" data-pick="dismiss" title="Dismiss">✕</button>`;
+    html += `<button class="obr-pick-x" data-pick="dismiss" title="${OBR.t('readerHintDismiss')}">✕</button>`;
     pickHintEl.innerHTML = html;
     pickHintEl.querySelectorAll('[data-pick]').forEach((b) =>
       b.addEventListener('click', () => handlePickHint(b.dataset.pick)));
@@ -811,7 +811,7 @@
   function flashPickMsg(msg) {
     if (!pickHintEl) return;
     pickHintEl.innerHTML = `<span class="obr-pick-msg">${escapeHTML(msg)}</span>`
-      + `<button class="obr-pick-x" data-pick="dismiss" title="Dismiss">✕</button>`;
+      + `<button class="obr-pick-x" data-pick="dismiss" title="${OBR.t('readerHintDismiss')}">✕</button>`;
     pickHintEl.querySelector('[data-pick]').addEventListener('click', () => pickHintEl.classList.remove('show'));
     pickHintEl.classList.add('show');
   }
@@ -835,10 +835,10 @@
   function saveCurrentPick() {
     if (!pickNode) return;
     const sel = cssPathFor(pickNode);
-    if (!sel) return flashPickMsg('Could not save - this block has no stable selector. Re-pick a parent block.');
+    if (!sel) return flashPickMsg(OBR.t('readerPickSaveNoSelector'));
     if (!OBR.savePick) return;
     OBR.savePick(OBR.normalizeHost(location.href), sel).then((ok) => {
-      if (ok === false) return flashPickMsg('Could not save - storage is full. Remove some saved picks in Options.');
+      if (ok === false) return flashPickMsg(OBR.t('readerPickSaveStorageFull'));
       contentSource = 'pick-saved'; // now the durable per-site pick
       updatePickHint();
     });
@@ -921,12 +921,12 @@
     const byline = article && article.byline ? article.byline : '';
     const body = article
       ? article.content
-      : '<p>Could not extract a readable article from this page. Select the text and reopen, or use the ⌖ Pick button to choose the content block yourself.</p>';
+      : `<p>${OBR.t('readerNoArticleBody')}</p>`;
     titleEl.textContent = title || '';
     // Estimated reading time from the live-DOM prose word count (handles CJK too).
     const words = OBR._articleWordCount ? OBR._articleWordCount() : 0;
     const mins = OBR.readingTimeMin ? OBR.readingTimeMin(words) : 0;
-    if (metaEl) metaEl.textContent = mins ? `~${mins} min` : '';
+    if (metaEl) metaEl.textContent = mins ? OBR.t('readerReadingTime', [String(mins)]) : '';
     pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
     pagesEl.innerHTML =
       `<div class="obr-content">
@@ -1015,8 +1015,8 @@
     pagesEl.style.transform = `translateX(${-currentSpread * stride}px)`;
     const left = currentSpread * pagesPerSpread + 1;
     const right = Math.min(left + pagesPerSpread - 1, totalColumns);
-    indicatorEl.textContent =
-      (left === right ? `${left}` : `${left}–${right}`) + `  /  ${totalColumns} pages`;
+    const rangeStr = left === right ? `${left}` : `${left}–${right}`;
+    indicatorEl.textContent = OBR.t('readerPageIndicator', [rangeStr, String(totalColumns)]);
     if (progressFillEl) {
       const pct = totalSpreads <= 1 ? 1 : currentSpread / (totalSpreads - 1);
       progressFillEl.style.width = Math.round(pct * 100) + '%';

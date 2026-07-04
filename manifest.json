@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Open Book Reader",
+  "name": "__MSG_extName__",
   "version": "1.2.1",
-  "description": "Read any article as a calm two-page open book — flip with the arrow keys. Plus an image-gallery mode. Private, local, open source.",
+  "default_locale": "en",
+  "description": "__MSG_extSummary__",
   "homepage_url": "https://kouxing2000.github.io/open-book-reader/",
   "minimum_chrome_version": "99",
   "icons": {
@@ -18,7 +19,7 @@
     "service_worker": "src/background.js"
   },
   "action": {
-    "default_title": "Open Book Reader (Alt+B)",
+    "default_title": "__MSG_actionTitle__",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -36,14 +37,14 @@
         "default": "Alt+B",
         "mac": "Alt+B"
       },
-      "description": "Toggle Open Book Reader (text)"
+      "description": "__MSG_cmdToggleReader__"
     },
     "toggle-gallery": {
       "suggested_key": {
         "default": "Alt+Shift+B",
         "mac": "Alt+Shift+B"
       },
-      "description": "Toggle image gallery mode"
+      "description": "__MSG_cmdToggleGallery__"
     }
   }
 }

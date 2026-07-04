@@ -59,12 +59,15 @@ const REQUIRED_FILES = [
   'icons/icon32.png',
   'icons/icon48.png',
   'icons/icon128.png',
+  // Default locale is load-bearing: manifest declares `default_locale: "en"`, so
+  // Chrome rejects the package if this catalog is missing. Other locales are optional.
+  '_locales/en/messages.json',
 ];
 
 // Top-level entries to include in the ZIP. Everything else (package.json, scripts/,
 // node_modules/, *.md, .env*, .git) is excluded by simply not being listed here.
 const SHIP_FILES = ['manifest.json'];
-const SHIP_DIRS = ['icons', 'src'];
+const SHIP_DIRS = ['icons', 'src', '_locales'];
 
 async function packageExtension() {
   const packageDir = path.join(rootDir, 'package');
@@ -94,6 +97,19 @@ async function packageExtension() {
   log('\n3️⃣  Validating manifest...', 'blue');
   const manifestPath = path.join(rootDir, 'manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  // manifest.name / .description may be i18n placeholders (__MSG_*__); resolve them
+  // from the default-locale catalog for logs / zip name / checklist (the shipped
+  // manifest keeps the placeholders — Chrome localizes them at load).
+  const enMsgs = (() => {
+    try { return JSON.parse(fs.readFileSync(path.join(rootDir, '_locales', 'en', 'messages.json'), 'utf8')); }
+    catch { return {}; }
+  })();
+  const resolveMsg = (v) => {
+    const m = /^__MSG_(.+)__$/.exec(v || '');
+    return m ? (enMsgs[m[1]]?.message || v) : v;
+  };
+  const displayName = resolveMsg(manifest.name);
+  const displayDesc = resolveMsg(manifest.description);
 
   if (manifest.manifest_version !== 3) {
     log('❌ Error: manifest_version must be 3', 'red');
@@ -103,8 +119,8 @@ async function packageExtension() {
     log('⚠️  manifest.homepage_url still uses the placeholder "github.com/steven/..."', 'yellow');
     log('   Update it before a real store submission (see CLAUDE.md).', 'yellow');
   }
-  log(`📌 Extension: ${manifest.name} v${manifest.version}`, 'cyan');
-  log(`📝 Description: ${manifest.description}`, 'cyan');
+  log(`📌 Extension: ${displayName} v${manifest.version}`, 'cyan');
+  log(`📝 Description: ${displayDesc}`, 'cyan');
   log(`🔒 Permissions: ${(manifest.permissions || []).join(', ') || '(none)'}`, 'cyan');
   const optionalPerms = [
     ...(manifest.optional_permissions || []),
@@ -116,7 +132,7 @@ async function packageExtension() {
 
   // Step 4: Create ZIP archives (root dist.zip + versioned copy)
   log('\n4️⃣  Creating ZIP archive...', 'blue');
-  const zipFileName = `${manifest.name.replace(/\s+/g, '-').toLowerCase()}-v${manifest.version}.zip`;
+  const zipFileName = `${displayName.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}-v${manifest.version}.zip`;
   const versionedZipPath = path.join(packageDir, zipFileName);
   const distZipPath = path.join(rootDir, 'dist.zip');
 
@@ -129,7 +145,7 @@ async function packageExtension() {
   // Step 5: Generate submission checklist
   log('\n5️⃣  Generating submission checklist...', 'blue');
   const checklistPath = path.join(packageDir, 'SUBMISSION_CHECKLIST.md');
-  fs.writeFileSync(checklistPath, buildChecklist(manifest, zipFileName));
+  fs.writeFileSync(checklistPath, buildChecklist(manifest, zipFileName, displayName));
   log('✅ Submission checklist created', 'green');
 
   // Step 6: Summary
@@ -166,7 +182,7 @@ function createZip(zipPath) {
   });
 }
 
-function buildChecklist(manifest, zipFileName) {
+function buildChecklist(manifest, zipFileName, displayName) {
   const permissionNotes = {
     activeTab:
       'Granted when the user clicks the toolbar icon or presses Alt+B; lets the extension read the current tab to render the reader.',
@@ -192,7 +208,7 @@ function buildChecklist(manifest, zipFileName) {
   return `# Chrome Web Store Submission Checklist
 
 ## Extension Details
-- **Name:** ${manifest.name}
+- **Name:** ${displayName}
 - **Version:** ${manifest.version}
 - **Package:** ${zipFileName}
 

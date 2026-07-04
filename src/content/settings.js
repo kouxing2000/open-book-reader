@@ -10,6 +10,15 @@
 (function () {
   const OBR = (globalThis.OBR = globalThis.OBR || {});
 
+  // i18n helper: resolve a localized UI string from _locales/<lang>/messages.json.
+  // `subs` is an optional string or array of strings for $PLACEHOLDER$ slots.
+  // Falls back to the key name if a message is missing (a visible signal of a
+  // missing/misspelled key rather than a silent blank). chrome.i18n is available
+  // in content scripts and the SW with no extra permission.
+  OBR.t = function (key, subs) {
+    return chrome.i18n.getMessage(key, subs) || key;
+  };
+
   OBR.STORAGE_KEY = 'obr_settings';
 
   OBR.DEFAULTS = {

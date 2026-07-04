@@ -79,15 +79,15 @@ function createMenus() {
   const ctx = ['page', 'image'];
   chrome.contextMenus.removeAll(() => {
     void chrome.runtime.lastError;
-    chrome.contextMenus.create({ id: 'obr-open', title: 'Open in Book Reader', contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-open-auto', parentId: 'obr-open', title: 'Auto (smart pick)', contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-open-text', parentId: 'obr-open', title: 'Reader (text)', contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-open-images', parentId: 'obr-open', title: 'Gallery (images)', contexts: ctx });
+    chrome.contextMenus.create({ id: 'obr-open', title: OBR.t('ctxOpenTitle'), contexts: ctx });
+    chrome.contextMenus.create({ id: 'obr-open-auto', parentId: 'obr-open', title: OBR.t('ctxAuto'), contexts: ctx });
+    chrome.contextMenus.create({ id: 'obr-open-text', parentId: 'obr-open', title: OBR.t('ctxReader'), contexts: ctx });
+    chrome.contextMenus.create({ id: 'obr-open-images', parentId: 'obr-open', title: OBR.t('ctxGallery'), contexts: ctx });
     // Set a persistent whole-site rule (most-specific path rules are typed in Options).
     chrome.contextMenus.create({ id: 'obr-sep', parentId: 'obr-open', type: 'separator', contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-rule-text', parentId: 'obr-open', title: 'Always open this site as Reader', contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-rule-images', parentId: 'obr-open', title: 'Always open this site as Gallery', contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-rule-clear', parentId: 'obr-open', title: 'Clear rule for this site', contexts: ctx });
+    chrome.contextMenus.create({ id: 'obr-rule-text', parentId: 'obr-open', title: OBR.t('ctxAlwaysReader'), contexts: ctx });
+    chrome.contextMenus.create({ id: 'obr-rule-images', parentId: 'obr-open', title: OBR.t('ctxAlwaysGallery'), contexts: ctx });
+    chrome.contextMenus.create({ id: 'obr-rule-clear', parentId: 'obr-open', title: OBR.t('ctxClearRule'), contexts: ctx });
     void chrome.runtime.lastError;
   });
 }

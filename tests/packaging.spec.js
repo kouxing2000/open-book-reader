@@ -24,6 +24,10 @@ test('package-extension.js produces a clean, complete zip', () => {
   expect(entries).toContain('src/content/reader.style.js');
   expect(entries).toContain('src/content/reader.js');
   expect(entries).toContain('icons/icon128.png');
+  // Localization must ship: the default locale is load-bearing (manifest declares
+  // default_locale), and the translated locales are the whole point of shipping them.
+  expect(entries).toContain('_locales/en/messages.json');
+  expect(entries).toContain('_locales/ru/messages.json');
 
   // Dev / secret files must NOT be in the package.
   const forbidden = ['package.json', 'package-lock.json', '.env', 'node_modules', 'scripts', 'tests'];

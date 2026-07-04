@@ -462,40 +462,40 @@
     wrap.className = 'wrap';
     wrap.innerHTML = `
       <div class="bar">
-        <span class="title">🖼 Images</span>
+        <span class="title">${OBR.t('galleryTitle')}</span>
         <span class="count"></span>
         <span class="sep"></span>
-        <label class="selall"><input type="checkbox" class="selall-cb"> Select all</label>
-        <span class="selcount">0 selected</span>
-        <button class="btn dl-sel" disabled>${DL_ICON}<span>Download</span></button>
-        <button class="btn dl-zip" disabled>${DL_ICON}<span>ZIP</span></button>
-        <button class="btn rescan" title="Load every image — scroll the whole page to the bottom to pull in all lazy images">${RESCAN_ICON}<span>Load all</span></button>
-        <button class="btn autoscroll" aria-pressed="false" title="Auto-scroll down through the gallery (A)"><span class="icon">${PLAY_ICON}</span><span class="lbl">Auto-scroll</span></button>
-        <label class="autospeed" title="Auto-scroll speed in pixels/second — type a value, use the arrows, or press + / -"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="Auto-scroll speed (px/sec)"> px/s</label>
+        <label class="selall"><input type="checkbox" class="selall-cb"> ${OBR.t('gallerySelectAll')}</label>
+        <span class="selcount">${OBR.t('gallerySelectedCount', ['0'])}</span>
+        <button class="btn dl-sel" disabled>${DL_ICON}<span>${OBR.t('galleryDownload')}</span></button>
+        <button class="btn dl-zip" disabled>${DL_ICON}<span>${OBR.t('galleryZip')}</span></button>
+        <button class="btn rescan" title="${OBR.t('galleryLoadAllTitle')}">${RESCAN_ICON}<span>${OBR.t('galleryLoadAll')}</span></button>
+        <button class="btn autoscroll" aria-pressed="false" title="${OBR.t('galleryAutoScrollTitle')}"><span class="icon">${PLAY_ICON}</span><span class="lbl">${OBR.t('galleryAutoScroll')}</span></button>
+        <label class="autospeed" title="${OBR.t('galleryAutoScrollSpeedTitle')}"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="${OBR.t('galleryAutoScrollSpeedAria')}"> ${OBR.t('gallerySpeedUnit')}</label>
         <span class="status"></span>
         <span class="spacer"></span>
-        <label>Size <input type="range" class="range" min="2" step="1" aria-label="Image size (drag right for larger images / fewer columns)"></label>
-        <span class="seg" role="group" aria-label="Reading mode">
-          <button class="seg-btn switch" data-act="text" title="Switch to text reader">${ICON_BOOK}<span>Text</span></button>
-          <button class="seg-btn is-active" data-act="images" aria-current="true" title="You are in image gallery">${ICON_IMAGES}<span>Images</span></button>
+        <label>${OBR.t('gallerySizeLabel')} <input type="range" class="range" min="2" step="1" aria-label="${OBR.t('gallerySizeAria')}"></label>
+        <span class="seg" role="group" aria-label="${OBR.t('galleryReadingModeGroup')}">
+          <button class="seg-btn switch" data-act="text" title="${OBR.t('gallerySwitchToReaderTitle')}">${ICON_BOOK}<span>${OBR.t('galleryModeText')}</span></button>
+          <button class="seg-btn is-active" data-act="images" aria-current="true" title="${OBR.t('galleryCurrentModeTitle')}">${ICON_IMAGES}<span>${OBR.t('galleryModeImages')}</span></button>
         </span>
-        <button class="btn report" data-act="report" title="Report a problem on this page (opens an email)">⚠ Report</button>
-        <button class="btn settings" data-act="settings" title="Open settings">⚙ Settings</button>
-        <button class="btn close" data-act="close">Close (Esc)</button>
+        <button class="btn report" data-act="report" title="${OBR.t('galleryReportTitle')}">${OBR.t('galleryReport')}</button>
+        <button class="btn settings" data-act="settings" title="${OBR.t('gallerySettingsTitle')}">${OBR.t('gallerySettings')}</button>
+        <button class="btn close" data-act="close">${OBR.t('galleryClose')}</button>
       </div>
       <div class="scroll"><div class="grid"></div></div>
       <div class="lb">
         <span class="lb-close">&times;</span>
-        <button class="lb-dl" title="Download this image">${DL_ICON}</button>
+        <button class="lb-dl" title="${OBR.t('galleryLightboxDownloadTitle')}">${DL_ICON}</button>
         <div class="lb-slideshow">
-          <button class="lb-play" aria-pressed="false" title="Start slideshow (A)">${PLAY_ICON}</button>
-          <label class="lb-secs" title="Seconds per image — type a value, use the arrows, or press + / -"><input type="number" class="lb-secs-in" min="1" max="30" step="1" aria-label="Slideshow seconds per image"> s</label>
+          <button class="lb-play" aria-pressed="false" title="${OBR.t('gallerySlideshowStartTitle')}">${PLAY_ICON}</button>
+          <label class="lb-secs" title="${OBR.t('gallerySlideSecondsTitle')}"><input type="number" class="lb-secs-in" min="1" max="30" step="1" aria-label="${OBR.t('gallerySlideSecondsAria')}"> ${OBR.t('gallerySecondsUnit')}</label>
           <span class="lb-counter"></span>
         </div>
         <div class="lb-nav lb-prev">&#8249;</div>
         <img class="lb-img" alt="">
         <div class="lb-nav lb-next">&#8250;</div>
-        <div class="lb-strip is-hidden" aria-label="Thumbnails"></div>
+        <div class="lb-strip is-hidden" aria-label="${OBR.t('galleryThumbnailsAria')}"></div>
       </div>`;
     root.appendChild(wrap);
 
@@ -612,13 +612,13 @@
   function updateSelUI() {
     if (!wrap) return;
     const n = selectedUrls().length;
-    wrap.querySelector('.selcount').textContent = n + ' selected';
+    wrap.querySelector('.selcount').textContent = OBR.t('gallerySelectedCount', [String(n)]);
     const selBtn = wrap.querySelector('.dl-sel');
     const zipBtn = wrap.querySelector('.dl-zip');
     selBtn.disabled = busy || n === 0;
     zipBtn.disabled = busy || n === 0;
-    selBtn.querySelector('span').textContent = n ? `Download (${n})` : 'Download';
-    zipBtn.querySelector('span').textContent = n ? `ZIP (${n})` : 'ZIP';
+    selBtn.querySelector('span').textContent = n ? OBR.t('galleryDownloadCount', [String(n)]) : OBR.t('galleryDownload');
+    zipBtn.querySelector('span').textContent = n ? OBR.t('galleryZipCount', [String(n)]) : OBR.t('galleryZip');
     const all = wrap.querySelector('.selall-cb');
     all.checked = images.length > 0 && n === images.length;
     all.indeterminate = n > 0 && n < images.length;
@@ -649,7 +649,7 @@
   // they decline). Returns the SW response so batch callers can tally results.
   function downloadOne(url, i) {
     return sendSW({ type: 'obr-download-one', url, filename: filenameFromUrl(url, i) }).then((resp) => {
-      if (resp && resp.denied) setStatus('Downloads permission needed');
+      if (resp && resp.denied) setStatus(OBR.t('galleryDownloadsPermissionNeeded'));
       return resp;
     });
   }
@@ -662,7 +662,7 @@
     const urls = items.map((im) => im.full || im.url);
     busy = true;
     updateSelUI();
-    setStatus(asZip ? 'Zipping…' : 'Downloading…');
+    setStatus(asZip ? OBR.t('galleryZipping') : OBR.t('galleryDownloading'));
     try {
       if (!asZip) {
         // Use each image's real index (not its position in the selected subset) so
@@ -670,26 +670,26 @@
         // prompt covers the whole batch (later requests queue behind the first).
         const sent = await Promise.all(items.map((im) => downloadOne(im.full || im.url, images.indexOf(im))));
         const ok = sent.filter((r) => r && r.ok).length;
-        setStatus(ok ? `Sent ${ok}` : 'Downloads permission needed');
+        setStatus(ok ? OBR.t('gallerySentCount', [String(ok)]) : OBR.t('galleryDownloadsPermissionNeeded'));
       } else {
         // SW fetches bytes (cross-origin host permission bypasses CORS), returns base64.
         const resp = await sendSW({ type: 'obr-fetch-bytes', urls });
-        if (resp && resp.denied) { setStatus('Image-fetch permission needed'); return; }
+        if (resp && resp.denied) { setStatus(OBR.t('galleryImageFetchPermissionNeeded')); return; }
         const results = (resp && resp.results) || [];
         const ok = results.filter((r) => r && r.ok && r.b64);
         if (!ok.length) {
-          setStatus('Download failed');
+          setStatus(OBR.t('galleryDownloadFailed'));
         } else {
           const names = uniquifyNames(ok.map((r, k) => filenameFromUrl(r.url, k)));
           const files = ok.map((r, k) => ({ name: names[k], bytes: b64ToBytes(r.b64) }));
           const zip = OBR._buildZip(files);
           saveBlob(new Blob([zip], { type: 'application/zip' }), 'images.zip');
           const failed = urls.length - ok.length;
-          setStatus(failed ? `Done — ${ok.length} saved, ${failed} failed` : `Done — ${ok.length} saved`);
+          setStatus(failed ? OBR.t('galleryDoneSavedFailed', [String(ok.length), String(failed)]) : OBR.t('galleryDoneSaved', [String(ok.length)]));
         }
       }
     } catch (e) {
-      setStatus('Download failed');
+      setStatus(OBR.t('galleryDownloadFailed'));
     } finally {
       busy = false;
       updateSelUI();
@@ -715,14 +715,14 @@
     cb.type = 'checkbox';
     cb.className = 'tile-ctl check';
     cb.checked = selected.has(im.url);
-    cb.title = 'Select';
+    cb.title = OBR.t('gallerySelectTile');
     cb.addEventListener('click', (e) => e.stopPropagation());
     cb.addEventListener('change', (e) => setSelected(im.url, e.target.checked, tile));
     tile.appendChild(cb);
 
     const dl = document.createElement('button');
     dl.className = 'tile-ctl tile-dl';
-    dl.title = 'Download';
+    dl.title = OBR.t('galleryDownload');
     dl.innerHTML = DL_ICON;
     dl.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); downloadOne(im.full || im.url, i); });
     tile.appendChild(dl);
@@ -732,7 +732,7 @@
   function renderEmpty() {
     const e = document.createElement('div');
     e.className = 'empty';
-    e.textContent = 'No images found yet. Scroll the gallery to load more, or use ⟳ Load all.';
+    e.textContent = OBR.t('galleryEmpty');
     gridEl.appendChild(e);
   }
 
@@ -836,7 +836,7 @@
     if (lbStrip && lightboxIndex < 0) lbStrip.replaceChildren(); // rebuild the strip fresh on next open
     if (scrollerEl) scrollerEl.scrollTop = 0;
     syncSizeSlider(); // reflect the stored column count (max + value) for this screen
-    countEl.textContent = images.length + ' images';
+    countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
     layoutAll();
     updateSelUI();
   }
@@ -859,13 +859,13 @@
       added++;
     });
     if (added) {
-      countEl.textContent = images.length + ' images';
+      countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
       updateSelUI();
       softDone = false;
       if (lightboxIndex >= 0) { // keep the open lightbox's filmstrip + counter in sync as images hydrate
         buildFilmstrip();
         syncFilmstripActive(lightboxIndex);
-        lbCounter.textContent = (lightboxIndex + 1) + ' / ' + images.length;
+        lbCounter.textContent = OBR.t('galleryLightboxCounter', [String(lightboxIndex + 1), String(images.length)]);
       }
     }
     return added;
@@ -917,7 +917,7 @@
     sweeping = true;
     const btn = wrap && wrap.querySelector('.rescan');
     if (toBottom && btn) btn.disabled = true;
-    setStatus(toBottom ? 'Loading all…' : 'Loading more…');
+    setStatus(toBottom ? OBR.t('galleryLoadingAll') : OBR.t('galleryLoadingMore'));
     const de = document.documentElement;
     de.style.overflow = ''; // open() locked this to 'hidden'; allow programmatic scroll
     // Small steps with a dwell at each: big jumps can skip a page's IntersectionObserver
@@ -962,7 +962,7 @@
       // auto-scroll's one bottom-retry) clear it too.
       if (!toBottom && active && added === 0) softDone = true;
       if (btn) btn.disabled = false;
-      setStatus(added ? `+${added} images` : (fullyHydrated ? 'All images loaded' : ''));
+      setStatus(added ? OBR.t('galleryAddedImages', [String(added)]) : (fullyHydrated ? OBR.t('galleryAllImagesLoaded') : ''));
       setTimeout(() => setStatus(''), 2500);
     }
     return added;
@@ -1053,8 +1053,8 @@
     btn.classList.toggle('on', autoScroll);
     btn.setAttribute('aria-pressed', autoScroll ? 'true' : 'false');
     btn.querySelector('.icon').innerHTML = autoScroll ? PAUSE_ICON : PLAY_ICON;
-    btn.querySelector('.lbl').textContent = autoScroll ? 'Stop' : 'Auto-scroll';
-    btn.title = autoScroll ? 'Stop auto-scroll (A)' : 'Auto-scroll down through the gallery (A)';
+    btn.querySelector('.lbl').textContent = autoScroll ? OBR.t('galleryAutoScrollStop') : OBR.t('galleryAutoScroll');
+    btn.title = autoScroll ? OBR.t('galleryAutoScrollStopTitle') : OBR.t('galleryAutoScrollTitle');
   }
 
   OBR._galleryAutoScroll = (on) => { on ? startAutoScroll() : stopAutoScroll(); }; // drive (tests)
@@ -1076,7 +1076,7 @@
       t.className = 'lb-thumb';
       t.loading = 'lazy';            // off-screen thumbs stay undecoded
       t.src = im.url;                // same small URL the grid tile already cached -> no new request
-      t.alt = 'Thumbnail ' + (idx + 1);
+      t.alt = OBR.t('galleryThumbnailAlt', [String(idx + 1)]);
       t.dataset.idx = idx;
       t.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(idx); });
       lbStrip.appendChild(t);
@@ -1143,7 +1143,7 @@
     btn.classList.toggle('on', slideOn);
     btn.setAttribute('aria-pressed', slideOn ? 'true' : 'false');
     btn.innerHTML = slideOn ? PAUSE_ICON : PLAY_ICON;
-    btn.title = slideOn ? 'Pause slideshow (A)' : 'Start slideshow (A)';
+    btn.title = slideOn ? OBR.t('gallerySlideshowPauseTitle') : OBR.t('gallerySlideshowStartTitle');
   }
   OBR._gallerySlideshow = (on) => { on ? startSlideshow() : stopSlideshow(); }; // drive (tests)
   OBR._gallerySlideshowOn = () => slideOn;                                      // state (tests)
@@ -1152,8 +1152,8 @@
     stopAutoScroll(); // opening the lightbox is a manual interaction
     lightboxIndex = i;
     lbImg.src = images[i].full || images[i].url;
-    lbImg.alt = 'Image ' + (i + 1);
-    lbCounter.textContent = (i + 1) + ' / ' + images.length;
+    lbImg.alt = OBR.t('galleryImageAlt', [String(i + 1)]);
+    lbCounter.textContent = OBR.t('galleryLightboxCounter', [String(i + 1), String(images.length)]);
     lbEl.classList.add('open');
     const multi = images.length > 1;                          // a slideshow needs >1 image
     const play = wrap.querySelector('.lb-play');

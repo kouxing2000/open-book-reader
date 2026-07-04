@@ -27,7 +27,10 @@ test('Chrome loads the shipped manifest (name + minimal install permissions)', a
   const manifest = JSON.parse(await page.locator('body').innerText());
 
   expect(manifest.manifest_version).toBe(3);
-  expect(manifest.name).toBe('Open Book Reader');
+  expect(manifest.default_locale).toBe('en');
+  // Name + summary are localized via _locales/*, so the raw manifest carries the
+  // __MSG__ placeholder that Chrome resolves per locale at load.
+  expect(manifest.name).toBe('__MSG_extName__');
   // Install asks for only the minimal set — nothing scary at install time.
   // (contextMenus adds the right-click "Open in Book Reader" surface; no install warning.)
   expect(manifest.permissions.sort()).toEqual(['activeTab', 'contextMenus', 'scripting', 'storage']);
@@ -35,6 +38,11 @@ test('Chrome loads the shipped manifest (name + minimal install permissions)', a
   // downloads + <all_urls> are OPTIONAL, requested on first image download.
   expect(manifest.optional_permissions).toEqual(['downloads']);
   expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
+
+  // The resolved English (default-locale) store name lives in the messages catalog.
+  await page.goto(`chrome-extension://${extensionId}/_locales/en/messages.json`);
+  const messages = JSON.parse(await page.locator('body').innerText());
+  expect(messages.extName.message).toBe('Open Book — Reader View');
 });
 
 test('by default the SW holds no downloads/host access (opt-in only)', async ({ serviceWorker }) => {
