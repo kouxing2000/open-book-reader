@@ -34,6 +34,16 @@ jobs:
       - name: Install tooling
         run: npm ci
 
+      # Fail fast on dead/rotated credentials: a ~2s token exchange BEFORE the ~2.5-min
+      # Playwright install + test build, so a bad CHROME_REFRESH_TOKEN doesn't waste the run.
+      - name: Preflight — verify Web Store credentials
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: npm run deploy -- --check
+
       - name: Verify tag matches manifest version
         run: |
           TAG="${GITHUB_REF_NAME#v}"

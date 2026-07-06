@@ -30,6 +30,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.join(__dirname, '..');
 
+// `npm run deploy -- --check`: credential preflight only (no upload). CI runs this FIRST so a
+// dead token fails fast instead of after the full test + package build. Also usable locally.
+const CHECK_ONLY = process.argv.includes('--check');
+
 const envPath = path.join(rootDir, '.env.chrome-webstore');
 if (fs.existsSync(envPath)) {
   const dotenv = await import('dotenv');
@@ -111,12 +115,11 @@ function getVersion() {
   return manifest.version;
 }
 
-// uploadExisting()/publish() refresh the OAuth token internally, so a DEAD refresh token
-// surfaces as a bare "Bad Request" (Google's token endpoint returns HTTP 400 invalid_grant).
-// On any deploy failure, probe the token directly so the real cause is unambiguous in CI logs:
-// either "token OK -> it's the upload/publish API" or "invalid_grant -> re-mint the token".
-async function reportTokenHealth() {
-  if (!CONFIG.refreshToken) return;
+// Exchange the refresh token for an access token — the single source of truth for "is our
+// Web Store auth alive". Used by the fast preflight (--check) and by the post-failure
+// diagnostic below. Never throws; returns a plain status object.
+async function checkToken() {
+  if (!CONFIG.refreshToken) return { ok: false, reason: 'CHROME_REFRESH_TOKEN is not set' };
   try {
     const r = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -129,19 +132,59 @@ async function reportTokenHealth() {
       }),
     });
     const j = await r.json().catch(() => ({}));
-    if (r.ok && j.access_token) {
-      console.error(`   ⮑ OAuth token OK (scope: ${j.scope || '?'}) — the failure is the upload/publish API, not auth.`);
-    } else {
-      console.error(`   ⮑ OAuth token check: HTTP ${r.status} ${j.error || ''} ${j.error_description || ''}`.trimEnd());
-      if (j.error === 'invalid_grant') {
-        console.error('   ⮑ CHROME_REFRESH_TOKEN is expired/revoked. Re-mint it (npm run get-token), update the');
-        console.error('     GitHub secret, and set the OAuth consent screen to "In production" so tokens stop');
-        console.error('     expiring (~7-day limit while the consent screen is in "Testing").');
-      }
-    }
+    if (r.ok && j.access_token) return { ok: true, scope: j.scope || '?' };
+    return { ok: false, error: j.error || '', reason: `HTTP ${r.status} ${j.error || ''} ${j.error_description || ''}`.trimEnd() };
   } catch (e) {
-    console.error('   ⮑ OAuth token check could not run:', e.message);
+    return { ok: false, reason: `could not reach the OAuth endpoint (${e.message})` };
   }
+}
+
+// uploadExisting()/publish() refresh the OAuth token internally, so a DEAD refresh token
+// surfaces as a bare "Bad Request" (Google's token endpoint returns HTTP 400 invalid_grant).
+// On any deploy failure, probe the token directly so the real cause is unambiguous in CI logs:
+// either "token OK -> it's the upload/publish API" or "invalid_grant -> re-mint the token".
+async function reportTokenHealth() {
+  if (!CONFIG.refreshToken) return;
+  const t = await checkToken();
+  if (t.ok) {
+    console.error(`   ⮑ OAuth token OK (scope: ${t.scope}) — the failure is the upload/publish API, not auth.`);
+  } else {
+    console.error(`   ⮑ OAuth token check: ${t.reason}`);
+    if (t.error === 'invalid_grant') {
+      console.error('   ⮑ CHROME_REFRESH_TOKEN is expired/revoked. Re-mint it (npm run get-token), update the');
+      console.error('     GitHub secret, and set the OAuth consent screen to "In production" so tokens stop');
+      console.error('     expiring (~7-day limit while the consent screen is in "Testing").');
+    }
+  }
+}
+
+// Fast credential preflight for CI (`npm run deploy -- --check`): verify the required env is
+// present and the refresh token still exchanges — WITHOUT uploading or needing dist.zip. Wired
+// as the first release step so a dead/rotated token fails in seconds, not after the full build.
+async function preflight() {
+  console.log('\n🔐 Chrome Web Store credential preflight\n');
+  const missing = ['CHROME_EXTENSION_ID', 'CHROME_CLIENT_ID', 'CHROME_CLIENT_SECRET', 'CHROME_REFRESH_TOKEN'].filter(
+    (k) => !process.env[k]
+  );
+  if (missing.length) {
+    console.error('❌ Missing required credential(s):');
+    missing.forEach((k) => console.error(`   - ${k}`));
+    console.error('\n   In CI these come from repo secrets; locally from .env.chrome-webstore.\n');
+    process.exit(1);
+  }
+  const t = await checkToken();
+  if (t.ok) {
+    console.log(`✓ OAuth token valid (scope: ${t.scope})`);
+    console.log('✓ Preflight passed — safe to build and upload.\n');
+    process.exit(0);
+  }
+  console.error(`❌ OAuth token invalid: ${t.reason}`);
+  if (t.error === 'invalid_grant') {
+    console.error('   ⮑ CHROME_REFRESH_TOKEN is expired/revoked. Re-mint it (npm run get-token), then sync the');
+    console.error('     GitHub secret. The consent screen is "In production" so tokens should not expire on their');
+    console.error('     own — a revoke or client-secret rotation is the likely cause.');
+  }
+  process.exit(1);
 }
 
 async function deploy() {
@@ -215,7 +258,8 @@ async function deploy() {
   console.log('\n');
 }
 
-deploy().catch((error) => {
+const run = CHECK_ONLY ? preflight : deploy;
+run().catch((error) => {
   console.error('Unexpected error:', error);
   process.exit(1);
 });

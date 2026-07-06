@@ -14,6 +14,10 @@
  *   npm run bump -- major   # 0.1.0 -> 1.0.0
  *   npm run bump -- 0.4.2   # explicit version
  *   npm run bump -- minor --no-git   # edit files only, no commit/tag
+ *   npm run bump -- patch --allow-empty-changelog   # skip the empty-[Unreleased] guard
+ *
+ * Refuses to run if "## [Unreleased]" in CHANGELOG.md is empty (a shipped version with no
+ * release notes is almost always a forgotten step) — override with --allow-empty-changelog.
  *
  * After it runs:  git push --follow-tags
  */
@@ -26,9 +30,11 @@ import { execSync } from 'child_process';
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifestPath = path.join(rootDir, 'manifest.json');
 const pkgPath = path.join(rootDir, 'package.json');
+const changelogPath = path.join(rootDir, 'CHANGELOG.md');
 
 const args = process.argv.slice(2);
 const noGit = args.includes('--no-git');
+const allowEmptyChangelog = args.includes('--allow-empty-changelog');
 const bumpArg = args.find((a) => !a.startsWith('--')) || 'patch';
 
 function parse(v) {
@@ -73,6 +79,33 @@ if (!noGit) {
   }
 }
 
+// Guard: refuse to roll an EMPTY "## [Unreleased]" into the release. Shipping a version
+// with no release notes is almost always a forgotten step (it was this repo's v1.4.0
+// near-miss — an empty section got promoted, then backfilling forced an amend + re-tag).
+// Run BEFORE any file write so an abort leaves a clean tree. Escape hatch for a genuine
+// no-notes release: --allow-empty-changelog.
+if (fs.existsSync(changelogPath) && !allowEmptyChangelog) {
+  const cl = fs.readFileSync(changelogPath, 'utf8');
+  const hasUnreleased = /##[ \t]*\[Unreleased\]/.test(cl);
+  if (hasUnreleased && !cl.includes(`## [${next}]`)) {
+    const afterHeading = cl.slice(cl.search(/##[ \t]*\[Unreleased\]/)).replace(/##[ \t]*\[Unreleased\][^\n]*\n/, '');
+    const nextIdx = afterHeading.search(/\n##[ \t]*\[/);
+    // Body up to the next version heading — but drop link-reference-definition lines
+    // (e.g. "[Unreleased]: https://.../compare/vX.Y.Z...HEAD"), which aren't release notes.
+    // Without this, an empty [Unreleased] that is the LAST section would count its link def
+    // as content and slip through.
+    const body = (nextIdx === -1 ? afterHeading : afterHeading.slice(0, nextIdx))
+      .replace(/^\[[^\]]+\]:\s.*$/gm, '')
+      .trim();
+    if (body.length === 0) {
+      console.error(`❌ CHANGELOG.md "## [Unreleased]" is empty — refusing to cut ${next} with no release notes.`);
+      console.error('   Add what changed under "## [Unreleased]", then re-run the bump.');
+      console.error('   (Genuinely no user-facing notes? Re-run with --allow-empty-changelog.)');
+      process.exit(1);
+    }
+  }
+}
+
 // Replace ONLY the top-level "version" field so the files' hand-authored
 // formatting (compact arrays etc.) is preserved — never re-serialize the whole JSON.
 const bumpField = (text, file) => {
@@ -101,7 +134,7 @@ if (fs.existsSync(lockPath)) {
 
 // Roll CHANGELOG.md: the entries under "## [Unreleased]" become the new version's section.
 // Leaves an empty [Unreleased] on top and updates the compare link to point at the new tag.
-const changelogPath = path.join(rootDir, 'CHANGELOG.md');
+// (Emptiness was already gated above, before any file write.)
 let changelogStamped = false;
 if (fs.existsSync(changelogPath)) {
   let cl = fs.readFileSync(changelogPath, 'utf8');
