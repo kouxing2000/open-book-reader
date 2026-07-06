@@ -55,14 +55,22 @@
       <p class="lead">Open Book Reader is designed to be completely private.</p>
 
       <h2>What we collect</h2>
-      <p><span class="strong-no">Nothing.</span> The extension does not collect, store, or transmit any personal data, browsing history, or page content to us or any third party.</p>
+      <p><span class="strong-no">Nothing.</span> The extension does not collect, store, or transmit any personal data, browsing history, or page content to us or any third party. The only data that ever leaves your device is a message <em>you</em> deliberately choose to send us — see <a href="#feedback">Reporting a problem</a> below.</p>
 
       <h2>Network activity</h2>
       <p>Core reading is fully local: article extraction and pagination (and the image-gallery layout) happen entirely in your browser, and the Mozilla Readability library is bundled inside the extension — nothing is fetched from external servers for reading.</p>
       <p>The extension makes network requests in <strong>one case only: when you explicitly download images</strong> from the image-gallery mode. To save an image, or to bundle several into a ZIP, your browser fetches those image URLs (the same images the page already shows). This happens only on your action (clicking a download / ZIP button), the bytes go only to your device, and <strong>nothing is ever sent to the developer or any third party.</strong></p>
 
-      <h2>Reporting a problem</h2>
-      <p>The reader and image-gallery toolbars have a <strong>⚠ Report</strong> button. Clicking it opens <strong>your own email client</strong> with a pre-filled message so you can tell the developer a page didn't work. The draft includes the address of the page you were on (path only — any <code>?query</code> string is stripped), the mode you were using, and the extension version, so the bug can be reproduced. <strong>The extension itself sends nothing</strong> — it only prepares the draft; you review it and decide whether to send it from your own email account. If you don't click Send, nothing leaves your device.</p>
+      <h2 id="feedback">Reporting a problem</h2>
+      <p>The reader and image-gallery toolbars have a <strong>⚠ Report</strong> button. It opens a small report page (part of the extension) where you describe the problem and choose how to send it — both entirely up to you:</p>
+      <ul>
+        <li><strong>By email</strong> — opens your own email client with a pre-filled message. The extension only prepares the draft; you review and send it from your own account.</li>
+        <li><strong>By web form</strong> — submits your message to a Google Form (so reporting still works if you have no email client set up). This goes to Google as the form provider, sends only what you typed plus the diagnostics shown on the page, and only when you click Send.</li>
+      </ul>
+      <p>Either way, the message includes the address of the page you were on (path only — any <code>?query</code> string is stripped), the mode you were using, and the extension version, so the bug can be reproduced. Your email address is included only if you choose to add it for a reply. <strong>The extension never transmits anything on its own</strong> — nothing leaves your device until you submit.</p>
+
+      <h2>Uninstall survey</h2>
+      <p>When you remove the extension, your browser may open a short one-question page asking why you left. Answering is optional and works exactly like reporting a problem (a Google Form, or your own email — only what you choose to send). It is <strong>anonymous</strong>: no email address is asked for or collected.</p>
 
       <h2>Data stored on your device</h2>
       <p>Your reading preferences (font size, theme, book width, spine width, line height) are stored using Chrome's <code>storage.sync</code> API. This data stays within your own browser profile and may sync across your signed-in devices via Google's account sync. It is never sent to the developer.</p>

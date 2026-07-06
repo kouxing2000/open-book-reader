@@ -32,7 +32,11 @@ src/content/
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
   gallery.js         IMAGE mode: collect images → masonry grid + lightbox (Shadow DOM)
 src/options/         options page (reuses settings.js)
+src/welcome.html     first-run activation page — onInstalled opens it (pin icon, shortcuts, sample article)
+src/report.html      ⚠ Report page (bundled, offline) — email OR a web form; opened via the SW relay
 icons/               16/32/48/128
+site/                landing + privacy + uninstall survey (GitHub Pages; NOT shipped in the extension)
+tools/feedback-form/ Google Apps Script backend: the shared feedback collector form + bridge (NOT shipped)
 ```
 
 **Injection flow** (`background.js`): on click/command, `executeScript` probes `OBR._engineLoaded`;
@@ -173,12 +177,31 @@ and the gallery builds the ZIP in-page (`OBR._buildZip`) and saves it via a blob
 `downloads` + `<all_urls>` as **optional** permissions (`optional_permissions` / `optional_host_permissions`),
 requested on first use — not held at install.
 
-**Report a problem** (`settings.js`: `OBR.reportBroken` + the pure, testable `OBR._buildReportMailto`):
-the ⚠ Report button opens a prefilled `mailto:` in the user's own mail client — the extension
-transmits nothing (the user reviews and sends), so the privacy posture holds. The body carries a
-human-readable block + a `[feedback-meta v1]` marker and one JSON line; `pageUrl` is `origin+pathname`
-only (query/hash stripped, so no session tokens leak). Deliberately NO usage telemetry — it would flip
-the Web Store data disclosure off "none".
+**First-run activation** (`src/welcome.html`, `background.js` `onInstalled`): on first install the SW opens
+a one-screen WELCOME page (pin the icon, the two shortcuts, a "try it" sample article) — NOT the options
+page it used to. A settings form is a poor first impression for a tool the user hasn't used yet; welcome
+is activation, not configuration.
+
+**Report a problem** (`settings.js`: `OBR.reportBroken` + `OBR._buildReportMeta` / the pure, testable
+`OBR._buildReportMailto`): the ⚠ Report button no longer opens a raw `mailto:` — it relays to the SW
+(`obr-open-report`), which opens the **bundled report page** (`src/report.html`; first-party + offline,
+diagnostics ride the URL `#fragment` so they never touch a third-party page). There the user writes a
+description (+ an OPTIONAL reply email) and sends it two ways: **email** (their mail client) or a **web
+form** — the latter is the fix for users with no mail client, where a `mailto:` silently fails. Both build
+the SAME `[feedback-meta v1]` body (`pageUrl` = `origin+pathname` only; no telemetry — it would flip the
+Web Store data disclosure off "none"). `reportBroken` falls back to a direct `mailto:` when messaging is
+unavailable (e.g. the test harness). The extension only OPENS the page; nothing is sent until the user submits.
+
+**Feedback pipeline** (`site/uninstall.html`, `src/report.html`, `tools/feedback-form/`): the report page and
+the **uninstall survey** (opened by `chrome.runtime.setUninstallURL` on uninstall — a static GitHub Pages
+page, param-free so the extension appends nothing) each build a `[feedback-meta v1]` body and POST it to ONE
+shared "feedback collector" Google Form (single field). An `onFeedbackSubmit` Apps Script bridge
+(`tools/feedback-form/feedback-form.gs`) emails each submission verbatim to the feedback inbox
+(`.meta/feedback.json`), so form feedback rejoins the same `/feedback-ingest` pipeline as `mailto:`. Reporter
+identity travels IN the marker (`reporterEmail`: `null` = anonymous/no-reply for the uninstall survey; the
+user's optional email for a repliable report; absent on a mailto → ingest falls back to the envelope From).
+**GOTCHA** — Apps Script strings must be ASCII or `\uXXXX`-escaped; a raw em dash/curly quote/CJK mangles to
+`â??` mojibake when pasted into the Apps Script editor.
 
 ## Conventions
 
