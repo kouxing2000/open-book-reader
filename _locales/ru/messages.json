@@ -109,5 +109,20 @@
 
   "actionTitle": { "message": "Open Book — Режим чтения (Alt+B)" },
   "cmdToggleReader": { "message": "Переключить режим чтения (текст)" },
-  "cmdToggleGallery": { "message": "Переключить галерею изображений" }
+  "cmdToggleGallery": { "message": "Переключить галерею изображений" },
+  "welcomeTitle": { "message": "Всё готово" },
+  "welcomeTagline": { "message": "Open Book Reader превращает любую статью в спокойный двухстраничный режим чтения." },
+  "welcomeStep1Title": { "message": "Закрепите для доступа в один клик" },
+  "welcomeStep1Body": { "message": "Новые расширения прячутся в меню панели инструментов Chrome. Закрепите Open Book Reader, чтобы он всегда был под рукой." },
+  "welcomeStep1Pin": { "message": "Нажмите 🧩 на панели инструментов, затем 📌, чтобы закрепить Open Book Reader" },
+  "welcomeStep2Title": { "message": "Откройте любую статью" },
+  "welcomeStep2Body": { "message": "Перейдите к новости, записи в блоге или длинной странице, которую хотите прочитать без лишнего." },
+  "welcomeStep3Title": { "message": "Читайте как книгу" },
+  "welcomeStep3Body": { "message": "Нажмите значок 📖 на панели инструментов или клавиши Alt+B для текста (Alt+Shift+B для изображений). Листайте страницы стрелками, закрывайте клавишей Esc." },
+  "welcomeCta": { "message": "Попробовать на примере статьи →" },
+  "welcomeCtaHint": { "message": "Откроет чистую статью в новой вкладке — активируйте там читалку, чтобы увидеть её в действии." },
+  "welcomePrivacy": { "message": "🔒 Всё происходит на вашем устройстве. Open Book Reader ничего не собирает и ничего не отправляет разработчику." },
+  "welcomeSettings": { "message": "Настройки и руководство" },
+  "welcomeWebsite": { "message": "Сайт" },
+  "welcomePrivacyLink": { "message": "Конфиденциальность" }
 }

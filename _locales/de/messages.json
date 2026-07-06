@@ -109,5 +109,20 @@
 
   "actionTitle": { "message": "Open Book — Lesemodus (Alt+B)" },
   "cmdToggleReader": { "message": "Lesemodus umschalten (Text)" },
-  "cmdToggleGallery": { "message": "Bildergalerie umschalten" }
+  "cmdToggleGallery": { "message": "Bildergalerie umschalten" },
+  "welcomeTitle": { "message": "Alles bereit" },
+  "welcomeTagline": { "message": "Open Book Reader verwandelt jeden Artikel in eine ruhige, zweiseitige Leseansicht." },
+  "welcomeStep1Title": { "message": "Anheften für Zugriff mit einem Klick" },
+  "welcomeStep1Body": { "message": "Neue Erweiterungen verstecken sich im Symbolleisten-Menü von Chrome. Hefte Open Book Reader an, damit du es immer erreichst." },
+  "welcomeStep1Pin": { "message": "Klicke auf 🧩 in der Symbolleiste, dann 📌 Open Book Reader anheften" },
+  "welcomeStep2Title": { "message": "Öffne einen beliebigen Artikel" },
+  "welcomeStep2Body": { "message": "Öffne eine Nachricht, einen Blogbeitrag oder eine lange Seite, die du ohne Ablenkung lesen möchtest." },
+  "welcomeStep3Title": { "message": "Lies es wie ein Buch" },
+  "welcomeStep3Body": { "message": "Klicke auf das 📖-Symbol in der Symbolleiste oder drücke Alt+B für Text (Alt+Shift+B für Bilder). Mit den Pfeiltasten blätterst du, mit Esc schließt du." },
+  "welcomeCta": { "message": "An einem Beispielartikel ausprobieren →" },
+  "welcomeCtaHint": { "message": "Öffnet einen aufgeräumten Artikel in einem neuen Tab – aktiviere dort den Reader, um es in Aktion zu sehen." },
+  "welcomePrivacy": { "message": "🔒 Alles passiert auf deinem Gerät. Open Book Reader sammelt nichts und sendet nichts an den Entwickler." },
+  "welcomeSettings": { "message": "Einstellungen & Anleitung" },
+  "welcomeWebsite": { "message": "Website" },
+  "welcomePrivacyLink": { "message": "Datenschutz" }
 }

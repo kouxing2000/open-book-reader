@@ -109,5 +109,20 @@
 
   "actionTitle": { "message": "Open Book — Mode Lecture (Alt+B)" },
   "cmdToggleReader": { "message": "Basculer le lecteur (texte)" },
-  "cmdToggleGallery": { "message": "Basculer la galerie d’images" }
+  "cmdToggleGallery": { "message": "Basculer la galerie d’images" },
+  "welcomeTitle": { "message": "Tout est prêt" },
+  "welcomeTagline": { "message": "Open Book Reader transforme n'importe quel article en une vue de lecture apaisée sur deux pages." },
+  "welcomeStep1Title": { "message": "Épinglez-le pour un accès en un clic" },
+  "welcomeStep1Body": { "message": "Les nouvelles extensions se cachent dans le menu de la barre d'outils de Chrome. Épinglez Open Book Reader pour toujours y accéder." },
+  "welcomeStep1Pin": { "message": "Cliquez sur 🧩 dans la barre d'outils, puis sur 📌 pour épingler Open Book Reader" },
+  "welcomeStep2Title": { "message": "Ouvrez n'importe quel article" },
+  "welcomeStep2Body": { "message": "Allez sur un article d'actualité, un billet de blog ou une longue page que vous souhaitez lire sans distraction." },
+  "welcomeStep3Title": { "message": "Lisez-le comme un livre" },
+  "welcomeStep3Body": { "message": "Cliquez sur l'icône 📖 de la barre d'outils, ou appuyez sur Alt+B pour le texte (Alt+Shift+B pour les images). Utilisez les flèches pour tourner les pages et Esc pour fermer." },
+  "welcomeCta": { "message": "Essayez-le sur un article d'exemple →" },
+  "welcomeCtaHint": { "message": "Ouvre un article épuré dans un nouvel onglet — activez-y le lecteur pour le voir à l'œuvre." },
+  "welcomePrivacy": { "message": "🔒 Tout se passe sur votre appareil. Open Book Reader ne collecte rien et n'envoie rien au développeur." },
+  "welcomeSettings": { "message": "Paramètres et guide" },
+  "welcomeWebsite": { "message": "Site web" },
+  "welcomePrivacyLink": { "message": "Confidentialité" }
 }

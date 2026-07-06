@@ -111,5 +111,20 @@
 
   "actionTitle": { "message": "Open Book — Reader View (Alt+B)" },
   "cmdToggleReader": { "message": "Toggle reader (text)" },
-  "cmdToggleGallery": { "message": "Toggle image gallery" }
+  "cmdToggleGallery": { "message": "Toggle image gallery" },
+  "welcomeTitle": { "message": "You're all set" },
+  "welcomeTagline": { "message": "Open Book Reader turns any article into a calm, two-page reading view." },
+  "welcomeStep1Title": { "message": "Pin it so it's one click away" },
+  "welcomeStep1Body": { "message": "New extensions hide in Chrome's toolbar menu. Pin Open Book Reader so you can always reach it." },
+  "welcomeStep1Pin": { "message": "Click 🧩 in the toolbar, then 📌 pin Open Book Reader" },
+  "welcomeStep2Title": { "message": "Open any article" },
+  "welcomeStep2Body": { "message": "Go to a news story, blog post, or long page you'd like to read without the clutter." },
+  "welcomeStep3Title": { "message": "Read it like a book" },
+  "welcomeStep3Body": { "message": "Click the 📖 toolbar icon, or press Alt+B for text (Alt+Shift+B for images). Use the arrow keys to turn pages, and Esc to close." },
+  "welcomeCta": { "message": "Try it on a sample article →" },
+  "welcomeCtaHint": { "message": "Opens a clean article in a new tab — activate the reader there to see it in action." },
+  "welcomePrivacy": { "message": "🔒 Everything happens on your device. Open Book Reader collects nothing and sends nothing to the developer." },
+  "welcomeSettings": { "message": "Settings & full guide" },
+  "welcomeWebsite": { "message": "Website" },
+  "welcomePrivacyLink": { "message": "Privacy" }
 }

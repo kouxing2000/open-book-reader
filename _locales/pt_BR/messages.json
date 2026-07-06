@@ -109,5 +109,20 @@
 
   "actionTitle": { "message": "Open Book — Modo de Leitura (Alt+B)" },
   "cmdToggleReader": { "message": "Alternar leitor (texto)" },
-  "cmdToggleGallery": { "message": "Alternar galeria de imagens" }
+  "cmdToggleGallery": { "message": "Alternar galeria de imagens" },
+  "welcomeTitle": { "message": "Tudo pronto" },
+  "welcomeTagline": { "message": "O Open Book Reader transforma qualquer artigo em uma leitura tranquila em duas páginas." },
+  "welcomeStep1Title": { "message": "Fixe para acessar com um clique" },
+  "welcomeStep1Body": { "message": "Extensões novas ficam escondidas no menu da barra de ferramentas do Chrome. Fixe o Open Book Reader para acessá-lo sempre." },
+  "welcomeStep1Pin": { "message": "Clique em 🧩 na barra de ferramentas e depois em 📌 para fixar o Open Book Reader" },
+  "welcomeStep2Title": { "message": "Abra qualquer artigo" },
+  "welcomeStep2Body": { "message": "Vá até uma notícia, um post de blog ou uma página longa que você queira ler sem distrações." },
+  "welcomeStep3Title": { "message": "Leia como um livro" },
+  "welcomeStep3Body": { "message": "Clique no ícone 📖 na barra de ferramentas ou pressione Alt+B para texto (Alt+Shift+B para imagens). Use as setas para virar as páginas e Esc para fechar." },
+  "welcomeCta": { "message": "Experimente em um artigo de exemplo →" },
+  "welcomeCtaHint": { "message": "Abre um artigo limpo em uma nova aba — ative o leitor ali para ver em ação." },
+  "welcomePrivacy": { "message": "🔒 Tudo acontece no seu dispositivo. O Open Book Reader não coleta nada e não envia nada ao desenvolvedor." },
+  "welcomeSettings": { "message": "Configurações e guia" },
+  "welcomeWebsite": { "message": "Site" },
+  "welcomePrivacyLink": { "message": "Privacidade" }
 }

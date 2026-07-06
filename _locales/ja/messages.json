@@ -109,5 +109,20 @@
 
   "actionTitle": { "message": "Open Book — リーダーモード (Alt+B)" },
   "cmdToggleReader": { "message": "リーダーの切り替え（テキスト）" },
-  "cmdToggleGallery": { "message": "画像ギャラリーの切り替え" }
+  "cmdToggleGallery": { "message": "画像ギャラリーの切り替え" },
+  "welcomeTitle": { "message": "準備完了" },
+  "welcomeTagline": { "message": "Open Book Reader は、どんな記事も落ち着いた見開き 2 ページの読書ビューに変えます。" },
+  "welcomeStep1Title": { "message": "ワンクリックで開けるようにピン留め" },
+  "welcomeStep1Body": { "message": "新しい拡張機能は Chrome のツールバーメニューに隠れます。Open Book Reader をピン留めして、いつでも使えるようにしましょう。" },
+  "welcomeStep1Pin": { "message": "ツールバーの 🧩 をクリックし、📌 で Open Book Reader をピン留めします" },
+  "welcomeStep2Title": { "message": "記事を開く" },
+  "welcomeStep2Body": { "message": "ニュース記事、ブログ、長いページなど、じっくり読みたいものを開きます。" },
+  "welcomeStep3Title": { "message": "本のように読む" },
+  "welcomeStep3Body": { "message": "ツールバーの 📖 アイコンをクリックするか、Alt+B でテキスト（Alt+Shift+B で画像）を開きます。矢印キーでページをめくり、Esc で閉じます。" },
+  "welcomeCta": { "message": "サンプル記事で試す →" },
+  "welcomeCtaHint": { "message": "新しいタブで読みやすい記事を開きます。そこでリーダーを起動して動作を確認できます。" },
+  "welcomePrivacy": { "message": "🔒 すべてはお使いのデバイス内で完結します。Open Book Reader は何も収集せず、開発者に何も送信しません。" },
+  "welcomeSettings": { "message": "設定とガイド" },
+  "welcomeWebsite": { "message": "ウェブサイト" },
+  "welcomePrivacyLink": { "message": "プライバシー" }
 }
