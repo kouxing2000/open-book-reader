@@ -3,11 +3,16 @@
 > ## ⚠️ RULE #1 — this is a PUBLIC open-source repo. Never commit anything personal or publishing-sensitive to tracked files.
 > That means: real/personal emails, the owning Google account, OAuth client IDs/secrets, refresh
 > tokens, Web Store API credentials, publisher/developer IDs, signing keys, or analytics/metrics
-> dumps. Such things live ONLY in gitignored paths (`.env.chrome-webstore`, `.meta/`, `metrics/`)
-> or your private `~/.claude/` config — never in `CLAUDE.md`, `README.md`, `SECURITY.md`, `store/`,
-> `src/`, tests, or commit messages. The sole deliberate public contact is the in-app feedback
-> address `studio.peach.go+open-book-reader@gmail.com` (a project alias, by design). **Scan every
-> diff for personal/credential leaks before committing.**
+> dumps. It ALSO covers the maintainer's **private ops / tooling** — names of personal `~/.claude`
+> skills or slash commands (e.g. a feedback-triage command), your internal issue-triage workflow, or
+> how you personally process reports. These are not secrets, but they don't belong in a public repo.
+> Such things live ONLY in gitignored paths (`.env.chrome-webstore`, `.meta/`, `metrics/`) or your
+> private `~/.claude/` config — never in `CLAUDE.md`, `README.md`, `SECURITY.md`, `store/`, `src/`,
+> tests, or commit messages. In tracked files describe features **generically** ("emails feedback to
+> the developer's inbox", "a machine-readable marker") — never reference private tooling by name. The
+> sole deliberate public contact is the in-app feedback address
+> `studio.peach.go+open-book-reader@gmail.com` (a project alias, by design). **Scan every diff for
+> personal/credential leaks AND private-ops references before committing.**
 
 Chrome MV3 extension, two reading modes: a two-page open-book **text** reader (keyboard
 page-flipping) and an **image-gallery** mode (masonry wall + lightbox). Reading is fully local —
@@ -196,10 +201,10 @@ unavailable (e.g. the test harness). The extension only OPENS the page; nothing 
 the **uninstall survey** (opened by `chrome.runtime.setUninstallURL` on uninstall — a static GitHub Pages
 page, param-free so the extension appends nothing) each build a `[feedback-meta v1]` body and POST it to ONE
 shared "feedback collector" Google Form (single field). An `onFeedbackSubmit` Apps Script bridge
-(`tools/feedback-form/feedback-form.gs`) emails each submission verbatim to the feedback inbox
-(`.meta/feedback.json`), so form feedback rejoins the same `/feedback-ingest` pipeline as `mailto:`. Reporter
+(`tools/feedback-form/feedback-form.gs`) emails each submission verbatim to the developer's feedback inbox
+(address in `.meta/feedback.json`), so form feedback lands in the same inbox as a `mailto:` report. Reporter
 identity travels IN the marker (`reporterEmail`: `null` = anonymous/no-reply for the uninstall survey; the
-user's optional email for a repliable report; absent on a mailto → ingest falls back to the envelope From).
+user's optional email for a repliable report; absent on a mailto → a reply goes to the envelope From).
 **GOTCHA** — Apps Script strings must be ASCII or `\uXXXX`-escaped; a raw em dash/curly quote/CJK mangles to
 `â??` mojibake when pasted into the Apps Script editor.
 
@@ -279,8 +284,8 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   The exact publisher + owning account are in `.meta/portfolio.json` (gitignored — deliberately kept out
   of this public repo, per RULE #1). A bare `Bad Request`/`Forbidden` with a swallowed body on deploy is
   usually this or an expired token; `deploy-to-store.js` probes the token and prints the real reason.
-  Confirm ownership with `GET /chromewebstore/v1.1/items/<id>?projection=DRAFT` (200 = owns it). Full
-  playbook: the `chrome-webstore-publish` skill.
+  Confirm ownership with `GET /chromewebstore/v1.1/items/<id>?projection=DRAFT` (200 = owns it). The
+  full publish runbook is kept in the maintainer's private `~/.claude` config, not this repo.
 - **Packaging is allowlist-based** (`SHIP_FILES`/`SHIP_DIRS` in `package-extension.js`): only
   `manifest.json`, `icons/`, `src/` ship — dev files can't leak. `READABILITY-LICENSE.md` ships too
   (Apache-2.0 requires it beside the vendored code).

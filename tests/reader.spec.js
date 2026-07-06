@@ -567,7 +567,7 @@ test('the ⚠ Report button builds a feedback mailto with a parseable [feedback-
   });
   expect(r.hasBtn).toBe(true);
   expect(r.to).toBe('mailto:studio.peach.go+open-book-reader@gmail.com');
-  expect(r.body).toContain('[Please describe the issue or feedback here]'); // unchanged placeholder the ingest parser drops
+  expect(r.body).toContain('[Please describe the issue or feedback here]'); // unchanged placeholder the developer's feedback tooling drops
   expect(r.meta).toMatchObject({
     app: 'open-book-reader', platform: 'chrome', mode: 'text',
     reportSource: 'reader-toolbar', proseWords: 1234,

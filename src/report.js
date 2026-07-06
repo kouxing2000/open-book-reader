@@ -2,10 +2,10 @@
 // (script-src 'self') that blocks inline <script>, so an inline version silently never runs
 // (the Send button stays disabled, diagnostics stay empty). See src/report.html.
 
-// ── CONFIG (report Google Form) ─────────────────────────────────────
-// Create the report form with the feedback-form skill's create-form.gs (ONE paragraph
-// question, e.g. "report"), then paste its formResponse URL + the single entry id here.
-// Leave blank to use the email path only (works out of the box).
+// ── CONFIG (feedback collector Google Form) ─────────────────────────
+// The report page posts to the shared feedback collector form (a single-paragraph Google Form;
+// see tools/feedback-form/). Paste its formResponse URL + single entry id here (the same ones
+// site/uninstall.html uses). Leave blank to use the email path only (works out of the box).
 var GFORM_ACTION = 'https://docs.google.com/forms/d/e/1FAIpQLSe-dBYo1dGI_sDYqo9VInP7bgXXrV4KvxXILTCIkzW-rGT1AA/formResponse';
 var GFORM_ENTRY_REPORT = 'entry.913964143';  // the single paragraph field (shared collector form)
 var FEEDBACK_EMAIL = 'studio.peach.go+open-book-reader@gmail.com';
@@ -25,10 +25,10 @@ document.getElementById('diag').textContent = JSON.stringify(meta, null, 2);
 function refresh() { send.disabled = !descEl.value.trim(); }
 descEl.addEventListener('input', refresh);
 
-// Build the [feedback-meta v1] body — mirrors settings.js _buildReportMailto EXACTLY so
-// email + form reports ingest identically. `withReporter` adds reporterEmail to the JSON
-// (the form path — the bridge's envelope From is the operator, so the reply address must
-// travel in the marker); the email path omits it and ingest falls back to the real sender.
+// Build the [feedback-meta v1] body — mirrors settings.js _buildReportMailto EXACTLY so email
+// and form reports are byte-identical. `withReporter` adds reporterEmail to the JSON (the form
+// path — the bridge's envelope From is the operator, so the reply address must travel in the
+// marker); the email path omits it, so a reply goes to the sender's own address.
 function buildBody(withReporter) {
   var m = {};
   for (var k in meta) if (Object.prototype.hasOwnProperty.call(meta, k)) m[k] = meta[k];
@@ -54,7 +54,7 @@ function subjectHost() {
 function mailtoHref() {
   // Honor a typed reply address on the email path too: if the user filled #email, carry it as
   // reporterEmail so a reply goes THERE (not to whatever account their mail client sends from,
-  // which may be a shared/family address). Empty #email → omit it → ingest falls back to From.
+  // which may be a shared/family address). Empty #email → omit it → a reply goes to the sender.
   var withReporter = !!emailEl.value.trim();
   return 'mailto:' + FEEDBACK_EMAIL +
     '?subject=' + encodeURIComponent('Open Book Reader — problem' + subjectHost()) +

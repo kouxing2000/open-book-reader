@@ -129,8 +129,8 @@
   };
 
   // Where "Report a problem" emails go. This is the ONLY developer-facing channel and
-  // it is USER-INITIATED — see OBR.reportBroken. The matching Gmail filter / label live
-  // in .meta/feedback.json so the `feedback` ingest pipeline can route these reports.
+  // it is USER-INITIATED — see OBR.reportBroken. The address (and its Gmail label) live in
+  // .meta/feedback.json.
   OBR.FEEDBACK_EMAIL = 'studio.peach.go+open-book-reader@gmail.com';
 
   // The extension version, or 'unknown' outside an extension context (test harness / proxy,
@@ -143,17 +143,12 @@
     return 'unknown';
   };
 
-  // Build the prefilled "report a problem" mailto: URL. PURE — no side effects — so it
-  // can be unit-tested without launching a mail client. The body carries a
-  // `[feedback-meta v1]` marker (app-agnostic feedback-ingest contract): an unchanged
-  // placeholder line above a `---` divider, then a human-readable metadata block, then the
-  // marker + a one-line JSON the ingest parser consumes. ctx: { source, mode, imageCount?,
-  // proseWords? }. The page URL is stripped of its query/hash before being included — the
-  // path is enough to reproduce an extraction bug, and query strings can carry session
-  // tokens we don't want to leak even into a user-reviewed draft.
-  // The diagnostic block shared by the mailto and the report page. PURE. The `[feedback-meta
-  // v1]` JSON the ingest parser consumes IS this object. The page URL is stripped to
-  // origin+pathname (no query/hash) so session tokens can't leak even into a user-reviewed draft.
+  // The diagnostic block shared by the mailto and the report page. PURE — no side effects — so
+  // it can be unit-tested. The `[feedback-meta v1]` marker is a machine-readable tail the
+  // developer's feedback tooling reads: an unchanged placeholder line, a `---` divider, a
+  // human-readable metadata block, then the marker + a one-line JSON that IS this object.
+  // ctx: { source, mode, imageCount?, proseWords? }. The page URL is stripped to origin+pathname
+  // (no query/hash) so session tokens can't leak even into a user-reviewed draft.
   OBR._buildReportMeta = function (ctx) {
     ctx = ctx || {};
     let pageUrl = '';
@@ -183,7 +178,7 @@
     let host = '';
     try { host = new URL(pageUrl).hostname; } catch (e) { /* */ }
 
-    // EXACT literal the ingest parser drops when left unchanged — do not reword.
+    // EXACT literal the developer's feedback tooling drops when left unchanged — do not reword.
     const PLACEHOLDER = '[Please describe the issue or feedback here]';
     const lines = [
       PLACEHOLDER, '', '---',

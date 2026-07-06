@@ -10,12 +10,15 @@ A user who has no configured mail client can't use a `mailto:` — their feedbac
 the in-app **⚠ Report** (`src/report.html`) and the **uninstall survey** (`site/uninstall.html`)
 also offer a web form. Both pages build the full `[feedback-meta v1]` body client-side and POST
 it to **one** Google "collector" form (single field). `onFeedbackSubmit` (`feedback-form.gs`)
-then emails each submission **verbatim** to the feedback inbox declared in `.meta/feedback.json`,
-so form feedback rejoins the same `/feedback-ingest` pipeline as `mailto:` reports.
+then emails each submission **verbatim** to the developer's feedback inbox (address in
+`.meta/feedback.json`), so a form report lands in the same inbox as a `mailto:` report. The raw
+response also stays in the form's Responses tab — **private to the form owner** (a redundant copy;
+the developer works from the inbox, not from there). Bulk-clear it any time via
+**Responses → ⋮ → Delete all responses**.
 
 ```
-report.html / uninstall.html  --POST body-->  collector form  --onFeedbackSubmit-->  feedback inbox
-                                                               (Apps Script)          -> /feedback-ingest
+report.html / uninstall.html  --POST body-->  collector form  --onFeedbackSubmit-->  developer's inbox
+                                                               (Apps Script)
 ```
 
 ## Setup
@@ -37,4 +40,3 @@ later, edit here and re-run.
   `site/uninstall.html`) live here — never a secret, token, or the publishing/owning account.
 - **ASCII-only:** keep every string ASCII or `\uXXXX`-escaped. A raw multi-byte char (em dash,
   curly quote, CJK) gets mangled to `â??` mojibake when pasted into the Apps Script editor.
-- The reusable, app-agnostic version of this pattern is the **`feedback-form` skill**.

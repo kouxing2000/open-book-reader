@@ -3,8 +3,8 @@
  *
  * This is the TRACKED source of truth for the zero-backend feedback form. It is NOT part of
  * the extension (not shipped) - it runs in Google Apps Script under the feedback account and
- * bridges the one "feedback collector" Google Form into the Gmail feedback inbox declared in
- * .meta/feedback.json. See README.md here, and the `feedback-form` skill for the general pattern.
+ * bridges the one "feedback collector" Google Form into the developer's feedback inbox (address
+ * in .meta/feedback.json). See README.md here.
  *
  * Two functions:
  *   - migrate()          ONE-TIME setup: create the collector form, install the bridge, and
@@ -26,12 +26,12 @@ var CONFIG = {
 function migrate() {
   // Idempotency guard: if a collector bridge is already installed, BAIL. Re-running would create
   // a NEW form (new entry IDs) and move the trigger to it, orphaning the live form that
-  // report.html / uninstall.html hardcode — submissions would still return 200 and show
+  // report.html / uninstall.html hardcode - submissions would still return 200 and show
   // "Thank you" but never reach the inbox. To truly recreate, delete the onFeedbackSubmit
-  // trigger by hand first. (Guard is per-project — it only sees this project's triggers.)
+  // trigger by hand first. (Guard is per-project - it only sees this project's triggers.)
   var already = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'onFeedbackSubmit'; });
   if (already) {
-    Logger.log('ABORT: an onFeedbackSubmit trigger already exists — migration already ran. Nothing changed.');
+    Logger.log('ABORT: an onFeedbackSubmit trigger already exists - migration already ran. Nothing changed.');
     return;
   }
 
@@ -72,8 +72,14 @@ function migrate() {
 /**
  * ONGOING trigger. uninstall.html / report.html already built the full [feedback-meta v1] body
  * (with reportSource, and reporterEmail for repliable reports) and posted it as the single
- * field, so forward it verbatim - email + form reports become byte-identical to the
- * /feedback-ingest parser.
+ * field, so forward it verbatim - email and form reports become byte-identical.
+ *
+ * The raw response also stays in the form's Responses tab, but that is PRIVATE to the form owner
+ * (only you; nobody else can see it) and is just a redundant copy - the developer works from the
+ * feedback inbox, not from here. (We tried deleting the response after forwarding for data
+ * minimization, but deleteResponse is unreliable from inside the submit trigger, so it was
+ * dropped. Bulk-clear the Responses tab by hand whenever you like: Responses -> the three-dot
+ * menu -> "Delete all responses".)
  */
 function onFeedbackSubmit(e) {
   var body = '';
