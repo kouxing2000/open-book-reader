@@ -130,12 +130,24 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (mode) invokeReader(tab.id, tab.url, mode);
 });
 
+// The uninstall survey (a static GitHub Pages form) is our only window into WHY people
+// leave — the extension itself collects nothing, so a churned user is otherwise invisible.
+// Chrome opens this URL in a tab on uninstall; the page transmits only what the user chooses
+// to type (see site/uninstall.html). Param-free by design — the extension appends NO
+// version/usage data. (Opening the page still makes the browser's own request to GitHub
+// Pages, as any navigation does — but the extension itself sends nothing.)
+const UNINSTALL_SURVEY_URL = 'https://kouxing2000.github.io/open-book-reader/uninstall.html';
+
 chrome.runtime.onInstalled.addListener((details) => {
   createMenus();
-  // First install only: open the options page once so the how-to-use guide + shortcuts
-  // are seen at least once (not on updates/reloads — reason would be 'update').
+  // Set on install AND update so a changed survey URL propagates with the next version.
+  try { chrome.runtime.setUninstallURL(UNINSTALL_SURVEY_URL); } catch (e) { /* */ }
+  // First install only: open a one-screen WELCOME page — pin the icon, the two shortcuts, a
+  // sample article — so a brand-new user reaches first value in one glance. (Not on
+  // updates/reloads — reason would be 'update'.) The old flow opened the OPTIONS page, i.e.
+  // a settings form for a thing they hadn't used yet — configuration, not activation.
   if (details && details.reason === 'install') {
-    try { chrome.runtime.openOptionsPage(); } catch (e) { /* */ }
+    try { chrome.tabs.create({ url: chrome.runtime.getURL('src/welcome.html') }); } catch (e) { /* */ }
   }
 });
 // Also recreate on browser startup — onInstalled does NOT fire then, and createMenus
@@ -280,6 +292,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       } else {
         openPage();
       }
+    } catch (e) { /* */ }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // The ⚠ Report button relays here — content scripts can't call chrome.tabs.create. Open the
+  // bundled report page (first-party, offline) with the diagnostics in the URL #fragment (which
+  // never leaves the device — it's the extension's own page). The page offers email or a web form.
+  if (msg.type === 'obr-open-report') {
+    try {
+      const frag = encodeURIComponent(JSON.stringify(msg.meta || {}));
+      chrome.tabs.create({ url: chrome.runtime.getURL('src/report.html') + '#' + frag });
     } catch (e) { /* */ }
     sendResponse({ ok: true });
     return true;

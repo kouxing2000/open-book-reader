@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Book Reader — you're all set</title>
+  <style>
+    :root {
+      --paper: #faf8f3; --ink: #2b2722; --muted: #6b6358;
+      --accent: #8a5a2b; --card: #fffdf8; --line: #e7ded0;
+      --shadow: 0 10px 30px rgba(60, 45, 25, .12);
+      --chip: rgba(138, 90, 43, .10);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #17150f; --ink: #ece5d8; --muted: #a49a88;
+        --accent: #d9a066; --card: #201d16; --line: #362f24;
+        --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+        --chip: rgba(217, 160, 102, .14);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1100px 460px at 50% -220px, color-mix(in srgb, var(--card) 80%, transparent) 0%, transparent 70%),
+        var(--paper);
+      background-attachment: fixed;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 0 22px 60px; }
+    header { text-align: center; padding: 64px 0 8px; }
+    .mark { font-size: 52px; line-height: 1; }
+    h1 { font-size: clamp(28px, 5vw, 40px); margin: 14px 0 8px; letter-spacing: -.5px; }
+    .tagline { font-family: system-ui, sans-serif; font-size: 16px; color: var(--muted); margin: 0; }
+
+    .steps { list-style: none; counter-reset: s; padding: 0; margin: 34px 0 8px; }
+    .steps li {
+      counter-increment: s;
+      position: relative;
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+      padding: 18px 20px 18px 64px; margin: 12px 0; box-shadow: 0 4px 14px rgba(60,45,25,.05);
+    }
+    .steps li::before {
+      content: counter(s);
+      position: absolute; left: 18px; top: 18px;
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-family: system-ui, sans-serif; font-weight: 700; font-size: 15px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .steps h3 { font-family: system-ui, sans-serif; font-size: 16px; margin: 0 0 4px; }
+    .steps p { font-family: system-ui, sans-serif; font-size: 13.5px; color: var(--muted); margin: 0; }
+    kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+      background: var(--chip); border: 1px solid var(--line); border-bottom-width: 2px;
+      border-radius: 5px; padding: 1px 6px; color: var(--ink);
+    }
+    .pin-visual {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+      font-family: system-ui, sans-serif; font-size: 12.5px; color: var(--muted);
+      background: var(--chip); border-radius: 8px; padding: 6px 10px;
+    }
+    .pin-visual b { color: var(--ink); }
+
+    .cta { text-align: center; margin: 28px 0 8px; }
+    .btn {
+      font-family: system-ui, sans-serif; font-size: 15px; font-weight: 600;
+      text-decoration: none; display: inline-block; padding: 13px 26px; border-radius: 11px;
+      background: var(--accent); color: #fff; box-shadow: var(--shadow);
+      transition: transform .12s ease;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .cta .hint { display: block; font-family: system-ui, sans-serif; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+
+    .privacy {
+      font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted);
+      text-align: center; margin: 30px auto 0; max-width: 520px;
+    }
+    footer {
+      font-family: system-ui, sans-serif; font-size: 13px; text-align: center;
+      margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line);
+    }
+    footer a { color: var(--accent); text-decoration: none; margin: 0 10px; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="mark">📖</div>
+      <h1 data-i18n="welcomeTitle">You're all set</h1>
+      <p class="tagline" data-i18n="welcomeTagline">Open Book Reader turns any article into a calm, two-page reading view.</p>
+    </header>
+
+    <ol class="steps">
+      <li>
+        <h3 data-i18n="welcomeStep1Title">Pin it so it's one click away</h3>
+        <p data-i18n="welcomeStep1Body">New extensions hide in Chrome's toolbar menu. Pin Open Book Reader so you can always reach it.</p>
+        <span class="pin-visual" data-i18n="welcomeStep1Pin">Click 🧩 in the toolbar, then 📌 pin Open Book Reader</span>
+      </li>
+      <li>
+        <h3 data-i18n="welcomeStep2Title">Open any article</h3>
+        <p data-i18n="welcomeStep2Body">Go to a news story, blog post, or long page you'd like to read without the clutter.</p>
+      </li>
+      <li>
+        <h3 data-i18n="welcomeStep3Title">Read it like a book</h3>
+        <p data-i18n="welcomeStep3Body">Click the 📖 toolbar icon, or press Alt+B for text (Alt+Shift+B for images). Use the arrow keys to turn pages, and Esc to close.</p>
+      </li>
+    </ol>
+
+    <div class="cta">
+      <a class="btn" href="https://en.wikipedia.org/wiki/Readability" target="_blank" rel="noopener" data-i18n="welcomeCta">Try it on a sample article →</a>
+      <span class="hint" data-i18n="welcomeCtaHint">Opens a clean article in a new tab — activate the reader there to see it in action.</span>
+    </div>
+
+    <p class="privacy" data-i18n="welcomePrivacy">🔒 Everything happens on your device. Open Book Reader collects nothing and sends nothing to the developer.</p>
+
+    <footer>
+      <a href="options/options.html" data-i18n="welcomeSettings">Settings &amp; full guide</a>
+      <a href="https://kouxing2000.github.io/open-book-reader/" target="_blank" rel="noopener" data-i18n="welcomeWebsite">Website</a>
+      <a href="https://kouxing2000.github.io/open-book-reader/privacy.html" target="_blank" rel="noopener" data-i18n="welcomePrivacyLink">Privacy</a>
+    </footer>
+  </div>
+  <script src="welcome.js"></script>
+</body>
+</html>

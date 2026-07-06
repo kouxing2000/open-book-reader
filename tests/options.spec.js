@@ -50,12 +50,29 @@ test('the per-site rules editor renders (empty state) below the guide', async ({
   await expect(page.locator('#sites')).toContainText('No per-site rules yet.');
 });
 
-test('first install opens the options page automatically (onboarding)', async ({ context, extensionId }) => {
-  // The fixture launches a fresh profile, so onInstalled fires with reason 'install'
-  // and background.js calls openOptionsPage — an options tab should appear unprompted.
+test('first install opens the welcome page automatically (onboarding)', async ({ context, extensionId }) => {
+  // The fixture launches a fresh profile, so onInstalled fires with reason 'install' and
+  // background.js opens the one-screen WELCOME page (activation — pin/shortcuts/sample),
+  // NOT the settings form it used to dump new users into.
   await expect
-    .poll(() => context.pages().some((p) => p.url().includes('/src/options/options.html')), { timeout: 8000 })
+    .poll(() => context.pages().some((p) => p.url().includes('/src/welcome.html')), { timeout: 8000 })
     .toBe(true);
+});
+
+test('the report page runs its external (CSP-safe) script: diagnostics fill + Send enables on input', async ({ page, extensionId }) => {
+  // report.html is a bundled extension page. MV3's CSP (script-src 'self') BLOCKS inline
+  // <script>, so the page logic MUST live in an external file (src/report.js). If it ever
+  // regresses to inline, the script silently never runs — the diagnostics box stays empty and
+  // the Send button never enables. This test reproduces exactly that failure surface.
+  const meta = { app: 'open-book-reader', version: '9.9.9', mode: 'text', pageUrl: 'https://example.com/a' };
+  await page.goto(`chrome-extension://${extensionId}/src/report.html#` + encodeURIComponent(JSON.stringify(meta)));
+
+  // Script ran → diagnostics populated from the #fragment.
+  await expect(page.locator('#diag')).toContainText('"version": "9.9.9"');
+  // Send starts disabled and enables once a description is typed.
+  await expect(page.locator('#send')).toBeDisabled();
+  await page.locator('#desc').fill('the reader grabbed the comments');
+  await expect(page.locator('#send')).toBeEnabled();
 });
 
 test('saved content picks render their host + selector and can be removed', async ({ page, extensionId }) => {
@@ -189,12 +206,10 @@ test('a site stashed in storage.local scopes a freshly-opened options page, then
   // does this on the ⚙ message) with NO options page open yet — so nothing consumes the stash
   // early — then openOptionsPage() loads a fresh page that must come up scoped to that site.
   //
-  // The fresh-profile fixture auto-opens an ONBOARDING options tab (onInstalled→openOptionsPage)
-  // whose storage.onChanged listener would race-consume the stash before our reload (flaky). So
-  // wait for onboarding, navigate our own page off any options URL, and close every options tab —
-  // leaving ZERO listeners live when we stash, exactly like a ⚙ click with no options tab open.
-  await expect.poll(() => context.pages().some((p) => p.url().includes('/options.html')), { timeout: 8000 }).toBe(true);
-  await page.goto('about:blank'); // drop our page's listener if it IS the onboarding tab
+  // Onboarding now opens a WELCOME tab (no options storage.onChanged listener), so there's no
+  // onboarding race to defend against — but still guarantee ZERO options tabs/listeners are live
+  // when we stash: park our own page off any options URL and close any that slipped open.
+  await page.goto('about:blank');
   for (const p of context.pages()) { if (p.url().includes('/options.html')) await p.close(); }
 
   await serviceWorker.evaluate(() => new Promise((res) => chrome.storage.sync.set({

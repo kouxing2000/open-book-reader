@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Open Book Reader — sorry to see you go</title>
+  <meta name="description" content="Tell us why you uninstalled Open Book Reader. The extension collects nothing; this form sends only what you type." />
+  <link rel="icon" href="img/icon.png" />
+  <style>
+    :root {
+      --paper: #faf8f3; --ink: #2b2722; --muted: #6b6358;
+      --accent: #8a5a2b; --card: #fffdf8; --line: #e7ded0;
+      --shadow: 0 10px 30px rgba(60, 45, 25, .12);
+      --chip: rgba(138, 90, 43, .08);
+      --sel: rgba(138, 90, 43, .12);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #17150f; --ink: #ece5d8; --muted: #a49a88;
+        --accent: #d9a066; --card: #201d16; --line: #362f24;
+        --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+        --chip: rgba(217, 160, 102, .10);
+        --sel: rgba(217, 160, 102, .16);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1100px 460px at 50% -220px, color-mix(in srgb, var(--card) 80%, transparent) 0%, transparent 70%),
+        var(--paper);
+      background-attachment: fixed;
+      line-height: 1.6; min-height: 100vh;
+      display: flex; align-items: flex-start; justify-content: center;
+    }
+    .card {
+      max-width: 560px; width: calc(100% - 40px); margin: 56px 0;
+      background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+      padding: 34px 32px; box-shadow: var(--shadow);
+    }
+    .mark { font-size: 44px; line-height: 1; }
+    h1 { font-size: clamp(24px, 4.5vw, 32px); margin: 12px 0 8px; letter-spacing: -.4px; }
+    .lede { font-family: system-ui, sans-serif; font-size: 14.5px; color: var(--muted); margin: 0 0 22px; }
+    fieldset { border: 0; padding: 0; margin: 0; }
+    legend { font-family: system-ui, sans-serif; font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+    .opt {
+      display: flex; align-items: flex-start; gap: 10px;
+      font-family: system-ui, sans-serif; font-size: 14.5px;
+      border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; margin: 8px 0;
+      cursor: pointer; transition: background .12s ease, border-color .12s ease;
+    }
+    .opt:hover { background: var(--chip); }
+    .opt:has(input:checked) { background: var(--sel); border-color: var(--accent); }
+    .opt input { margin-top: 3px; accent-color: var(--accent); flex: none; }
+    textarea {
+      width: 100%; margin-top: 12px; min-height: 70px; resize: vertical;
+      font-family: system-ui, sans-serif; font-size: 14px; color: var(--ink);
+      background: var(--paper); border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px;
+    }
+    textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .actions { margin-top: 18px; }
+    button {
+      font-family: system-ui, sans-serif; font-size: 15px; font-weight: 600;
+      background: var(--accent); color: #fff; border: 0; border-radius: 11px;
+      padding: 13px 26px; cursor: pointer; box-shadow: var(--shadow);
+      transition: transform .12s ease, opacity .12s ease;
+    }
+    button:hover { transform: translateY(-2px); }
+    button:disabled { opacity: .5; cursor: default; transform: none; }
+    .privacy { font-family: system-ui, sans-serif; font-size: 12.5px; color: var(--muted); margin: 18px 0 0; }
+    .privacy a { color: var(--accent); }
+    .hidden { display: none !important; }
+    #thanks .mark { font-size: 40px; }
+    #thanks p { font-family: system-ui, sans-serif; font-size: 15px; color: var(--muted); }
+    #thanks a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <!-- ── survey ─────────────────────────────────────────────────────── -->
+    <div id="survey">
+      <div class="mark">📖</div>
+      <h1>Sorry to see you go</h1>
+      <p class="lede">Open Book Reader never collected anything about you — so we genuinely don't know what fell short.
+      If you have ten seconds, tell us why. It's the only way we get better.</p>
+
+      <form id="form">
+        <fieldset>
+          <legend>What made you uninstall?</legend>
+          <label class="opt"><input type="radio" name="reason" value="Didn't work on the sites I read"> It didn't work on the sites I read</label>
+          <label class="opt"><input type="radio" name="reason" value="Picked the wrong text / looked broken"> It grabbed the wrong text, or looked broken</label>
+          <label class="opt"><input type="radio" name="reason" value="Too hard to find or use"> Too hard to find or figure out</label>
+          <label class="opt"><input type="radio" name="reason" value="Missing a feature I needed"> Missing a feature I needed</label>
+          <label class="opt"><input type="radio" name="reason" value="Just trying it out"> I was just trying it out</label>
+          <label class="opt"><input type="radio" name="reason" value="Other"> Something else</label>
+        </fieldset>
+        <textarea id="note" placeholder="Anything else? Which site, what went wrong — whatever helps (optional)"></textarea>
+        <div class="actions">
+          <button type="submit" id="send" disabled>Send feedback</button>
+        </div>
+      </form>
+
+      <p class="privacy">🔒 We collect nothing automatically. This form sends only what you type, only when you click send.
+      Prefer email? Write to <a id="mailLink" href="#">the developer</a>.</p>
+    </div>
+
+    <!-- ── thank-you ──────────────────────────────────────────────────── -->
+    <div id="thanks" class="hidden" role="status" aria-live="polite">
+      <div class="mark">🙏</div>
+      <h1>Thank you</h1>
+      <p>Your note genuinely helps shape what we fix next. You can close this tab.</p>
+      <p><a href="https://kouxing2000.github.io/open-book-reader/">About Open Book Reader →</a></p>
+    </div>
+
+    <!-- Google Forms POST target — keeps the page put on submit -->
+    <iframe name="gform_sink" class="hidden" title="submit"></iframe>
+  </div>
+
+  <script>
+    // ── CONFIG ──────────────────────────────────────────────────────────
+    // OPTIONAL one-click collection via a Google Form. Leave these BLANK and the
+    // page emails the feedback alias instead (works out of the box, and those
+    // mails already flow into the project's feedback inbox).
+    //
+    // Submits to the ONE shared "feedback collector" form (single field). This page builds the
+    // full [feedback-meta v1] body client-side and POSTs it as that field; the onFeedbackSubmit
+    // bridge (tools/feedback-form/) emails it to the inbox. Leave GFORM_ACTION blank to force the
+    // mailto path. IDs come from tools/feedback-form/feedback-form.gs's migrate() log.
+    var GFORM_ACTION = 'https://docs.google.com/forms/d/e/1FAIpQLSe-dBYo1dGI_sDYqo9VInP7bgXXrV4KvxXILTCIkzW-rGT1AA/formResponse';
+    var GFORM_ENTRY_REPORT = 'entry.913964143';
+    var FEEDBACK_EMAIL = 'studio.peach.go+open-book-reader@gmail.com';
+    // ────────────────────────────────────────────────────────────────────
+
+    var form = document.getElementById('form');
+    var send = document.getElementById('send');
+    var noteEl = document.getElementById('note');
+
+    // Require a reason before Send. The categorized reason is the signal we actually
+    // triage on, and — since the form POST goes into an opaque cross-origin iframe we
+    // can't read — submitting an EMPTY reason risks a silent Forms rejection behind a
+    // "Thank you" screen. Gating on a picked reason removes that failure mode; the
+    // free-text note stays optional (there's an "Other" reason for anything unlisted).
+    function refresh() {
+      send.disabled = !form.querySelector('input[name="reason"]:checked');
+    }
+    form.addEventListener('change', refresh);
+    noteEl.addEventListener('input', refresh);
+
+    function selectedReason() {
+      var r = form.querySelector('input[name="reason"]:checked');
+      return r ? r.value : '';
+    }
+
+    // The [feedback-meta v1] body — the SAME contract the in-app report builds and the ingest
+    // parser (parse_eml.py matches only this marker) consumes. Used by BOTH the form POST (as the
+    // single collector field) and the mailto, so both paths ingest identically as STRUCTURED data.
+    // reportSource:'uninstall-survey' keeps it separable; the note becomes the prose above the divider.
+    function buildBody(reason, note) {
+      var meta = {
+        app: 'open-book-reader',
+        platform: 'chrome',
+        reportSource: 'uninstall-survey',
+        reason: reason || null,
+      };
+      return [
+        note || '[No additional detail provided]',
+        '', '---',
+        'App: ' + meta.app,
+        'Reason: ' + (reason || '(none selected)'),
+        'Source: ' + meta.reportSource,
+        '', '[feedback-meta v1]', JSON.stringify(meta),
+      ].join('\n');
+    }
+    function mailtoHref(reason, note) {
+      return 'mailto:' + FEEDBACK_EMAIL +
+        '?subject=' + encodeURIComponent('Open Book Reader — uninstall feedback') +
+        '&body=' + encodeURIComponent(buildBody(reason, note));
+    }
+    document.getElementById('mailLink').addEventListener('click', function (e) {
+      e.preventDefault();
+      window.location.href = mailtoHref(selectedReason(), noteEl.value.trim());
+    });
+
+    function done() {
+      document.getElementById('survey').classList.add('hidden');
+      document.getElementById('thanks').classList.remove('hidden');
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var reason = selectedReason();
+      var note = noteEl.value.trim();
+
+      if (GFORM_ACTION && GFORM_ENTRY_REPORT) {
+        // Fire-and-forget POST into the hidden iframe (Google Forms answers with an opaque
+        // cross-origin redirect we can't read — fine, we assume success). ONE field: the whole body.
+        var f = document.createElement('form');
+        f.action = GFORM_ACTION; f.method = 'POST'; f.target = 'gform_sink';
+        var i = document.createElement('input');
+        i.type = 'hidden'; i.name = GFORM_ENTRY_REPORT; i.value = buildBody(reason, note);
+        f.appendChild(i);
+        document.body.appendChild(f);
+        f.submit();
+        done();
+      } else {
+        // No form configured → open the user's mail client with everything prefilled.
+        window.location.href = mailtoHref(reason, note);
+        done();
+      }
+    });
+  </script>
+</body>
+</html>

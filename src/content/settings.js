@@ -151,13 +151,15 @@
   // proseWords? }. The page URL is stripped of its query/hash before being included — the
   // path is enough to reproduce an extraction bug, and query strings can carry session
   // tokens we don't want to leak even into a user-reviewed draft.
-  OBR._buildReportMailto = function (ctx) {
+  // The diagnostic block shared by the mailto and the report page. PURE. The `[feedback-meta
+  // v1]` JSON the ingest parser consumes IS this object. The page URL is stripped to
+  // origin+pathname (no query/hash) so session tokens can't leak even into a user-reviewed draft.
+  OBR._buildReportMeta = function (ctx) {
     ctx = ctx || {};
-    let pageUrl = '', host = '';
+    let pageUrl = '';
     try {
       const u = new URL(globalThis.location ? location.href : 'about:blank');
       pageUrl = u.origin + u.pathname;
-      host = u.hostname;
     } catch (e) { pageUrl = String((globalThis.location && location.href) || '').split(/[?#]/)[0]; }
 
     const meta = {
@@ -172,6 +174,14 @@
     };
     if (typeof ctx.imageCount === 'number') meta.imageCount = ctx.imageCount;
     if (typeof ctx.proseWords === 'number') meta.proseWords = ctx.proseWords;
+    return meta;
+  };
+
+  OBR._buildReportMailto = function (ctx) {
+    const meta = OBR._buildReportMeta(ctx);
+    const pageUrl = meta.pageUrl;
+    let host = '';
+    try { host = new URL(pageUrl).hostname; } catch (e) { /* */ }
 
     // EXACT literal the ingest parser drops when left unchanged — do not reword.
     const PLACEHOLDER = '[Please describe the issue or feedback here]';
@@ -193,11 +203,21 @@
       '&body=' + encodeURIComponent(lines.join('\n'));
   };
 
-  // Hand a prefilled bug-report email to the user's mail client. USER-INITIATED: the
-  // extension transmits nothing itself — the user reviews the draft and sends it from
-  // their own client — so this preserves the "sends nothing to the developer" posture.
-  // Triggered by the ⚠ Report button in the reader and gallery toolbars.
+  // Open the bundled report page so the user can choose EMAIL or a WEB FORM. The page is a
+  // first-party extension page (offline-capable; diagnostics never touch a third-party page),
+  // opened via the SW relay because content scripts can't call chrome.tabs.create. The form
+  // path exists because a `mailto:` silently fails for users with no configured mail client.
+  // USER-INITIATED throughout: the extension only OPENS the page; nothing is sent until the
+  // user submits from it. Falls back to a direct mailto when messaging is unavailable (e.g.
+  // the test harness or an unexpected SW gap). Triggered by the ⚠ Report button.
   OBR.reportBroken = function (ctx) {
+    const meta = OBR._buildReportMeta(ctx);
+    try {
+      if (globalThis.chrome && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ type: 'obr-open-report', meta: meta }, () => { void chrome.runtime.lastError; });
+        return meta;
+      }
+    } catch (e) { /* fall through to mailto */ }
     const url = OBR._buildReportMailto(ctx);
     try {
       const a = document.createElement('a');

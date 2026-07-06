@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Book Reader — report a problem</title>
+  <style>
+    :root {
+      --paper: #faf8f3; --ink: #2b2722; --muted: #6b6358;
+      --accent: #8a5a2b; --card: #fffdf8; --line: #e7ded0;
+      --shadow: 0 10px 30px rgba(60, 45, 25, .12); --chip: rgba(138, 90, 43, .08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #17150f; --ink: #ece5d8; --muted: #a49a88;
+        --accent: #d9a066; --card: #201d16; --line: #362f24;
+        --shadow: 0 10px 30px rgba(0, 0, 0, .45); --chip: rgba(217, 160, 102, .10);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      color: var(--ink); background: var(--paper); line-height: 1.6; min-height: 100vh;
+      display: flex; align-items: flex-start; justify-content: center;
+    }
+    .card {
+      max-width: 580px; width: calc(100% - 40px); margin: 48px 0;
+      background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+      padding: 32px; box-shadow: var(--shadow);
+    }
+    .mark { font-size: 40px; line-height: 1; }
+    h1 { font-size: clamp(23px, 4.5vw, 30px); margin: 10px 0 6px; letter-spacing: -.4px; }
+    .lede { font-family: system-ui, sans-serif; font-size: 14px; color: var(--muted); margin: 0 0 20px; }
+    label { display: block; font-family: system-ui, sans-serif; font-size: 13.5px; font-weight: 600; margin: 16px 0 6px; }
+    textarea, input[type=email] {
+      width: 100%; font-family: system-ui, sans-serif; font-size: 14px; color: var(--ink);
+      background: var(--paper); border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .opt { font-weight: 400; color: var(--muted); }
+    details.diag { margin: 18px 0 4px; font-family: system-ui, sans-serif; font-size: 13px; }
+    details.diag summary { cursor: pointer; color: var(--muted); }
+    .diag pre {
+      margin: 10px 0 0; padding: 12px 14px; background: var(--chip); border-radius: 10px;
+      font-size: 12px; white-space: pre-wrap; word-break: break-word; color: var(--ink);
+    }
+    .actions { margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    button {
+      font-family: system-ui, sans-serif; font-size: 15px; font-weight: 600;
+      background: var(--accent); color: #fff; border: 0; border-radius: 11px;
+      padding: 13px 24px; cursor: pointer; box-shadow: var(--shadow);
+      transition: transform .12s ease, opacity .12s ease;
+    }
+    button:hover { transform: translateY(-2px); }
+    button:disabled { opacity: .5; cursor: default; transform: none; }
+    .maillink { font-family: system-ui, sans-serif; font-size: 13.5px; color: var(--accent); cursor: pointer; text-decoration: none; }
+    .maillink:hover { text-decoration: underline; }
+    .privacy { font-family: system-ui, sans-serif; font-size: 12.5px; color: var(--muted); margin: 18px 0 0; }
+    .hidden { display: none !important; }
+    #thanks .mark { font-size: 40px; }
+    #thanks p { font-family: system-ui, sans-serif; font-size: 15px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="form-wrap">
+      <div class="mark">⚠️</div>
+      <h1>Report a problem</h1>
+      <p class="lede">Tell us what went wrong. Everything below stays on your device until you send it — nothing is transmitted automatically.</p>
+
+      <label for="desc">What happened?</label>
+      <textarea id="desc" placeholder="e.g. The reader grabbed the comments instead of the article on this page."></textarea>
+
+      <label for="email">Your email <span class="opt">(optional — only if you'd like a reply)</span></label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
+
+      <details class="diag">
+        <summary>What's included with your report</summary>
+        <pre id="diag"></pre>
+      </details>
+
+      <div class="actions">
+        <button type="button" id="send" disabled>Send report</button>
+        <a class="maillink" id="mailLink">Prefer your own email app?</a>
+      </div>
+
+      <p class="privacy">🔒 Open Book Reader collects nothing automatically. Sending emails us only what's shown above. Your email address is used only to reply.</p>
+    </div>
+
+    <div id="thanks" class="hidden" role="status" aria-live="polite">
+      <div class="mark">🙏</div>
+      <h1>Thank you</h1>
+      <p>Your report is on its way. You can close this tab.</p>
+    </div>
+
+    <iframe name="gform_sink" class="hidden" title="submit"></iframe>
+  </div>
+
+  <script src="report.js"></script>
+</body>
+</html>

@@ -575,6 +575,24 @@ test('the ⚠ Report button builds a feedback mailto with a parseable [feedback-
   expect(r.meta.pageUrl).toBe(r.expectedUrl); // query/hash stripped to origin+pathname
 });
 
+test('the ⚠ Report button relays obr-open-report with the diagnostics meta (content side of the SW relay)', async ({ page }) => {
+  await openReader(page);
+  // reportBroken messages the SW (background.js `obr-open-report`), which opens report.html. The
+  // headless harness has no real SW, so we capture the outgoing message and assert its shape — a
+  // rename of the message type, or a break in _buildReportMeta, would make the ⚠ button a silent
+  // no-op (the mailto fallback only fires when sendMessage is ABSENT, not when the SW is broken).
+  // The SW handler itself is part of the gesture/SW wiring the headless harness can't exercise.
+  const msg = await page.evaluate(() => {
+    let sent = null;
+    globalThis.chrome = globalThis.chrome || {};
+    globalThis.chrome.runtime = { lastError: null, sendMessage: (m) => { sent = m; } };
+    globalThis.OBR.reportBroken({ source: 'reader-toolbar', mode: 'text' });
+    return sent;
+  });
+  expect(msg && msg.type).toBe('obr-open-report');
+  expect(msg.meta).toMatchObject({ app: 'open-book-reader', reportSource: 'reader-toolbar', mode: 'text' });
+});
+
 test('the 🖨 Print button builds a standalone, flat print document (no screen-layout machinery)', async ({ page }) => {
   await openReader(page);
   const r = await page.evaluate(() => {
