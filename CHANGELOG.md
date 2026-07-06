@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-06
+
+### Added
+- **Now available in Simplified Chinese (简体中文)** — 8 languages in total. The reader, gallery,
+  right-click menu, and the Chrome Web Store title and summary all follow your browser's language
+  automatically (English stays the default).
+
+### Changed
+- **More of the extension now follows your browser's language, not just the reader.** The settings
+  page (including the full "How to use & shortcuts" guide), the "Report a problem" page, and the
+  optional-permission prompt are now translated in every supported language — previously they stayed
+  English.
+
 ## [1.3.1] - 2026-07-04
 
 ### Added
@@ -132,7 +145,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.4.0
 [1.3.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.3.1
 [1.2.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.1
 [1.2.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.0

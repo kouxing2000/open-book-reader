@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "default_locale": "en",
   "description": "__MSG_extSummary__",
   "homepage_url": "https://kouxing2000.github.io/open-book-reader/",
