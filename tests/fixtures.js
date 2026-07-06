@@ -24,12 +24,21 @@ export const test = base.extend({
     const args = [
       `--disable-extensions-except=${EXT_PATH}`,
       `--load-extension=${EXT_PATH}`,
+      // Pin the browser UI language so chrome.i18n resolves to English on any machine.
+      // Extension PAGES (options / welcome / report / permission) are real pages where
+      // chrome.i18n follows the browser locale — without this, the suite renders in the
+      // dev's OS locale (e.g. zh_CN) and locale-specific text assertions break. Content
+      // scripts are unaffected (the harness shims chrome.i18n to _locales/en separately).
+      // `--lang` works on Linux (CI); macOS IGNORES it and reads the OS locale (handled by
+      // the AppleLanguages override in tests/global-setup.js).
+      '--lang=en-US',
     ];
     if (!headed) args.push('--headless=new');
 
     const context = await chromium.launchPersistentContext(userDataDir, {
       headless: false, // must be false for extensions; mode is set via the arg above
       args,
+      locale: 'en-US',
       viewport: { width: 1280, height: 800 },
     });
 

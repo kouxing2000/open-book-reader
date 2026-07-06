@@ -5,6 +5,10 @@ import { defineConfig } from '@playwright/test';
  * A tiny static server (tests/server.js) serves the fixture article. */
 export default defineConfig({
   testDir: './tests',
+  // Pin the Chrome-for-Testing UI locale to English on macOS so extension-page tests are
+  // deterministic regardless of the dev's OS language (see tests/mac-locale.js). No-op on Linux.
+  globalSetup: './tests/global-setup.js',
+  globalTeardown: './tests/global-teardown.js',
   fullyParallel: false,
   workers: 1, // extension tests share a persistent profile pattern; keep it serial
   retries: process.env.CI ? 1 : 0,

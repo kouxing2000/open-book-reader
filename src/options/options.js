@@ -1,6 +1,21 @@
 /* Open Book Reader — options page logic */
 (function () {
   const OBR = globalThis.OBR;
+
+  // Localize the static HTML from the shared catalog. This is an extension page, so chrome.i18n
+  // is available via OBR.t. Plain text -> [data-i18n] (textContent); strings with inline
+  // <b>/<code>/<kbd> -> [data-i18n-html] (innerHTML, our own bundled strings); plus
+  // [data-i18n-placeholder] / [data-i18n-title]. When a key doesn't resolve, OBR.t returns the
+  // key itself, so the hardcoded English in options.html stays as the fallback.
+  (function localize() {
+    const T = (k) => { const m = OBR.t(k); return m && m !== k ? m : ''; };
+    document.querySelectorAll('[data-i18n]').forEach((el) => { const m = T(el.getAttribute('data-i18n')); if (m) el.textContent = m; });
+    document.querySelectorAll('[data-i18n-html]').forEach((el) => { const m = T(el.getAttribute('data-i18n-html')); if (m) el.innerHTML = m; });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { const m = T(el.getAttribute('data-i18n-placeholder')); if (m) el.setAttribute('placeholder', m); });
+    document.querySelectorAll('[data-i18n-title]').forEach((el) => { const m = T(el.getAttribute('data-i18n-title')); if (m) el.setAttribute('title', m); });
+    try { const lang = chrome.i18n.getUILanguage && chrome.i18n.getUILanguage(); if (lang) document.documentElement.lang = lang; } catch (e) { /* */ }
+  })();
+
   const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
   const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'printSourceUrl'];
@@ -18,7 +33,7 @@
   // failed write, say so instead of the dishonest "Saved ✓", and hold it a bit longer.
   function flashSaved(ok) {
     const failed = ok === false;
-    savedEl.textContent = failed ? "Couldn't save — try again" : 'Saved ✓';
+    savedEl.textContent = failed ? OBR.t('optSaveFailed') : OBR.t('optSaved');
     savedEl.classList.toggle('error', failed);
     savedEl.classList.add('show');
     clearTimeout(saveTimer);
@@ -41,8 +56,8 @@
     const el = document.getElementById(key);
     const valEl = document.getElementById(key + 'Val');
     if (!valEl) return;
-    if (key === 'maxBookWidth' && el.value === el.max) valEl.textContent = 'Full';
-    else if ((key === 'autoGalleryMin' || key === 'autoTextMinWords') && el.value === '0') valEl.textContent = 'Off';
+    if (key === 'maxBookWidth' && el.value === el.max) valEl.textContent = OBR.t('optValFull');
+    else if ((key === 'autoGalleryMin' || key === 'autoTextMinWords') && el.value === '0') valEl.textContent = OBR.t('optValOff');
     else valEl.textContent = el.value;
   }
 
@@ -82,7 +97,7 @@
   function modeSelect(value) {
     const sel = document.createElement('select');
     sel.className = 'site-mode';
-    [['auto', 'Auto'], ['images', 'Gallery'], ['text', 'Reader']].forEach(([v, label]) => {
+    [['auto', OBR.t('optModeAuto')], ['images', OBR.t('optModeGallery')], ['text', OBR.t('optModeReader')]].forEach(([v, label]) => {
       const o = document.createElement('option');
       o.value = v; o.textContent = label; sel.appendChild(o);
     });
@@ -111,7 +126,7 @@
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'site-empty';
-      empty.textContent = filterSite ? 'No rule for ' + filterSite + ' yet.' : 'No per-site rules yet.';
+      empty.textContent = filterSite ? OBR.t('optNoRuleForSite', [filterSite]) : OBR.t('optNoRules');
       wrap.appendChild(empty);
       return;
     }
@@ -130,7 +145,7 @@
       });
 
       const remove = document.createElement('button');
-      remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = 'Remove';
+      remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = OBR.t('optRemove');
       remove.addEventListener('click', () => removeRule(i));
 
       row.append(name, mode, remove);
@@ -173,8 +188,8 @@
       const empty = document.createElement('div');
       empty.className = 'site-empty';
       empty.textContent = filterSite
-        ? 'No saved pick for ' + filterSite + ' yet. Use the ⌖ Pick button on that site.'
-        : 'No saved picks yet. Use the ⌖ Pick button in the reader, then “Save for this site”.';
+        ? OBR.t('optNoPickForSite', [filterSite])
+        : OBR.t('optNoPicks');
       wrap.appendChild(empty);
       return;
     }
@@ -188,7 +203,7 @@
       const h = document.createElement('span');
       h.className = 'pick-host'; h.textContent = host;
       const remove = document.createElement('button');
-      remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = 'Remove this saved pick';
+      remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = OBR.t('optRemovePick');
       remove.addEventListener('click', () => {
         OBR.clearPick(host).then(() => { delete picks[host]; renderPicks(); flashSaved(); });
       });
@@ -203,13 +218,13 @@
       const input = document.createElement('input');
       input.type = 'text'; input.className = 'pick-sel-input'; input.spellcheck = false;
       input.value = original;
-      input.setAttribute('aria-label', 'CSS selector for ' + host);
-      input.placeholder = 'e.g. .article-body  or  main article';
+      input.setAttribute('aria-label', OBR.t('optSelectorAria', [host]));
+      input.placeholder = OBR.t('optSelectorPlaceholder');
       const mark = document.createElement('span');
       mark.className = 'pick-valid';
       const revert = document.createElement('button');
       revert.className = 'ghost pick-revert'; revert.textContent = '↶';
-      revert.title = 'Revert to the selector from when this page opened';
+      revert.title = OBR.t('optRevertTitle');
 
       // Syntax-only check (this page isn't the target site, so we can't match-test):
       // a selector is "valid" if document.querySelector doesn't throw on it.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Open Book Reader — Settings</title>
+  <title data-i18n="optPageTitle">Open Book Reader — Settings</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -82,122 +82,122 @@
   <h1>📖 Open Book Reader</h1>
 
   <div id="siteFilterBar" class="site-filter" hidden>
-    <span>Showing site rules &amp; picks for <b id="siteFilterName"></b></span>
-    <button class="ghost" id="siteFilterClear">Show all</button>
+    <span><span data-i18n="optScopeShowing">Showing site rules &amp; picks for</span> <b id="siteFilterName"></b></span>
+    <button class="ghost" id="siteFilterClear" data-i18n="optScopeShowAll">Show all</button>
   </div>
 
   <details class="guide" id="guide">
-    <summary>How to use &amp; shortcuts</summary>
+    <summary data-i18n="optGuideSummary">How to use &amp; shortcuts</summary>
     <div class="guide-body">
-      <p><b>Open it on any page — three ways:</b></p>
+      <p data-i18n-html="optGuideOpenTitle"><b>Open it on any page — three ways:</b></p>
       <ul>
-        <li><b>Toolbar icon</b> — smart pick: the 📖 reader for articles, the 🖼 gallery for image-heavy pages.</li>
-        <li><b>Right-click</b> a page or image → <b>Open in Book Reader</b> → Auto / Reader / Gallery.</li>
-        <li><b>Keyboard:</b> <kbd>Alt</kbd>+<kbd>B</kbd> reader · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> gallery.</li>
+        <li data-i18n-html="optGuideOpenToolbar"><b>Toolbar icon</b> — smart pick: the 📖 reader for articles, the 🖼 gallery for image-heavy pages.</li>
+        <li data-i18n-html="optGuideOpenRightClick"><b>Right-click</b> a page or image → <b>Open in Book Reader</b> → Auto / Reader / Gallery.</li>
+        <li data-i18n-html="optGuideOpenKeyboard"><b>Keyboard:</b> <kbd>Alt</kbd>+<kbd>B</kbd> reader · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> gallery.</li>
       </ul>
-      <p class="why">Want a site to always open one way? Right-click → <b>Always open this site as Reader / Gallery</b>, or add a path/wildcard pattern under <b>Per-site rules</b> below.</p>
+      <p class="why" data-i18n-html="optGuideOpenWhy">Want a site to always open one way? Right-click → <b>Always open this site as Reader / Gallery</b>, or add a path/wildcard pattern under <b>Per-site rules</b> below.</p>
 
-      <p><b>While reading (📖 reader)</b></p>
+      <p data-i18n-html="optGuideReadTitle"><b>While reading (📖 reader)</b></p>
       <ul>
-        <li><kbd>←</kbd> <kbd>→</kbd> flip pages — or click the left / right edge of the book</li>
-        <li><kbd>Home</kbd> / <kbd>End</kbd> first / last spread · <kbd>Esc</kbd> close</li>
-        <li>Topbar: ⊞ columns (2/3/4) · theme · <kbd>A−</kbd> / <kbd>A+</kbd> font size · 🖼 switch to gallery</li>
-      </ul>
-
-      <p><b>Picked the wrong content?</b> Sometimes the reader grabs a sidebar or the wrong block. Three ways to fix it:</p>
-      <ul>
-        <li><b>Select the text</b> on the page first, then open the reader — it reads just your selection.</li>
-        <li>Click <b>⌖ Pick</b> in the topbar, then click the block you want — the reader re-reads from there.</li>
-        <li>After picking, <b>Save for this site</b> so it's reused automatically next time. Saved picks live under <b>Saved content picks</b> below, where you can fine-tune the CSS selector or remove them.</li>
+        <li data-i18n-html="optGuideReadFlip"><kbd>←</kbd> <kbd>→</kbd> flip pages — or click the left / right edge of the book</li>
+        <li data-i18n-html="optGuideReadHomeEnd"><kbd>Home</kbd> / <kbd>End</kbd> first / last spread · <kbd>Esc</kbd> close</li>
+        <li data-i18n-html="optGuideReadTopbar">Topbar: ⊞ columns (2/3/4) · theme · <kbd>A−</kbd> / <kbd>A+</kbd> font size · 🖼 switch to gallery</li>
       </ul>
 
-      <p><b>In the gallery (🖼 images)</b></p>
+      <p data-i18n-html="optGuideWrongTitle"><b>Picked the wrong content?</b> Sometimes the reader grabs a sidebar or the wrong block. Three ways to fix it:</p>
       <ul>
-        <li>Click a tile for the lightbox — <kbd>←</kbd> <kbd>→</kbd> browse · <kbd>Esc</kbd> close</li>
-        <li>▶ <b>Auto-scroll</b> hands-free browsing — <kbd>A</kbd> toggle · <kbd>+</kbd> / <kbd>−</kbd> speed</li>
-        <li>⟳ <b>Load all</b> pulls lazy images · select tiles to download or ZIP · 📖 switch to reader</li>
+        <li data-i18n-html="optGuideWrongSelect"><b>Select the text</b> on the page first, then open the reader — it reads just your selection.</li>
+        <li data-i18n-html="optGuideWrongPick">Click <b>⌖ Pick</b> in the topbar, then click the block you want — the reader re-reads from there.</li>
+        <li data-i18n-html="optGuideWrongSave">After picking, <b>Save for this site</b> so it's reused automatically next time. Saved picks live under <b>Saved content picks</b> below, where you can fine-tune the CSS selector or remove them.</li>
       </ul>
 
-      <p><b>Change the keyboard shortcuts</b></p>
-      <p class="why">Chrome controls these — they can't be edited inside the extension. Open Chrome's shortcut editor to set your own.</p>
-      <button class="ghost" id="shortcutsBtn">Edit shortcuts in Chrome →</button>
+      <p data-i18n-html="optGuideGalleryTitle"><b>In the gallery (🖼 images)</b></p>
+      <ul>
+        <li data-i18n-html="optGuideGalleryLightbox">Click a tile for the lightbox — <kbd>←</kbd> <kbd>→</kbd> browse · <kbd>Esc</kbd> close</li>
+        <li data-i18n-html="optGuideGalleryScroll">▶ <b>Auto-scroll</b> hands-free browsing — <kbd>A</kbd> toggle · <kbd>+</kbd> / <kbd>−</kbd> speed</li>
+        <li data-i18n-html="optGuideGalleryLoadAll">⟳ <b>Load all</b> pulls lazy images · select tiles to download or ZIP · 📖 switch to reader</li>
+      </ul>
+
+      <p data-i18n-html="optGuideShortcutsTitle"><b>Change the keyboard shortcuts</b></p>
+      <p class="why" data-i18n="optGuideShortcutsWhy">Chrome controls these — they can't be edited inside the extension. Open Chrome's shortcut editor to set your own.</p>
+      <button class="ghost" id="shortcutsBtn" data-i18n="optGuideShortcutsBtn">Edit shortcuts in Chrome →</button>
     </div>
   </details>
 
   <section class="card">
-    <h2>📖 Reader</h2>
+    <h2><span data-i18n="optSecReader">📖 Reader</span></h2>
 
     <div class="row">
-      <label>Theme</label>
+      <label data-i18n="optTheme">Theme</label>
       <select id="theme">
-        <option value="auto">Auto (match system)</option>
-        <option value="paper">Paper</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
+        <option value="auto" data-i18n="optThemeAuto">Auto (match system)</option>
+        <option value="paper" data-i18n="optThemePaper">Paper</option>
+        <option value="light" data-i18n="optThemeLight">Light</option>
+        <option value="dark" data-i18n="optThemeDark">Dark</option>
       </select>
     </div>
 
     <div class="row">
-      <label>Reading font</label>
+      <label data-i18n="optFont">Reading font</label>
       <select id="fontFamily">
-        <option value="serif">Serif</option>
-        <option value="sans">Sans-serif</option>
+        <option value="serif" data-i18n="optFontSerif">Serif</option>
+        <option value="sans" data-i18n="optFontSans">Sans-serif</option>
       </select>
     </div>
 
     <div class="row">
-      <label>Page turn <span class="hint">How pages flip: a 3D book page, a soft paper curl, a simple slide, or instant. Respects your “reduce motion” setting.</span></label>
+      <label><span data-i18n="optPageTurn">Page turn</span> <span class="hint" data-i18n="optPageTurnHint">How pages flip: a 3D book page, a soft paper curl, a simple slide, or instant. Respects your “reduce motion” setting.</span></label>
       <select id="pageTurn">
-        <option value="book">Book (3D page)</option>
-        <option value="curl">Curl (soft paper)</option>
-        <option value="slide">Slide</option>
-        <option value="off">Off (instant)</option>
+        <option value="book" data-i18n="optPageTurnBook">Book (3D page)</option>
+        <option value="curl" data-i18n="optPageTurnCurl">Curl (soft paper)</option>
+        <option value="slide" data-i18n="optPageTurnSlide">Slide</option>
+        <option value="off" data-i18n="optPageTurnOff">Off (instant)</option>
       </select>
     </div>
 
     <div class="row">
-      <label>Font size <span class="hint">Base reading size</span></label>
+      <label><span data-i18n="optFontSize">Font size</span> <span class="hint" data-i18n="optFontSizeHint">Base reading size</span></label>
       <span><input type="range" id="fontSize" min="14" max="26" step="1" /><span class="val" id="fontSizeVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Line height</label>
+      <label data-i18n="optLineHeight">Line height</label>
       <span><input type="range" id="lineHeight" min="1.2" max="2.0" step="0.02" /><span class="val" id="lineHeightVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Columns per view <span class="hint">2, 3, or 4 columns per spread</span></label>
+      <label><span data-i18n="optColumns">Columns per view</span> <span class="hint" data-i18n="optColumnsHint">2, 3, or 4 columns per spread</span></label>
       <span><input type="range" id="columns" min="2" max="4" step="1" /><span class="val" id="columnsVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Max book width <span class="hint">Default <b>Full</b> (fills the window). Drag left to cap line width for easier reading.</span></label>
+      <label><span data-i18n="optMaxWidth">Max book width</span> <span class="hint" data-i18n-html="optMaxWidthHint">Default <b>Full</b> (fills the window). Drag left to cap line width for easier reading.</span></label>
       <span><input type="range" id="maxBookWidth" min="800" max="2560" step="20" /><span class="val" id="maxBookWidthVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Spine width <span class="hint">Center gutter between pages (px)</span></label>
+      <label><span data-i18n="optSpine">Spine width</span> <span class="hint" data-i18n="optSpineHint">Center gutter between pages (px)</span></label>
       <span><input type="range" id="gutter" min="20" max="140" step="4" /><span class="val" id="gutterVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Single-page below <span class="hint">Narrow windows show one page (px)</span></label>
+      <label><span data-i18n="optSinglePage">Single-page below</span> <span class="hint" data-i18n="optSinglePageHint">Narrow windows show one page (px)</span></label>
       <span><input type="range" id="singlePageBelow" min="0" max="1100" step="20" /><span class="val" id="singlePageBelowVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Read selected text <span class="hint">If you've selected text on the page when you open the reader, read just that selection instead of the whole page - a quick override for when auto-extraction grabs the wrong content. Off = always read the whole page.</span></label>
+      <label><span data-i18n="optReadSel">Read selected text</span> <span class="hint" data-i18n="optReadSelHint">If you've selected text on the page when you open the reader, read just that selection instead of the whole page - a quick override for when auto-extraction grabs the wrong content. Off = always read the whole page.</span></label>
       <span><input type="checkbox" id="readSelection" /></span>
     </div>
 
     <div class="row">
-      <label>Include source URL in print <span class="hint">When you 🖨 Print / Save as PDF, add a footer with the page's full URL so the saved copy links back to the article. Off = omit it.</span></label>
+      <label><span data-i18n="optPrintUrl">Include source URL in print</span> <span class="hint" data-i18n="optPrintUrlHint">When you 🖨 Print / Save as PDF, add a footer with the page's full URL so the saved copy links back to the article. Off = omit it.</span></label>
       <span><input type="checkbox" id="printSourceUrl" /></span>
     </div>
 
     <div class="subhead">
-      Saved content picks <span id="picksCount" class="subhead-count"></span>
-      <span class="hint">When the reader grabs the wrong block, the <b>⌖ Pick</b> button lets you choose
+      <span data-i18n="optPicksHead">Saved content picks</span> <span id="picksCount" class="subhead-count"></span>
+      <span class="hint" data-i18n-html="optPicksHint">When the reader grabs the wrong block, the <b>⌖ Pick</b> button lets you choose
       the real content and <b>Save for this site</b>. Saved picks are listed here and reused
       automatically on that site. You can <b>edit the CSS selector</b> to fine-tune it: a class like
       <code>.article-body</code> is more robust than the auto-generated path, and a selector that
@@ -208,45 +208,45 @@
   </section>
 
   <section class="card">
-    <h2>🖼 Image gallery</h2>
+    <h2><span data-i18n="optSecGallery">🖼 Image gallery</span></h2>
 
     <div class="row">
-      <label>Columns <span class="hint">How many columns the 🖼 gallery grid (Alt+Shift+B) uses — fewer = larger images. Clamped per screen, so the in-gallery <b>Size</b> slider always tops out at a 2-column view.</span></label>
+      <label><span data-i18n="optGalColumns">Columns</span> <span class="hint" data-i18n-html="optGalColumnsHint">How many columns the 🖼 gallery grid (Alt+Shift+B) uses — fewer = larger images. Clamped per screen, so the in-gallery <b>Size</b> slider always tops out at a 2-column view.</span></label>
       <span><input type="range" id="galleryColumns" min="2" max="12" step="1" /><span class="val" id="galleryColumnsVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Auto-load images on scroll <span class="hint">Progressively pull the page's lazy images as you near the end of the grid (prefetched so tiles are ready). Off = only show what's already loaded, plus the manual <b>⟳ Load all</b> button.</span></label>
+      <label><span data-i18n="optGalAutoLoad">Auto-load images on scroll</span> <span class="hint" data-i18n-html="optGalAutoLoadHint">Progressively pull the page's lazy images as you near the end of the grid (prefetched so tiles are ready). Off = only show what's already loaded, plus the manual <b>⟳ Load all</b> button.</span></label>
       <span><input type="checkbox" id="galleryAutoLoad" /></span>
     </div>
 
     <div class="row">
-      <label>Auto-scroll speed <span class="hint">Hands-free auto-scroll speed (toolbar <b>Auto-scroll</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge), in pixels per second. Lower = slower browsing.</span></label>
+      <label><span data-i18n="optGalScrollSpeed">Auto-scroll speed</span> <span class="hint" data-i18n-html="optGalScrollSpeedHint">Hands-free auto-scroll speed (toolbar <b>Auto-scroll</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge), in pixels per second. Lower = slower browsing.</span></label>
       <span><input type="range" id="galleryAutoScrollSpeed" min="20" max="400" step="10" /><span class="val" id="galleryAutoScrollSpeedVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Slideshow speed <span class="hint">Seconds each image is shown when you play the slideshow in the big-image view (lightbox <b>▶</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge). Plays once and stops on the last image.</span></label>
+      <label><span data-i18n="optGalSlideSpeed">Slideshow speed</span> <span class="hint" data-i18n-html="optGalSlideSpeedHint">Seconds each image is shown when you play the slideshow in the big-image view (lightbox <b>▶</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge). Plays once and stops on the last image.</span></label>
       <span><input type="range" id="gallerySlideSeconds" min="1" max="30" step="1" /><span class="val" id="gallerySlideSecondsVal"></span></span>
     </div>
   </section>
 
   <section class="card">
-    <h2>🎯 Smart open <span class="h2-sub">when you click the toolbar icon</span></h2>
+    <h2><span data-i18n="optSecSmart">🎯 Smart open</span> <span class="h2-sub" data-i18n="optSecSmartSub">when you click the toolbar icon</span></h2>
 
     <div class="row">
-      <label>Auto-open gallery <span class="hint">Toolbar-icon click opens 🖼 gallery instead of 📖 reader when the page has at least this many images. <b>Off</b> = always open the reader. (Alt+B / Alt+Shift+B always honor their mode.)</span></label>
+      <label><span data-i18n="optAutoGallery">Auto-open gallery</span> <span class="hint" data-i18n-html="optAutoGalleryHint">Toolbar-icon click opens 🖼 gallery instead of 📖 reader when the page has at least this many images. <b>Off</b> = always open the reader. (Alt+B / Alt+Shift+B always honor their mode.)</span></label>
       <span><input type="range" id="autoGalleryMin" min="0" max="30" step="1" /><span class="val" id="autoGalleryMinVal"></span></span>
     </div>
 
     <div class="row">
-      <label>Keep reader for articles <span class="hint">When auto-opening by image count, stay in the 📖 reader if the page has at least this many words of article text - so a long illustrated read isn't sent to the gallery. <b>Off</b> = decide by image count only.</span></label>
+      <label><span data-i18n="optKeepReader">Keep reader for articles</span> <span class="hint" data-i18n-html="optKeepReaderHint">When auto-opening by image count, stay in the 📖 reader if the page has at least this many words of article text - so a long illustrated read isn't sent to the gallery. <b>Off</b> = decide by image count only.</span></label>
       <span><input type="range" id="autoTextMinWords" min="0" max="800" step="50" /><span class="val" id="autoTextMinWordsVal"></span></span>
     </div>
 
     <div class="subhead">
-      Per-site rules
-      <span class="hint">Force a mode on specific sites instead of the smart auto-pick. The
+      <span data-i18n="optRulesHead">Per-site rules</span>
+      <span class="hint" data-i18n-html="optRulesHint">Force a mode on specific sites instead of the smart auto-pick. The
       pattern matches <code>host + path</code> with <code>*</code> as a wildcard —
       <code>example.com</code> (whole site), <code>example.com/blog/*</code> (a section),
       <code>*.example.com/*</code> (all subdomains). When several match, the most specific
@@ -254,32 +254,32 @@
       <b>Alt+B</b> / <b>Alt+Shift+B</b> always honor their own mode.</span>
     </div>
     <div class="site-add">
-      <input type="text" id="siteHost" placeholder="example.com/blog/*" />
+      <input type="text" id="siteHost" data-i18n-placeholder="optRulePlaceholder" placeholder="example.com/blog/*" />
       <select id="siteMode">
-        <option value="auto">Auto</option>
-        <option value="images">Gallery</option>
-        <option value="text">Reader</option>
+        <option value="auto" data-i18n="optModeAuto">Auto</option>
+        <option value="images" data-i18n="optModeGallery">Gallery</option>
+        <option value="text" data-i18n="optModeReader">Reader</option>
       </select>
-      <button class="ghost" id="siteAddBtn">Add</button>
+      <button class="ghost" id="siteAddBtn" data-i18n="optAddRule">Add</button>
     </div>
     <div id="sites"></div>
   </section>
 
   <div class="actions">
-    <button class="ghost" id="reset">Reset to defaults</button>
+    <button class="ghost" id="reset" data-i18n="optReset">Reset to defaults</button>
     <span class="saved" id="saved">Saved ✓</span>
   </div>
 
   <p class="note">
-    Settings sync across devices signed into the same browser profile.
+    <span data-i18n="optNoteSync">Settings sync across devices signed into the same browser profile.</span>
     <br /><br />
-    Privacy: collects no data and sends nothing to the developer. It runs on a page
+    <span data-i18n="optNotePrivacy">Privacy: collects no data and sends nothing to the developer. It runs on a page
     only when you invoke it (toolbar icon, shortcut, or right-click menu). It makes
-    network requests only when you explicitly download images from the gallery.
+    network requests only when you explicitly download images from the gallery.</span>
     <br /><br />
-    Open source: this extension is fully open &mdash; read every line, verify the privacy
+    <span data-i18n-html="optNoteOpenSource">Open source: this extension is fully open &mdash; read every line, verify the privacy
     claims, file an issue, or contribute at
-    <a href="https://github.com/kouxing2000/open-book-reader" target="_blank" rel="noopener">github.com/kouxing2000/open-book-reader</a>.
+    <a href="https://github.com/kouxing2000/open-book-reader" target="_blank" rel="noopener">github.com/kouxing2000/open-book-reader</a>.</span>
   </p>
 
   <script src="../content/settings.js"></script>

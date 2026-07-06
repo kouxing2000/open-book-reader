@@ -11,6 +11,25 @@ var GFORM_ENTRY_REPORT = 'entry.913964143';  // the single paragraph field (shar
 var FEEDBACK_EMAIL = 'studio.peach.go+open-book-reader@gmail.com';
 // ────────────────────────────────────────────────────────────────────
 
+// Localize the static UI: fill [data-i18n] (textContent), [data-i18n-placeholder], and
+// [data-i18n-title] from chrome.i18n. This is an extension page, so chrome.i18n is available;
+// the hardcoded English in the HTML stays as the fallback if a message is missing.
+(function localize() {
+  var get = function (k) {
+    try { return globalThis.chrome && chrome.i18n && chrome.i18n.getMessage(k); } catch (e) { return ''; }
+  };
+  document.querySelectorAll('[data-i18n]').forEach(function (el) {
+    var m = get(el.getAttribute('data-i18n')); if (m) el.textContent = m;
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
+    var m = get(el.getAttribute('data-i18n-placeholder')); if (m) el.setAttribute('placeholder', m);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
+    var m = get(el.getAttribute('data-i18n-title')); if (m) el.setAttribute('title', m);
+  });
+  try { var lang = chrome.i18n.getUILanguage && chrome.i18n.getUILanguage(); if (lang) document.documentElement.lang = lang; } catch (e) { /* */ }
+})();
+
 // Diagnostics ride the URL #fragment — first-party, never sent to any server on load.
 var meta = {};
 try { meta = JSON.parse(decodeURIComponent((location.hash || '').slice(1)) || '{}'); } catch (e) { meta = {}; }

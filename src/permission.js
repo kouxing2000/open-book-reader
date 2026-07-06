@@ -13,10 +13,18 @@
   if (perms.length) request.permissions = perms;
   if (origins.length) request.origins = origins;
 
+  // Localize the static UI (title + buttons) from chrome.i18n; the hardcoded English in the
+  // HTML is the fallback. This is an extension page, so chrome.i18n is available.
+  const msg = (k, fb) => { try { const m = chrome.i18n && chrome.i18n.getMessage(k); return m || fb; } catch (e) { return fb; } };
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    const m = msg(el.getAttribute('data-i18n'), ''); if (m) el.textContent = m;
+  });
+  try { const lang = chrome.i18n.getUILanguage && chrome.i18n.getUILanguage(); if (lang) document.documentElement.lang = lang; } catch (e) { /* */ }
+
   // Explain in plain language what's being asked and why.
   document.getElementById('why').textContent = origins.length
-    ? 'To bundle a ZIP, Open Book Reader needs permission to fetch the selected images from the sites they live on. The files are saved only to your device — nothing is sent anywhere else.'
-    : 'Open Book Reader needs permission to save files to your Downloads folder.';
+    ? msg('permWhyZip', 'To bundle a ZIP, Open Book Reader needs permission to fetch the selected images from the sites they live on. The files are saved only to your device — nothing is sent anywhere else.')
+    : msg('permWhyDownloads', 'Open Book Reader needs permission to save files to your Downloads folder.');
 
   function finish(granted) {
     chrome.runtime.sendMessage({ type: 'obr-perms-result', granted: !!granted }, () => {

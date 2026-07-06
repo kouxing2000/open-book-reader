@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Open Book Reader — report a problem</title>
+  <title data-i18n="reportPageTitle">Open Book Reader — report a problem</title>
   <style>
     :root {
       --paper: #faf8f3; --ink: #2b2722; --muted: #6b6358;
@@ -67,32 +67,32 @@
   <div class="card">
     <div id="form-wrap">
       <div class="mark">⚠️</div>
-      <h1>Report a problem</h1>
-      <p class="lede">Tell us what went wrong. Everything below stays on your device until you send it — nothing is transmitted automatically.</p>
+      <h1 data-i18n="reportHeading">Report a problem</h1>
+      <p class="lede" data-i18n="reportLede">Tell us what went wrong. Everything below stays on your device until you send it — nothing is transmitted automatically.</p>
 
-      <label for="desc">What happened?</label>
-      <textarea id="desc" placeholder="e.g. The reader grabbed the comments instead of the article on this page."></textarea>
+      <label for="desc" data-i18n="reportDescLabel">What happened?</label>
+      <textarea id="desc" data-i18n-placeholder="reportDescPlaceholder" placeholder="e.g. The reader grabbed the comments instead of the article on this page."></textarea>
 
-      <label for="email">Your email <span class="opt">(optional — only if you'd like a reply)</span></label>
+      <label for="email"><span data-i18n="reportEmailLabel">Your email</span> <span class="opt" data-i18n="reportEmailOptional">(optional — only if you'd like a reply)</span></label>
       <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
 
       <details class="diag">
-        <summary>What's included with your report</summary>
+        <summary data-i18n="reportDiagSummary">What's included with your report</summary>
         <pre id="diag"></pre>
       </details>
 
       <div class="actions">
-        <button type="button" id="send" disabled>Send report</button>
-        <a class="maillink" id="mailLink">Prefer your own email app?</a>
+        <button type="button" id="send" data-i18n="reportSend" disabled>Send report</button>
+        <a class="maillink" id="mailLink" data-i18n="reportMailLink">Prefer your own email app?</a>
       </div>
 
-      <p class="privacy">🔒 Open Book Reader collects nothing automatically. Sending emails us only what's shown above. Your email address is used only to reply.</p>
+      <p class="privacy" data-i18n="reportPrivacy">🔒 Open Book Reader collects nothing automatically. Sending emails us only what's shown above. Your email address is used only to reply.</p>
     </div>
 
     <div id="thanks" class="hidden" role="status" aria-live="polite">
       <div class="mark">🙏</div>
-      <h1>Thank you</h1>
-      <p>Your report is on its way. You can close this tab.</p>
+      <h1 data-i18n="reportThanksHeading">Thank you</h1>
+      <p data-i18n="reportThanksBody">Your report is on its way. You can close this tab.</p>
     </div>
 
     <iframe name="gform_sink" class="hidden" title="submit"></iframe>

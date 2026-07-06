@@ -15,6 +15,15 @@ helper, the packaging allowlist, the test-harness shim). Adding a language is no
 
 ## The surfaces (what a "language" covers)
 1. **In-app UI** — `_locales/<loc>/messages.json` (reader, gallery, context menu). Ships in the package.
+   Two wiring styles, both drawing from the SAME catalog:
+   - **Content scripts** (`reader.js` / `gallery.js` / context menu) call `OBR.t('key')`.
+   - **Extension pages** (`welcome.html`, `report.html`, `permission.html`, and the **options page**)
+     can't use `__MSG__` in the HTML body, so each has a tiny inline i18n pass in its `.js` that fills
+     `[data-i18n]` (textContent), `[data-i18n-html]` (innerHTML, for strings with `<b>`/`<kbd>`/`<code>`/`<a>`),
+     `[data-i18n-placeholder]`, and `[data-i18n-title]` from
+     `chrome.i18n.getMessage`, with the hardcoded English in the HTML as the fallback. **Don't forget these
+     pages** — a localized toolbar button that opens an English page is the classic miss. `verify-locales`
+     now scans these attributes + `getMessage()` calls, so a referenced-but-missing key fails the build.
 2. **Store title + summary** — the `extName` / `extSummary` keys in that same file. Ship in the package via `__MSG__`; **no dashboard entry**.
 3. **Store detailed description** — `.meta/LISTING.md` is the source; per-locale copy in `.meta/listings/<loc>.txt`. **Dashboard-only, pasted by hand** (there is no API for it).
 

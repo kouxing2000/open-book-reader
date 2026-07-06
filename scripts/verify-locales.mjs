@@ -9,8 +9,11 @@
 //   2. Each entry's `placeholders` block matches en's for that key (same shape).
 //   3. Every $TOKEN$ in en's message appears in each translation (no dropped slot).
 //   4. extName present; extSummary <= 132 chars (the Web Store summary hard limit).
-//   5. Coverage: every OBR.t('key') in src/ AND every __MSG_key__ in manifest.json
-//      exists in the en catalog (or it renders as a raw key / breaks the manifest).
+//   5. Coverage: every key REFERENCED anywhere in src/ exists in the en catalog, so it can't
+//      render as a raw key / blank. References checked: OBR.t('key') and
+//      chrome.i18n.getMessage('key') in .js, the data-i18n / data-i18n-placeholder /
+//      data-i18n-title attributes in .html (the extension-page localization pattern), and
+//      every __MSG_key__ in manifest.json.
 //
 // Usage: node scripts/verify-locales.mjs   (or: npm run verify:locales)
 
@@ -78,17 +81,26 @@ for (const loc of locales) {
 }
 
 // --- 5: coverage — used keys must exist in en ---
-// Scan EVERY .js under src/ (not a hardcoded list) so a new file calling OBR.t can't
-// slip its keys past the guard. Only string-literal keys are checked — OBR.t(dynamicVar)
-// can't be resolved statically (none exist today).
+// Scan EVERY .js AND .html under src/ (not a hardcoded list) so a new file that references a
+// message can't slip its keys past the guard. Only string-literal keys are checked —
+// OBR.t(dynamicVar) can't be resolved statically (none exist today).
 const keySet = new Set(enKeys);
 const srcDir = join(ROOT, 'src');
-const SRC = readdirSync(srcDir, { recursive: true })
-  .filter((f) => typeof f === 'string' && f.endsWith('.js'))
-  .map((f) => readFileSync(join(srcDir, f), 'utf8'))
-  .join('\n');
-for (const m of SRC.matchAll(/OBR\.t\(\s*['"]([A-Za-z0-9_]+)['"]/g)) {
+const srcFiles = readdirSync(srcDir, { recursive: true }).filter((f) => typeof f === 'string');
+const readSrc = (ext) => srcFiles.filter((f) => f.endsWith(ext)).map((f) => readFileSync(join(srcDir, f), 'utf8')).join('\n');
+const SRC_JS = readSrc('.js');
+const SRC_HTML = readSrc('.html');
+// .js: the two runtime lookups — OBR.t('key') (content scripts) and chrome.i18n.getMessage('key')
+// (extension pages: welcome / report / permission).
+for (const m of SRC_JS.matchAll(/OBR\.t\(\s*['"]([A-Za-z0-9_]+)['"]/g)) {
   if (!keySet.has(m[1])) fail(`[src] OBR.t('${m[1]}') has no key in en catalog`);
+}
+for (const m of SRC_JS.matchAll(/chrome\.i18n\.getMessage\(\s*['"]([A-Za-z0-9_]+)['"]/g)) {
+  if (!keySet.has(m[1])) fail(`[src] chrome.i18n.getMessage('${m[1]}') has no key in en catalog`);
+}
+// .html: the extension-page localization attributes filled by each page's small i18n pass.
+for (const m of SRC_HTML.matchAll(/data-i18n(?:-html|-placeholder|-title)?="([A-Za-z0-9_]+)"/g)) {
+  if (!keySet.has(m[1])) fail(`[src] data-i18n="${m[1]}" has no key in en catalog`);
 }
 const manifest = readFileSync(join(ROOT, 'manifest.json'), 'utf8');
 for (const m of manifest.matchAll(/__MSG_([A-Za-z0-9_]+)__/g)) {
