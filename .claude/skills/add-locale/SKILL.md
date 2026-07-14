@@ -29,9 +29,9 @@ helper, the packaging allowlist, the test-harness shim). Adding a language is no
 
 ## Steps
 1. **Pick the locale code** = the `_locales` folder name (BCP-47 with `_`, e.g. `pt_BR`, `zh_TW`).
-2. **Translate the catalog:** copy `_locales/en/messages.json` → `_locales/<loc>/messages.json` and translate every `message`. This is ~103 keys; a subagent per language works well (one file each, no conflicts).
+2. **Translate the catalog:** copy `_locales/en/messages.json` → `_locales/<loc>/messages.json` and translate every `message` (a few hundred keys — sizeable, not a quick edit); a subagent per language works well (one file each, no conflicts).
 3. **ASO title/summary (NOT a literal translation):**
-   - `extName` = keep the `Open Book — ` brand + that language's real "reader mode" search term (de `Lesemodus`, es `Modo Lectura`, fr `Mode Lecture`, ja `リーダーモード`, ru `Режим чтения`, pt_BR `Modo de Leitura`).
+   - `extName` = keep the `Open Book — ` brand + that language's real "reader mode" search term (de `Lesemodus`, es `Modo Lectura`, fr `Mode Lecture`, ja `リーダーモード`, ru `Режим чтения`, pt_BR `Modo de Leitura`, zh_CN `阅读模式`).
    - `extSummary` ≤ **132 chars** for that locale (verify — Romance/Cyrillic run long).
 4. **Detailed description:** translate `.meta/LISTING.md`'s Description into `.meta/listings/<loc>.txt` (keep the 22 bullets, the GitHub URL, and the keyboard shortcuts verbatim; weave the local reader-mode terms; ASO, not literal).
 5. **Verify:** `npm run verify:locales` (parity, placeholders, tokens, char limits, src/manifest coverage). Then `npm test` — it runs the verify as `pretest` AND exercises the localized UI. **Read the exit code / full summary, never a `tail`.**
@@ -48,7 +48,7 @@ helper, the packaging allowlist, the test-harness shim). Adding a language is no
 - **Packaging allowlist:** `_locales` must stay in `SHIP_DIRS` (`scripts/package-extension.js`) and `_locales/en/messages.json` in `REQUIRED_FILES` — else the whole localization silently doesn't ship. `packaging.spec.js` guards this.
 - **`default_locale: "en"`** is load-bearing: Chrome rejects the package if `_locales/en` is missing, and any `__MSG_key__` with no en key breaks the manifest.
 - **Manifest `__MSG__` fields to cover:** `name`, `description`, `action.default_title`, and both `commands[].description` — all need catalog keys (`extName`, `extSummary`, `actionTitle`, `cmdToggleReader`, `cmdToggleGallery`).
-- **`chrome.i18n` resolves by the BROWSER's UI language** — there is no clean runtime override, so no in-app language picker (see the session notes). Test other locales via `test-locale.sh` (macOS: it sets `AppleLanguages` on Chrome for Testing; `--lang` is ignored on macOS).
+- **`chrome.i18n` resolves by the BROWSER's UI language** — there is no clean runtime override, so no in-app language picker. Test other locales via `test-locale.sh` (macOS: it sets `AppleLanguages` on Chrome for Testing; `--lang` is ignored on macOS).
 - **CWS listing localization is real** (not one-language): the per-language dropdown in the dashboard appears only **after** a package that declares `_locales` is published. Titles/summaries come from the package; detailed descriptions + screenshots are per-language in the dashboard.
 
 ## Tools
