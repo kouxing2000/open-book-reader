@@ -304,6 +304,14 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
 - **Do NOT add the `tabs` permission.** The restricted-page guard reads `tab.url` and works without it:
   executing a keyboard shortcut grants `activeTab`, which makes `tab.url` available via
   `chrome.tabs.query`. Adding `tabs` broadens permissions for nothing and is a Web Store review flag.
+- **Context-menu builds must stay SERIALIZED** (`background.js`: `createMenus` + the `menuBuild` chain).
+  `onInstalled` and `onStartup` BOTH fire in one worker activation when Chrome applies an update while
+  the browser was closed, so `createMenus()` can run twice back-to-back. The obvious fire-and-forget
+  shape (`removeAll(cb)` → 8 un-awaited `create()`s) is broken: two overlapping calls queue BOTH
+  `removeAll`s before EITHER batch creates anything, so the second batch collides with the first's live
+  items → 8 `Cannot create item with duplicate id obr-*` unchecked-lastError entries and a red **Errors**
+  badge on the extension card. Don't "simplify" it back. Failures log via `console.warn`, never
+  `console.error` — chrome://extensions collects the worker's `console.error` into that same Errors list.
 - `readability.js` is third-party vendored code — keep it pristine; fixes go upstream.
 - `reader.js` injects `article.content` via `innerHTML` into the Shadow DOM (and the print iframe).
   Vendored Readability is NOT a sanitizer (it keeps e.g. `<img onerror>`), so EVERY content path —

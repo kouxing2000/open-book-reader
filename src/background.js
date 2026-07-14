@@ -75,21 +75,46 @@ chrome.commands.onCommand.addListener(async (command) => {
  * A context-menu click grants activeTab, so invokeReader injects on the active tab
  * with no host permission — same model as the toolbar. Leaf items map to a mode;
  * the parent item never fires onClicked when it has children. */
+// Builds are SERIALIZED on this chain. createMenus() can run twice in one worker lifetime
+// (Chrome fires onStartup *and* onInstalled/'update' when an update is applied while the
+// browser was closed), and two overlapping calls both queue their removeAll() before either
+// one creates anything — so the second call's creates land on top of the first's items and
+// every id collides ("Cannot create item with duplicate id obr-open", ...). Awaiting each
+// step keeps a removeAll from ever being queued ahead of a previous batch's creates.
+// A failed step is logged with console.WARN, never console.error: chrome://extensions
+// collects the worker's console.error into the extension's Errors list — the very red badge
+// this serialization exists to prevent. A warn keeps the failure visible in the SW console
+// (and one failed parent means every child fails too, i.e. NO menu — worth seeing) without
+// re-creating the symptom.
+let menuBuild = Promise.resolve();
 function createMenus() {
-  const ctx = ['page', 'image'];
-  chrome.contextMenus.removeAll(() => {
-    void chrome.runtime.lastError;
-    chrome.contextMenus.create({ id: 'obr-open', title: OBR.t('ctxOpenTitle'), contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-open-auto', parentId: 'obr-open', title: OBR.t('ctxAuto'), contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-open-text', parentId: 'obr-open', title: OBR.t('ctxReader'), contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-open-images', parentId: 'obr-open', title: OBR.t('ctxGallery'), contexts: ctx });
+  menuBuild = menuBuild.then(async () => {
+    const ctx = ['page', 'image'];
+    const removeAll = () => new Promise((res) => chrome.contextMenus.removeAll(() => {
+      const err = chrome.runtime.lastError;
+      if (err) console.warn('[OpenBookReader] contextMenus.removeAll:', err.message);
+      res();
+    }));
+    const add = (props) => new Promise((res) => chrome.contextMenus.create(props, () => {
+      const err = chrome.runtime.lastError;
+      if (err) console.warn('[OpenBookReader] contextMenus.create', props.id + ':', err.message);
+      res();
+    }));
+    await removeAll();
+    await add({ id: 'obr-open', title: OBR.t('ctxOpenTitle'), contexts: ctx });
+    await add({ id: 'obr-open-auto', parentId: 'obr-open', title: OBR.t('ctxAuto'), contexts: ctx });
+    await add({ id: 'obr-open-text', parentId: 'obr-open', title: OBR.t('ctxReader'), contexts: ctx });
+    await add({ id: 'obr-open-images', parentId: 'obr-open', title: OBR.t('ctxGallery'), contexts: ctx });
     // Set a persistent whole-site rule (most-specific path rules are typed in Options).
-    chrome.contextMenus.create({ id: 'obr-sep', parentId: 'obr-open', type: 'separator', contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-rule-text', parentId: 'obr-open', title: OBR.t('ctxAlwaysReader'), contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-rule-images', parentId: 'obr-open', title: OBR.t('ctxAlwaysGallery'), contexts: ctx });
-    chrome.contextMenus.create({ id: 'obr-rule-clear', parentId: 'obr-open', title: OBR.t('ctxClearRule'), contexts: ctx });
-    void chrome.runtime.lastError;
+    await add({ id: 'obr-sep', parentId: 'obr-open', type: 'separator', contexts: ctx });
+    await add({ id: 'obr-rule-text', parentId: 'obr-open', title: OBR.t('ctxAlwaysReader'), contexts: ctx });
+    await add({ id: 'obr-rule-images', parentId: 'obr-open', title: OBR.t('ctxAlwaysGallery'), contexts: ctx });
+    await add({ id: 'obr-rule-clear', parentId: 'obr-open', title: OBR.t('ctxClearRule'), contexts: ctx });
+  }).catch((e) => {
+    // Swallow so a failed build can't poison the chain for the next one — but say so.
+    console.warn('[OpenBookReader] context menu build failed:', e);
   });
+  return menuBuild;
 }
 
 // Add/replace/remove the WHOLE-SITE rule for `host` (read-modify-write the raw settings
@@ -150,9 +175,10 @@ chrome.runtime.onInstalled.addListener((details) => {
     try { chrome.tabs.create({ url: chrome.runtime.getURL('src/welcome.html') }); } catch (e) { /* */ }
   }
 });
-// Also recreate on browser startup — onInstalled does NOT fire then, and createMenus
-// is removeAll-guarded so re-running is safe. Belt-and-suspenders so the menu is always
-// present whenever the service worker is alive, regardless of how it woke.
+// Also recreate on browser startup — onInstalled does NOT fire on a plain launch, and
+// createMenus serializes its builds so re-running (or racing onInstalled, which DOES fire
+// at startup when an update was applied while the browser was closed) is safe.
+// Belt-and-suspenders so the menu is always present whenever the worker is alive.
 chrome.runtime.onStartup.addListener(() => { createMenus(); });
 
 /* ---------------------------------------------------------------- downloads
