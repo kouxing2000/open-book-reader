@@ -4,7 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Page not found — Open Book Reader</title>
-  <link rel="icon" href="/img/icon.png" />
+  <!-- Root-absolute, NOT relative: GitHub serves this 404 from any URL depth, so a relative
+       path would resolve against the missing page's directory. It must carry the project
+       path — this is a PROJECT Pages site (kouxing2000.github.io/open-book-reader/), so a
+       bare "/" escapes to the user root, which doesn't exist and 404s. -->
+  <link rel="icon" href="/open-book-reader/img/icon.png" />
   <style>
     html, body { height: 100%; margin: 0; }
     body {
@@ -26,7 +30,7 @@
   <div class="box">
     <h1>404</h1>
     <p>That page wandered off the shelf.</p>
-    <p><a href="/">← Back to Open Book Reader</a></p>
+    <p><a href="/open-book-reader/">← Back to Open Book Reader</a></p>
   </div>
 </body>
 </html>
