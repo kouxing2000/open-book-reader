@@ -50,8 +50,10 @@
     printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
                            // so the saved copy links back to the article. Off = omit it
                            // (e.g. when sharing a PDF and you'd rather not expose the URL).
-    galleryColumns: 4,     // image-gallery mode: masonry column COUNT (fewer = larger images;
+    galleryColumns: 4,     // image-gallery WALL layout: masonry column COUNT (fewer = larger images;
                            // clamped per screen so "biggest" is a 2-up grid everywhere)
+    galleryOrderedCols: 2, // image-gallery ORDERED layout: columns per row (1 = single-page reading
+                           // strip). The first-flip landing; independent of galleryColumns (Wall).
     galleryMinSize: 80,    // image-gallery mode: ignore images smaller than this (px)
     galleryAutoLoad: true, // image-gallery mode: progressively hydrate the page's lazy
                            // images as you near the end of the grid (prefetch). Off =
@@ -62,6 +64,9 @@
     gallerySlideSeconds: 3,     // image-gallery lightbox: slideshow dwell time per image (sec).
                                 // Toggle via the lightbox play button or the "A" key; nudge live
                                 // with +/-. Plays once and auto-pauses on the last image.
+    galleryFitWidth: false, // image-gallery lightbox: fit a tall page to the WIDTH (fills across +
+                            // scrolls down) instead of shrinking the whole page to fit the viewport
+                            // — for reading manga/comic/scan pages one at a time. Toggle in the lightbox.
     autoGalleryMin: 10,    // toolbar-icon auto-mode: open the gallery instead of the
                            // reader when the page has >= this many images (0 = off).
                            // Only the toolbar icon auto-picks; Alt+B / Alt+Shift+B stay explicit.
@@ -538,6 +543,62 @@
     });
     picksChain = picksChain.then(run, run);
     return picksChain;
+  };
+
+  /* --------------------------------------------------------- gallery layout prefs
+   * Per-site memory of the image-gallery LAYOUT (Wall masonry vs Ordered row-major) and
+   * its column count, so a manga/comic host reopens in the reading layout you left it in
+   * while a photo board stays on the wall. Map { host: { ordered, cols, t } } in
+   * chrome.storage.SYNC (follows the user across devices, like saved picks / mode-rules),
+   * bounded + LRU-pruned by entry count so it stays well under the 8KB sync per-item quota
+   * (each entry is tiny). No new permission — `storage` already covers this. Mirrors the
+   * saved-picks read-modify-write + serialization chain exactly. */
+  OBR.GALLERY_KEY = 'obr_gallery';
+  OBR.GALLERY_MAX = 60;
+
+  // Serialize gallery-pref writes (read-modify-write of the shared map), mirroring picksChain.
+  let galleryChain = Promise.resolve();
+
+  // Resolve to { ordered, cols } for `host`, or null when none/unavailable. `cols` is
+  // undefined when the stored entry has no numeric column count (caller falls back to defaults).
+  OBR.loadGalleryPref = function (host) {
+    return new Promise((resolve) => {
+      const area = syncArea();
+      if (!area || !host) return resolve(null);
+      try {
+        area.get(OBR.GALLERY_KEY, (data) => {
+          const map = (data && data[OBR.GALLERY_KEY]) || {};
+          const e = map[host];
+          resolve(e && typeof e === 'object'
+            ? { ordered: !!e.ordered, cols: typeof e.cols === 'number' ? e.cols : undefined }
+            : null);
+        });
+      } catch (e) { resolve(null); }
+    });
+  };
+
+  // Persist { ordered, cols } for `host`, LRU-pruning to GALLERY_MAX entries. Resolves TRUE
+  // on a confirmed write, FALSE on any failure — mirrors savePick.
+  OBR.saveGalleryPref = function (host, pref, now) {
+    const run = () => new Promise((resolve) => {
+      const area = syncArea();
+      if (!area || !host || !pref) return resolve(false);
+      const stamp = typeof now === 'number' ? now : Date.now();
+      try {
+        area.get(OBR.GALLERY_KEY, (data) => {
+          const map = (data && data[OBR.GALLERY_KEY]) || {};
+          map[host] = { ordered: !!pref.ordered, cols: typeof pref.cols === 'number' ? pref.cols : 2, t: stamp };
+          const keys = Object.keys(map).sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
+          while (keys.length > OBR.GALLERY_MAX) delete map[keys.shift()];
+          try {
+            area.set({ [OBR.GALLERY_KEY]: map },
+              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
+          } catch (e) { resolve(false); }
+        });
+      } catch (e) { resolve(false); }
+    });
+    galleryChain = galleryChain.then(run, run);
+    return galleryChain;
   };
 
   // Estimated reading minutes from a word count (220 wpm). 0 when there's no

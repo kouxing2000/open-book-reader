@@ -211,8 +211,18 @@
     <h2><span data-i18n="optSecGallery">🖼 Image gallery</span></h2>
 
     <div class="row">
-      <label><span data-i18n="optGalColumns">Columns</span> <span class="hint" data-i18n-html="optGalColumnsHint">How many columns the 🖼 gallery grid (Alt+Shift+B) uses — fewer = larger images. Clamped per screen, so the in-gallery <b>Size</b> slider always tops out at a 2-column view.</span></label>
+      <label><span data-i18n="optGalColumns">Wall columns</span> <span class="hint" data-i18n-html="optGalColumnsHint">How many columns the <b>Wall</b> (masonry) layout uses — fewer = larger images. Clamped per screen, so the in-gallery <b>Size</b> slider always tops out at a 2-column view.</span></label>
       <span><input type="range" id="galleryColumns" min="2" max="12" step="1" /><span class="val" id="galleryColumnsVal"></span></span>
+    </div>
+
+    <div class="row">
+      <label><span data-i18n="optGalOrderedCols">Ordered columns</span> <span class="hint" data-i18n-html="optGalOrderedColsHint">Default columns for the <b>Ordered</b> (in-order) layout, where images read row by row. <b>1</b> = one page at a time (a centered reading strip). Each site remembers its own layout + size.</span></label>
+      <span><input type="range" id="galleryOrderedCols" min="1" max="8" step="1" /><span class="val" id="galleryOrderedColsVal"></span></span>
+    </div>
+
+    <div class="row">
+      <label><span data-i18n="optGalFitWidth">Fit tall pages to width</span> <span class="hint" data-i18n-html="optGalFitWidthHint">In the big-image view, fit a tall page to the <b>width</b> and scroll down it (for reading manga / comic / scan pages) instead of shrinking the whole page to fit. Toggle live with the lightbox <b>⟷</b> button or the <b>F</b> key.</span></label>
+      <span><input type="checkbox" id="galleryFitWidth" /></span>
     </div>
 
     <div class="row">

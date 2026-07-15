@@ -15,7 +15,8 @@
 > personal/credential leaks AND private-ops references before committing.**
 
 Chrome MV3 extension, two reading modes: a two-page open-book **text** reader (keyboard
-page-flipping) and an **image-gallery** mode (masonry wall + lightbox). Reading is fully local —
+page-flipping) and an **image-gallery** mode (a **Wall** masonry grid or an **Ordered** row-major
+layout for sequential images, + lightbox). Reading is fully local —
 no data collected, nothing sent to the developer. The one network case: when the user explicitly
 downloads gallery images (needs the OPTIONAL `downloads` + `<all_urls>` permissions — requested on
 first use, not held at install — so the service worker can fetch image bytes cross-origin to build a ZIP).
@@ -35,7 +36,7 @@ src/content/
   settings.js        shared globalThis.OBR namespace + DEFAULTS + load/saveSettings (storage.sync)
   readability.js     VENDORED Mozilla Readability (Apache-2.0) — do not edit; see READABILITY-LICENSE.md
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
-  gallery.js         IMAGE mode: collect images → masonry grid + lightbox (Shadow DOM)
+  gallery.js         IMAGE mode: collect images → Wall masonry / Ordered rows + lightbox (Shadow DOM)
 src/options/         options page (reuses settings.js)
 src/welcome.html     first-run activation page — onInstalled opens it (pin icon, shortcuts, sample article)
 src/report.html      ⚠ Report page (bundled, offline) — email OR a web form; opened via the SW relay
@@ -164,15 +165,32 @@ won't fire, so `hydratePage()` scrolls the *real* page in small dwelling steps t
 gated by `galleryAutoLoad`) or fully via **⟳ Load all** (`OBR._galleryRescan`). Bounded against
 infinite scroll; restores the user's scroll on `close()`. Demo: `tests/fixtures/lazy-demo.html`.
 
-**Masonry is JS, not CSS multi-column** (`buildColumns`/`placeTile`/`layoutAll`): a flex row of `.col`
-divs, each tile appended to the currently-shortest column (estimated by aspect ratio). Required so
-incrementally-merged images never re-flow already-placed tiles (CSS `column-*` rebalances all items on
-every append, scrambling reading order). `layoutAll` rebuilds only on initial render, a Size-slider
-change, or a resize that changes the column count. **The Size slider picks a column COUNT, not a px
-width** (`galleryColumns`, `columnCount`/`maxCols`/`syncSizeSlider`): the columns are flex, so within a
-count every width renders identically — a count slider makes every notch meaningful. It's inverted
-(fuller bar = larger images = fewer columns) and clamped to `maxCols` (what fits at `MIN_TILE` px), so
-"biggest" is a 2-up grid on every screen and never a single full-width image (that's the lightbox).
+**Two gallery layouts — Wall (masonry) + Ordered (row-major), toggled in the toolbar** (runtime
+`ordered` flag; `relayoutActive` dispatches; `setLayout` switches + anchors the reading spot).
+**Wall** is JS masonry, NOT CSS multi-column (`buildColumns`/`placeTile`/`layoutAll`): a flex row of
+`.col` divs, each tile appended to the currently-shortest column (estimated by aspect ratio) — so
+incrementally-merged images never re-flow already-placed tiles (CSS `column-*` rebalances on every
+append, scrambling reading order). Great for an unordered pile, but shortest-column packing SCRAMBLES
+sequence. **Ordered** fixes that for manga/comics/webtoons/step-by-step shots
+(`layoutOrdered`/`justifyRow`/`appendOrderedTiles`): stacked `.rows` filled left→right / top→bottom, so
+image `i` is always in row `floor(i/N)` at position `i%N` — reading order == visual order, and appending
+only re-justifies the last touched row (**same no-reflow property, for free** — row-major append never
+moves an earlier tile). Rows are **justified** (tiles scaled to a shared per-row height, aspect
+preserved, no crop; unknown-size lazy images use `ORD_FALLBACK_ASPECT` and re-justify their row on
+decode); at **1 column** it's a centered, width-capped (`STRIP_MAX`) reading **strip** — auto-scroll
+turns it into a hands-free webtoon reader. **The Size slider picks a column COUNT, not a px width**
+(`columnCount`/`maxCols`/`syncSizeSlider`, layout-aware: Wall spans 2..max via `galleryColumns`, Ordered
+1..max via `galleryOrderedCols`): inverted (fuller bar = larger = fewer columns), clamped to `maxCols`
+(what fits at `MIN_TILE` px). **Layout + column count are remembered per-site** (`obr_gallery` map in
+`storage.sync`, mirrors `obr_picks` — bounded/LRU; `OBR.loadGalleryPref`/`saveGalleryPref`); Wall is the
+default, a host opens Ordered only if it was left that way. Reworking the justify math is layout-heavy —
+**verify with a real-Chromium screenshot and MEASURE tile rects** (`getBoundingClientRect`).
+
+**Lightbox = paged reader** (already sequential): click any tile → prev/next, an `N / total` counter, a
+thumbnail filmstrip, a timed slideshow. The **⟷ Fit width** toggle (`F` key, `galleryFitWidth`, persisted
++ options checkbox) fills a tall page to the WIDTH and scrolls it — for reading a single manga/comic/scan
+page — instead of shrinking the whole page to fit; the `.lb.lb-fit` class switches the chrome to
+`position:fixed` so it stays pinned while the image scrolls under it.
 
 **Gallery downloads** (the only network feature): content scripts can't call `chrome.downloads` or
 fetch cross-origin, so `gallery.js` messages `background.js` — `obr-download-one` →

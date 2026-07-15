@@ -16,9 +16,9 @@
     try { const lang = chrome.i18n.getUILanguage && chrome.i18n.getUILanguage(); if (lang) document.documentElement.lang = lang; } catch (e) { /* */ }
   })();
 
-  const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
+  const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
-  const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'printSourceUrl'];
+  const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'galleryFitWidth', 'printSourceUrl'];
   const savedEl = document.getElementById('saved');
   let saveTimer;
 

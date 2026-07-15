@@ -983,3 +983,101 @@ test.describe('gallery auto-scroll', () => {
     expect((await galleryState(page)).scrollTop).toBeGreaterThanOrEqual(max - 3); // parked at the bottom
   });
 });
+
+/* Ordered layout (Wall <-> Ordered) + the lightbox fit-width toggle. The Wall packs into the
+ * shortest column, which SCRAMBLES reading order; Ordered fills row-major so 1,2,3... reads
+ * top-to-bottom, left-to-right. These pin the property the feature actually moves — ORDER —
+ * plus the toggle, the strip (Size 1), per-site memory, and fit-width. */
+test.describe('ordered gallery layout', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoImages(page);
+    await injectGallery(page);
+  });
+
+  // Read the Ordered layout's structure + reading order out of the shadow DOM.
+  const orderedState = (page) => page.evaluate(() => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const tiles = [...r.querySelectorAll('.tile')];
+    const rowEls = [...r.querySelectorAll('.row')];
+    return {
+      ordered: globalThis.OBR._galleryLayoutOrdered(),
+      cols: r.querySelectorAll('.col').length,
+      rowCount: rowEls.length,
+      rows: rowEls.map((row) => [...row.querySelectorAll('.tile')].map((t) => +t.dataset.idx)),
+      idxOrder: tiles.map((t) => +t.dataset.idx),
+      tops: tiles.map((t) => Math.round(t.getBoundingClientRect().top)),
+      firstRowLefts: rowEls.length
+        ? [...rowEls[0].querySelectorAll('.tile')].map((t) => Math.round(t.getBoundingClientRect().left))
+        : [],
+    };
+  });
+
+  test('Ordered renders row-major, strictly in reading order', async ({ page }) => {
+    await openGallery(page); // Wall by default
+    expect((await galleryState(page)).cols).toBeGreaterThan(0); // Wall = flex .col columns
+    await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
+    const s = await orderedState(page);
+    expect(s.ordered).toBe(true);
+    expect(s.cols).toBe(0);                 // no masonry columns in Ordered
+    expect(s.rowCount).toBeGreaterThan(0);  // stacked rows instead
+    // Tiles are in DOM order 0..n-1 — reading order == visual order (the thing Wall scrambles).
+    expect(s.idxOrder).toEqual([...s.idxOrder].sort((a, b) => a - b));
+    // Visual tops never go backwards as index rises (row-major, top to bottom).
+    for (let i = 1; i < s.tops.length; i++) expect(s.tops[i]).toBeGreaterThanOrEqual(s.tops[i - 1] - 1);
+    // The first row reads left to right.
+    for (let i = 1; i < s.firstRowLefts.length; i++) expect(s.firstRowLefts[i]).toBeGreaterThan(s.firstRowLefts[i - 1]);
+  });
+
+  test('Wall <-> Ordered toggle swaps the layout and marks the active button', async ({ page }) => {
+    await openGallery(page);
+    const activeLay = () => page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelector('.seg.layout .seg-btn.is-active')?.dataset.lay);
+    expect(await activeLay()).toBe('wall');
+    await clickInGallery(page, '.lay-ordered');
+    expect(await page.evaluate(() => globalThis.OBR._galleryLayoutOrdered())).toBe(true);
+    expect(await activeLay()).toBe('ordered');
+    expect((await orderedState(page)).cols).toBe(0);
+    await clickInGallery(page, '.lay-wall');
+    expect(await page.evaluate(() => globalThis.OBR._galleryLayoutOrdered())).toBe(false);
+    expect(await activeLay()).toBe('wall');
+    expect((await galleryState(page)).cols).toBeGreaterThan(0);
+  });
+
+  test('Size slider at max makes Ordered a single-page strip (one tile per row)', async ({ page }) => {
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
+    // Drag the Size slider to its max — in Ordered that maps to a 1-column reading strip.
+    await page.evaluate(() => {
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.range');
+      el.value = el.max; el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect.poll(() => orderedState(page).then((s) => s.rows.every((row) => row.length === 1))).toBe(true);
+    const s = await orderedState(page);
+    expect(s.rowCount).toBe(s.idxOrder.length);                    // one row per image
+    expect(s.idxOrder).toEqual([...s.idxOrder].sort((a, b) => a - b)); // still in reading order
+  });
+
+  test('layout choice is remembered per-site across a reopen', async ({ page }) => {
+    await openGallery(page);
+    expect(await page.evaluate(() => globalThis.OBR._galleryLayoutOrdered())).toBe(false); // Wall is the default
+    await clickInGallery(page, '.lay-ordered');
+    expect(await page.evaluate(() => globalThis.OBR._galleryLayoutOrdered())).toBe(true);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await openGallery(page); // reopen the same host
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryLayoutOrdered())).toBe(true);
+  });
+
+  test('lightbox fit-width toggles the fill-and-scroll mode and persists', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="0"]'); // open the lightbox on the first tile
+    await expect.poll(() => galleryState(page).then((s) => s.lbOpen)).toBe(true);
+    const fitClass = () => page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelector('.lb').classList.contains('lb-fit'));
+    expect(await fitClass()).toBe(false);
+    await clickInGallery(page, '.lb-fit-btn');
+    expect(await page.evaluate(() => globalThis.OBR._galleryFitWidthOn())).toBe(true);
+    expect(await fitClass()).toBe(true);
+    const saved = await page.evaluate(() => globalThis.OBR.loadSettings().then((s) => s.galleryFitWidth));
+    expect(saved).toBe(true); // persisted to storage.sync
+  });
+});

@@ -25,6 +25,14 @@
     '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 4.5v15l12-7.5z"/></svg>';
   const PAUSE_ICON =
     '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+  // Layout-toggle glyphs: a 2x2 grid (Wall / masonry) and stacked rows (Ordered / in-order).
+  const GRID_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+  const ROWS_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="13" width="18" height="5" rx="1"/></svg>';
+  // Lightbox "fit to width" glyph (a horizontal double-arrow).
+  const FIT_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="m7 8-4 4 4 4"/><path d="m17 8 4 4-4 4"/></svg>';
 
   /* -------------------------------------------------- pure helpers (DOM-free) */
   // Whitespace-anchored srcset parser (handles comma-bearing CDN/data URLs); defined once
@@ -138,6 +146,10 @@
   let domObserver = null;    // watches the page for late/inserted images
   let mergeTimer = null, hydrateTimers = [], resizeTimer = null; // debounced re-collect / relayout
   let cols = [], colHeights = []; // JS-masonry columns + their estimated heights
+  let ordered = false;       // active layout: false = Wall (masonry), true = Ordered (row-major)
+  let renderedCols = 0;      // column count of the CURRENTLY rendered layout (0 = empty state)
+  let galleryHost = '';      // normalized host for the current page (per-site layout memory key)
+  let fitWidth = false;      // lightbox: fit a tall page to width (fills + scrolls) vs shrink-to-fit
   const selected = new Set(); // selected image URLs (survives re-render)
   let autoScroll = false;          // hands-free auto-scroll engaged
   let autoRaf = 0;                 // requestAnimationFrame handle (0 = idle)
@@ -378,12 +390,22 @@
     .selcount { color: #9a9aa2; min-width: 70px; }
     .status { color: #b8b8c0; font-size: 12px; min-width: 60px; }
     .selall { display: flex; align-items: center; gap: 6px; color: #b8b8c0; cursor: pointer; white-space: nowrap; }
-    .scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 12px; }
+    .scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 12px;
+      scrollbar-gutter: stable; } /* reserve the scrollbar width so Ordered rows justify against a
+                                     stable clientWidth (no over-justify + right-edge clip when the
+                                     vertical scrollbar appears after images decode) */
     /* JS masonry: a flex row of equal columns; each new tile is APPENDED to the
        shortest column so already-placed tiles never move (CSS multi-column would
        re-balance and shuffle existing images on every append). */
     .grid { display: flex; align-items: flex-start; gap: 12px; }
     .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    /* Ordered layout: stacked justified ROWS, filled left->right / top->bottom so reading
+       order == visual order. Each row is a horizontal flex; tile widths are set by
+       justifyRow() (scaled to a shared row height, aspect preserved, no crop). A partial /
+       single-column (strip) row centers. */
+    .rows { flex: 1 1 auto; width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .row { display: flex; gap: 12px; align-items: flex-start; justify-content: center; }
+    .row .tile { flex: 0 0 auto; }
     .tile { position: relative; border-radius: 10px;
       overflow: hidden; background: #1a1a1f; cursor: zoom-in; display: block; line-height: 0;
       border: 1px solid #222228; transition: transform .12s ease, border-color .12s ease; }
@@ -403,6 +425,15 @@
     .lb.open { display: flex; }
     .lb-img { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 6px;
       box-shadow: 0 12px 60px rgba(0,0,0,.6); }
+    /* Fit-width reading: the page fills the width and the lightbox scrolls vertically for a
+       tall page (manga/comic/scan) instead of shrinking it to fit. The chrome (arrows, close,
+       counter, filmstrip, buttons) switches to position:fixed so it stays pinned while the
+       image scrolls under it. */
+    .lb.lb-fit { align-items: flex-start; overflow-y: auto; overflow-x: hidden; }
+    .lb.lb-fit .lb-img { width: min(96vw, 1200px); max-width: none; max-height: none; height: auto;
+      object-fit: fill; border-radius: 0; margin: 8px auto 88px; }
+    .lb.lb-fit .lb-close, .lb.lb-fit .lb-dl, .lb.lb-fit .lb-fit-btn,
+    .lb.lb-fit .lb-slideshow, .lb.lb-fit .lb-nav, .lb.lb-fit .lb-strip { position: fixed; }
     .lb-nav { position: absolute; top: 0; bottom: 0; width: 16vw; display: flex; align-items: center;
       cursor: pointer; color: #fff; font-size: 40px; opacity: .4; user-select: none; }
     .lb-nav:hover { opacity: 1; }
@@ -418,6 +449,12 @@
       opacity: .85; display: flex; align-items: center; justify-content: center; }
     .lb-dl:hover { opacity: 1; background: #7c6cff; }
     .lb-dl svg { width: 20px; height: 20px; }
+    .lb-fit-btn { position: absolute; top: 16px; right: 124px; width: 40px; height: 40px; z-index: 4;
+      cursor: pointer; color: #fff; background: rgba(20,20,24,.7); border: none; border-radius: 10px;
+      opacity: .85; display: flex; align-items: center; justify-content: center; }
+    .lb-fit-btn:hover { opacity: 1; background: #7c6cff; }
+    .lb-fit-btn.on { opacity: 1; background: #7c6cff; }
+    .lb-fit-btn svg { width: 20px; height: 20px; }
     .lb-strip { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
       display: flex; gap: 8px; align-items: center; justify-content: center;
       padding: 12px 14px 14px; overflow-x: auto; overflow-y: hidden;
@@ -474,6 +511,10 @@
         <label class="autospeed" title="${OBR.t('galleryAutoScrollSpeedTitle')}"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="${OBR.t('galleryAutoScrollSpeedAria')}"> ${OBR.t('gallerySpeedUnit')}</label>
         <span class="status"></span>
         <span class="spacer"></span>
+        <span class="seg layout" role="group" aria-label="${OBR.t('galleryLayoutGroup')}">
+          <button class="seg-btn lay-wall is-active" data-lay="wall" aria-current="true" title="${OBR.t('galleryLayoutWallTitle')}">${GRID_ICON}<span>${OBR.t('galleryLayoutWall')}</span></button>
+          <button class="seg-btn lay-ordered" data-lay="ordered" aria-current="false" title="${OBR.t('galleryLayoutOrderedTitle')}">${ROWS_ICON}<span>${OBR.t('galleryLayoutOrdered')}</span></button>
+        </span>
         <label>${OBR.t('gallerySizeLabel')} <input type="range" class="range" min="2" step="1" aria-label="${OBR.t('gallerySizeAria')}"></label>
         <span class="seg" role="group" aria-label="${OBR.t('galleryReadingModeGroup')}">
           <button class="seg-btn switch" data-act="text" title="${OBR.t('gallerySwitchToReaderTitle')}">${ICON_BOOK}<span>${OBR.t('galleryModeText')}</span></button>
@@ -486,6 +527,7 @@
       <div class="scroll"><div class="grid"></div></div>
       <div class="lb">
         <span class="lb-close">&times;</span>
+        <button class="lb-fit-btn" aria-pressed="false" title="${OBR.t('galleryLightboxFitWidthTitle')}">${FIT_ICON}</button>
         <button class="lb-dl" title="${OBR.t('galleryLightboxDownloadTitle')}">${DL_ICON}</button>
         <div class="lb-slideshow">
           <button class="lb-play" aria-pressed="false" title="${OBR.t('gallerySlideshowStartTitle')}">${PLAY_ICON}</button>
@@ -562,6 +604,12 @@
     rangeEl.addEventListener('pointerup', () => { flushSize(); rangeEl.blur(); });
     rangeEl.addEventListener('change', flushSize); // keyboard arrows / programmatic set
 
+    wrap.querySelector('.lay-wall').addEventListener('click', () => setLayout(false));
+    wrap.querySelector('.lay-ordered').addEventListener('click', () => setLayout(true));
+    wrap.querySelector('.lb-fit-btn').addEventListener('click', (e) => {
+      e.stopPropagation(); toggleFit();
+      e.currentTarget.blur(); // drop focus so arrow / A keys keep driving the lightbox
+    });
     wrap.querySelector('.rescan').addEventListener('click', () => hydratePage(true));
     wrap.querySelector('.autoscroll').addEventListener('click', (e) => {
       toggleAutoScroll();
@@ -584,7 +632,9 @@
       resizeTimer = setTimeout(() => {
         if (!active || !built) return;
         syncSizeSlider(); // the column ceiling (and the clamped count) move with the viewport
-        if (images.length && columnCount() !== cols.length) layoutAll(true);
+        if (!images.length) return;
+        if (columnCount() !== renderedCols) relayoutActive(true);
+        else if (ordered) rejustifyAll(); // same column count, new width — just resize Ordered tiles
       }, 150);
     });
     wrap.querySelector('.selall-cb').addEventListener('change', (e) => toggleSelectAll(e.target.checked));
@@ -709,6 +759,15 @@
     img.loading = 'lazy';
     img.src = im.url;
     img.addEventListener('error', () => { selected.delete(im.url); tile.remove(); updateSelUI(); });
+    // Ordered layout sizes each tile from the image's aspect ratio; a lazy/late image collected
+    // with unknown dimensions (w/h = 0) used the fallback aspect, so patch its real size on decode
+    // and re-justify just that row (bounded — once per unknown-size image, no earlier row moves).
+    img.addEventListener('load', () => {
+      if ((!im.w || !im.h) && img.naturalWidth && img.naturalHeight) {
+        im.w = img.naturalWidth; im.h = img.naturalHeight;
+        if (ordered && tile.parentElement && tile.parentElement.classList.contains('row')) justifyRow(tile.parentElement);
+      }
+    });
     tile.appendChild(img);
 
     const cb = document.createElement('input');
@@ -742,30 +801,53 @@
   // slider makes every notch meaningful (a width slider wastes its whole low-count end on the
   // "2 columns" plateau). MIN_TILE caps how many columns fit, so the slider adapts per screen.
   const MIN_TILE = 140; // narrowest a tile may get before we stop offering more columns
+  const STRIP_MAX = 900;          // px — capped width of the 1-column Ordered reading strip (centered)
+  const ORD_ROW_MIN = 90;         // px — clamp: shortest a justified Ordered row may get
+  const ORD_ROW_MAX = 560;        // px — clamp: tallest a justified Ordered row may get
+  const ORD_FALLBACK_ASPECT = 0.72; // w/h for unknown-dimension (lazy) images — portrait-ish
   function maxCols() {
     const inner = (scrollerEl ? scrollerEl.clientWidth : 0) - 24; // .scroll padding
     return Math.max(2, Math.floor((inner + 12) / (MIN_TILE + 12)));
   }
+  // Active-layout column setting + its slider floor. Wall spans 2..maxCols (a 2-up grid is the
+  // biggest); Ordered spans 1..maxCols (1 = the single-page reading strip).
+  function sizeKey() { return ordered ? 'galleryOrderedCols' : 'galleryColumns'; }
+  function sizeLo() { return ordered ? 1 : 2; }
   function columnCount() {
-    return Math.min(Math.max(2, settings.galleryColumns || 4), maxCols()); // 2 .. fits-on-screen
+    const lo = sizeLo();
+    return Math.min(Math.max(lo, settings[sizeKey()] || (ordered ? 2 : 4)), maxCols());
   }
-  // Reflect the stored count onto the slider for THIS screen. The value is inverted so a fuller
-  // bar = larger images = fewer columns, and the top of the track is always a 2-up grid.
+  // Reflect the stored count onto the slider for THIS screen + layout. The value is inverted so a
+  // fuller bar = larger images = fewer columns; the floor moves with the layout (1 in Ordered).
   function syncSizeSlider() {
     if (!rangeEl) return;
-    const mx = maxCols();
+    const mx = maxCols(), lo = sizeLo();
+    rangeEl.min = lo;
     rangeEl.max = mx;
-    rangeEl.value = 2 + mx - columnCount();
+    rangeEl.value = lo + mx - columnCount();
   }
-  // Slider moved: derive the count (inverse of syncSizeSlider), relayout if it changed, persist.
+  // Slider moved: derive the count (inverse of syncSizeSlider), relayout if it changed, persist
+  // the active-layout column setting AND the per-site pref.
   function sizeFromSlider() {
-    const mx = maxCols();
-    settings.galleryColumns = Math.min(Math.max(2, 2 + mx - parseInt(rangeEl.value, 10)), mx);
-    if (active && columnCount() !== cols.length) layoutAll(true);
+    const mx = maxCols(), lo = sizeLo();
+    settings[sizeKey()] = Math.min(Math.max(lo, lo + mx - parseInt(rangeEl.value, 10)), mx);
+    if (active && columnCount() !== renderedCols) relayoutActive(true);
     clearTimeout(sizePersistTimer);
-    sizePersistTimer = setTimeout(() => { sizePersistTimer = null; OBR.saveSettings({ galleryColumns: settings.galleryColumns }); }, 400);
+    sizePersistTimer = setTimeout(() => { sizePersistTimer = null; persistSizeAndPref(); }, 400);
   }
-  function flushSize() { if (!sizePersistTimer) return; clearTimeout(sizePersistTimer); sizePersistTimer = null; OBR.saveSettings({ galleryColumns: settings.galleryColumns }); }
+  function flushSize() { if (!sizePersistTimer) return; clearTimeout(sizePersistTimer); sizePersistTimer = null; persistSizeAndPref(); }
+  // Persist the active-layout column count globally (its default) and remember it (+ the layout)
+  // for THIS site, so the host reopens the way you left it.
+  function persistSizeAndPref() {
+    OBR.saveSettings({ [sizeKey()]: settings[sizeKey()] });
+    savePerSitePref();
+  }
+  function savePerSitePref() {
+    // Store the RAW preference (settings[sizeKey()]), not the screen-clamped columnCount() — else
+    // toggling layout on a narrow window would bake in a downgraded count that overrides the
+    // preference on a wider screen. columnCount() re-clamps to the screen at render time.
+    if (galleryHost && OBR.saveGalleryPref) OBR.saveGalleryPref(galleryHost, { ordered, cols: settings[sizeKey()] });
+  }
   function columnPx(n) {
     const inner = (scrollerEl ? scrollerEl.clientWidth : 0) - 24;
     return Math.max(80, (inner - (n - 1) * 12) / n);
@@ -788,6 +870,7 @@
       gridEl.appendChild(col);
       cols.push(col);
     }
+    renderedCols = n;
   }
   function placeTile(im, i) {
     const px = columnPx(cols.length);
@@ -810,35 +893,147 @@
     const mid = tileTop(t) - Math.max(0, (scrollerEl.clientHeight - t.offsetHeight) / 2);
     scrollerEl.scrollTop = Math.max(0, mid);
   }
+  // Capture the topmost visible tile (by index) + its offset from the scroll top, so a rebuild
+  // can restore the reading spot instead of snapping to the top. Layout-agnostic (reads .tile
+  // data-idx), so Wall, Ordered, and a Wall<->Ordered switch all reuse it.
+  function captureAnchor() {
+    const a = { idx: -1, offset: 0 };
+    if (!scrollerEl || !images.length) return a;
+    const st = scrollerEl.scrollTop;
+    let best = Infinity;
+    gridEl.querySelectorAll('.tile').forEach((t) => {
+      const d = Math.abs(tileTop(t) - st);
+      if (d < best) { best = d; a.idx = +t.dataset.idx; a.offset = tileTop(t) - st; }
+    });
+    return a;
+  }
+  function restoreAnchor(a) {
+    if (!a || a.idx < 0 || !scrollerEl) return;
+    const t = gridEl.querySelector('.tile[data-idx="' + a.idx + '"]');
+    if (t) scrollerEl.scrollTop = Math.max(0, tileTop(t) - a.offset);
+  }
+
   // Lay every known image into fresh columns (initial render, resize, column-width change).
   // `keepScroll` anchors the topmost visible tile so a rebuild doesn't snap to the top.
   function layoutAll(keepScroll) {
-    let anchorIdx = -1, viewOffset = 0;
-    if (keepScroll && scrollerEl && images.length) {
-      const st = scrollerEl.scrollTop;
-      let best = Infinity;
-      gridEl.querySelectorAll('.tile').forEach((t) => {
-        const d = Math.abs(tileTop(t) - st);
-        if (d < best) { best = d; anchorIdx = +t.dataset.idx; viewOffset = tileTop(t) - st; }
-      });
-    }
-    if (!images.length) { gridEl.innerHTML = ''; cols = []; colHeights = []; renderEmpty(); return; }
+    const anchor = keepScroll ? captureAnchor() : null;
+    if (!images.length) { gridEl.innerHTML = ''; cols = []; colHeights = []; renderedCols = 0; renderEmpty(); return; }
     buildColumns();
     images.forEach((im, i) => placeTile(im, i));
-    if (anchorIdx >= 0) {
-      const t = gridEl.querySelector('.tile[data-idx="' + anchorIdx + '"]');
-      if (t) scrollerEl.scrollTop = Math.max(0, tileTop(t) - viewOffset);
-    }
+    restoreAnchor(anchor);
   }
+
+  /* ---- Ordered layout: justified ROWS, row-major, in reading order ----
+   * Row r holds images [r*N .. r*N+N-1] (N = columnCount), so image i is ALWAYS in row
+   * floor(i/N) at position i%N — order == reading order, and appending never moves an earlier
+   * tile (the no-reflow property Wall got from shortest-column packing). Each row's tiles are
+   * scaled to a shared height (aspect preserved, no crop); a partial / single (strip) row is
+   * centered. */
+  function orderedRowsEl() {
+    let r = gridEl.querySelector('.rows');
+    if (!r) { gridEl.innerHTML = ''; r = document.createElement('div'); r.className = 'rows'; gridEl.appendChild(r); }
+    return r;
+  }
+  // Size the tiles of one Ordered row. Neighbour-independent: a partial row (k<N) is scaled as
+  // if it had N slots of the same average aspect, so it matches the height of full rows without
+  // stretching a lone trailing image to full width.
+  function justifyRow(rowEl) {
+    const tiles = rowEl.children;
+    const k = tiles.length;
+    if (!k || !scrollerEl) return;
+    const GAP = 12;
+    const innerW = Math.max(0, scrollerEl.clientWidth - 24); // .scroll padding
+    const N = renderedCols || k;
+    if (N <= 1) { // strip: one full-width (capped), centered page per row
+      tiles[0].style.width = Math.min(innerW, STRIP_MAX) + 'px';
+      return;
+    }
+    let sumA = 0;
+    const aspects = [];
+    for (let j = 0; j < k; j++) {
+      const im = images[+tiles[j].dataset.idx];
+      const a = im && im.w && im.h ? im.w / im.h : ORD_FALLBACK_ASPECT;
+      aspects.push(a); sumA += a;
+    }
+    const avail = innerW - (N - 1) * GAP;
+    // Divide by (sumA scaled to N slots) so full and partial rows land on the same height.
+    let H = avail / (sumA * (N / k));
+    H = Math.max(ORD_ROW_MIN, Math.min(ORD_ROW_MAX, H));
+    for (let j = 0; j < k; j++) tiles[j].style.width = Math.round(aspects[j] * H) + 'px';
+  }
+  // Append tiles for images [startIdx..] into the Ordered rows, re-justifying only the rows the
+  // append touched (the previously-partial last row + any new rows). Earlier rows never move.
+  function appendOrderedTiles(startIdx) {
+    const N = columnCount();
+    if (renderedCols !== N) { layoutOrdered(true); return; } // column count drifted — full rebuild
+    const rowsEl = orderedRowsEl();
+    const firstRow = Math.floor(startIdx / N);
+    for (let i = startIdx; i < images.length; i++) {
+      const r = Math.floor(i / N);
+      let row = rowsEl.children[r];
+      if (!row) { row = document.createElement('div'); row.className = 'row' + (N === 1 ? ' strip' : ''); rowsEl.appendChild(row); }
+      row.appendChild(makeTile(images[i], i));
+    }
+    for (let r = firstRow; r < rowsEl.children.length; r++) justifyRow(rowsEl.children[r]);
+  }
+  function layoutOrdered(keepScroll) {
+    const anchor = keepScroll ? captureAnchor() : null;
+    if (!images.length) { gridEl.innerHTML = ''; renderedCols = 0; renderEmpty(); return; }
+    const N = columnCount();
+    renderedCols = N;
+    gridEl.innerHTML = '';
+    const rowsEl = document.createElement('div');
+    rowsEl.className = 'rows';
+    gridEl.appendChild(rowsEl);
+    for (let i = 0; i < images.length; i++) {
+      const r = Math.floor(i / N);
+      let row = rowsEl.children[r];
+      if (!row) { row = document.createElement('div'); row.className = 'row' + (N === 1 ? ' strip' : ''); rowsEl.appendChild(row); }
+      row.appendChild(makeTile(images[i], i));
+    }
+    for (let r = 0; r < rowsEl.children.length; r++) justifyRow(rowsEl.children[r]);
+    restoreAnchor(anchor);
+  }
+
+  // Render (or re-render) the currently selected layout.
+  function relayoutActive(keepScroll) { if (ordered) layoutOrdered(keepScroll); else layoutAll(keepScroll); }
+
+  // Switch layout (toolbar Wall/Ordered toggle). Anchors the reading spot across the rebuild and
+  // remembers the choice for this site.
+  function setLayout(next) {
+    if (ordered === !!next || !active) return;
+    flushSize(); // commit any pending debounced size write to the CURRENT layout's key before switching
+    ordered = !!next;
+    updateLayoutToggle();
+    syncSizeSlider();
+    relayoutActive(true);
+    savePerSitePref();
+  }
+  function updateLayoutToggle() {
+    if (!wrap) return;
+    const w = wrap.querySelector('.lay-wall'), o = wrap.querySelector('.lay-ordered');
+    if (w) { w.classList.toggle('is-active', !ordered); w.setAttribute('aria-current', !ordered ? 'true' : 'false'); }
+    if (o) { o.classList.toggle('is-active', ordered); o.setAttribute('aria-current', ordered ? 'true' : 'false'); }
+  }
+  OBR._gallerySetLayout = (on) => setLayout(!!on); // drive (tests)
+  OBR._galleryLayoutOrdered = () => ordered;       // state (tests)
 
   function render() {
     images = collect(true); // initial render: include the CSS background-image scan
     if (lbStrip && lightboxIndex < 0) lbStrip.replaceChildren(); // rebuild the strip fresh on next open
     if (scrollerEl) scrollerEl.scrollTop = 0;
-    syncSizeSlider(); // reflect the stored column count (max + value) for this screen
+    syncSizeSlider(); // reflect the stored column count (max + value) for this screen + layout
     countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
-    layoutAll();
+    relayoutActive(false);
     updateSelUI();
+  }
+
+  // Re-justify every Ordered row in place (widths depend on the viewport width). Cheap — style
+  // writes only, no rebuild / image reload — so a resize at the same column count doesn't churn.
+  function rejustifyAll() {
+    const rowsEl = gridEl && gridEl.querySelector('.rows');
+    if (!rowsEl) return;
+    for (let r = 0; r < rowsEl.children.length; r++) justifyRow(rowsEl.children[r]);
   }
 
   // Re-collect and APPEND any images not already shown (lazy/late/inserted) to the
@@ -848,17 +1043,18 @@
   function mergeNewImages(withBackgrounds) {
     if (!active || !built) return 0;
     const have = new Set(images.map((im) => im.url));
+    const startIdx = images.length;
     let added = 0;
     collect(withBackgrounds).forEach((im) => {
       if (have.has(im.url)) return;
       have.add(im.url);
-      if (!cols.length) buildColumns(); // was empty-state
-      const i = images.length;
       images.push(im);
-      placeTile(im, i);
       added++;
     });
     if (added) {
+      if (!renderedCols) relayoutActive(false);       // was empty-state — first real render
+      else if (ordered) appendOrderedTiles(startIdx); // append rows; re-justify only touched rows
+      else { if (!cols.length) buildColumns(); for (let i = startIdx; i < images.length; i++) placeTile(images[i], i); }
       countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
       updateSelUI();
       softDone = false;
@@ -1148,9 +1344,32 @@
   OBR._gallerySlideshow = (on) => { on ? startSlideshow() : stopSlideshow(); }; // drive (tests)
   OBR._gallerySlideshowOn = () => slideOn;                                      // state (tests)
 
+  /* ---- fit-width: read a tall page at full width (scrolls) vs shrink the page to fit ---- */
+  function applyLightboxFit() {
+    if (lbEl) lbEl.classList.toggle('lb-fit', fitWidth);
+    updateFitBtn();
+  }
+  function updateFitBtn() {
+    const btn = wrap && wrap.querySelector('.lb-fit-btn');
+    if (!btn) return;
+    btn.classList.toggle('on', fitWidth);
+    btn.setAttribute('aria-pressed', fitWidth ? 'true' : 'false');
+    btn.title = fitWidth ? OBR.t('galleryLightboxFitPageTitle') : OBR.t('galleryLightboxFitWidthTitle');
+  }
+  function toggleFit() {
+    fitWidth = !fitWidth;
+    settings.galleryFitWidth = fitWidth;
+    applyLightboxFit();
+    if (lbEl) lbEl.scrollTop = 0; // start a freshly-fit page at the top
+    OBR.saveSettings({ galleryFitWidth: fitWidth });
+  }
+  OBR._galleryFitWidth = (on) => { fitWidth = !!on; settings.galleryFitWidth = fitWidth; applyLightboxFit(); OBR.saveSettings({ galleryFitWidth: fitWidth }); }; // drive (tests)
+  OBR._galleryFitWidthOn = () => fitWidth; // state (tests)
+
   function openLightbox(i, fromAuto) {
     stopAutoScroll(); // opening the lightbox is a manual interaction
     lightboxIndex = i;
+    if (fitWidth && lbEl) lbEl.scrollTop = 0; // each page starts at the top in fit-width reading
     lbImg.src = images[i].full || images[i].url;
     lbImg.alt = OBR.t('galleryImageAlt', [String(i + 1)]);
     lbCounter.textContent = OBR.t('galleryLightboxCounter', [String(i + 1), String(images.length)]);
@@ -1183,9 +1402,19 @@
   async function open() {
     if (active) return;
     settings = await OBR.loadSettings();
+    // Per-site layout memory: a host reopens in the layout (+ column count) you left it in. Wall
+    // is the default; a site only opens Ordered if it was remembered that way.
+    galleryHost = OBR.normalizeHost ? OBR.normalizeHost(location.href) : '';
+    let pref = null;
+    try { pref = OBR.loadGalleryPref ? await OBR.loadGalleryPref(galleryHost) : null; } catch (e) { pref = null; }
+    ordered = pref ? !!pref.ordered : false;
+    if (pref && typeof pref.cols === 'number') settings[ordered ? 'galleryOrderedCols' : 'galleryColumns'] = pref.cols;
+    fitWidth = !!settings.galleryFitWidth;
     if (OBR.close) OBR.close(); // ensure the text reader isn't also showing
     build();
     applyStylesheet();
+    updateLayoutToggle();  // reflect the resolved layout on the Wall/Ordered switch
+    applyLightboxFit();    // reflect the persisted lightbox fit-width preference
     if (autoSpeedEl) autoSpeedEl.value = settings.galleryAutoScrollSpeed || 60; // reflect the persisted speed
     if (lbSecsEl) lbSecsEl.value = settings.gallerySlideSeconds || 3;           // reflect the persisted slideshow secs
     savedPageX = window.scrollX; savedPageY = window.scrollY; // restored on close
@@ -1294,6 +1523,8 @@
       else if (isFormFocused()) { /* editing the seconds field — leave caret/typing keys to it */ }
       else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); step(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(-1); }
+      // F toggles fit-width reading (fill the width + scroll a tall page vs shrink-to-fit).
+      else if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); toggleFit(); }
       // A toggles the slideshow; +/- nudge its per-image dwell (guard ctrl/meta so browser zoom still works).
       else if ((e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); toggleSlideshow(); }
       else if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); slideSecsSetting.nudge(+1); }
