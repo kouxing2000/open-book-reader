@@ -905,7 +905,15 @@
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.src = im.url;
-    img.addEventListener('error', () => { selected.delete(im.url); tile.remove(); updateSelUI(); });
+    img.addEventListener('error', () => {
+      // In the Ordered layout, removing a tile frees width its row was justified around —
+      // re-justify (or drop an emptied row) so the row doesn't keep a permanent gap.
+      const row = tile.parentElement && tile.parentElement.classList.contains('row') ? tile.parentElement : null;
+      selected.delete(im.url);
+      tile.remove();
+      if (row) { if (row.children.length) justifyRow(row); else row.remove(); }
+      updateSelUI();
+    });
     // Ordered layout sizes each tile from the image's aspect ratio; a lazy/late image collected
     // with unknown dimensions (w/h = 0) used the fallback aspect, so patch its real size on decode
     // and re-justify just that row (bounded — once per unknown-size image, no earlier row moves).
@@ -1139,7 +1147,7 @@
     for (let i = startIdx; i < images.length; i++) {
       const r = Math.floor(i / N);
       let row = rowsEl.children[r];
-      if (!row) { row = document.createElement('div'); row.className = 'row' + (N === 1 ? ' strip' : ''); rowsEl.appendChild(row); }
+      if (!row) { row = document.createElement('div'); row.className = 'row'; rowsEl.appendChild(row); }
       row.appendChild(makeTile(images[i], i));
     }
     for (let r = firstRow; r < rowsEl.children.length; r++) justifyRow(rowsEl.children[r]);
@@ -1156,7 +1164,7 @@
     for (let i = 0; i < images.length; i++) {
       const r = Math.floor(i / N);
       let row = rowsEl.children[r];
-      if (!row) { row = document.createElement('div'); row.className = 'row' + (N === 1 ? ' strip' : ''); rowsEl.appendChild(row); }
+      if (!row) { row = document.createElement('div'); row.className = 'row'; rowsEl.appendChild(row); }
       row.appendChild(makeTile(images[i], i));
     }
     for (let r = 0; r < rowsEl.children.length; r++) justifyRow(rowsEl.children[r]);
@@ -1330,6 +1338,8 @@
         return !(OBR.urlMatchesHidden && OBR.urlMatchesHidden(im.url, [p]));
       });
     }
+    // If this unhide removed the pattern Undo points at, retire the stale Undo button.
+    if (lastHide && !hiddenPatterns.includes(lastHide)) { lastHide = null; hideUndo(); }
     persistHidden();
     refreshFilter();
   }

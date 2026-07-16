@@ -409,51 +409,82 @@
     try { return (globalThis.chrome && chrome.storage && chrome.storage.local) || null; }
     catch (e) { return null; }
   }
+  function syncArea() {
+    try { return (globalThis.chrome && chrome.storage && chrome.storage.sync) || null; }
+    catch (e) { return null; }
+  }
+
+  /* ------------------------------------------------------------------ map stores
+   * ONE factory for every LRU-bounded map this extension keeps in chrome.storage
+   * (reading positions, saved picks, gallery layout prefs, hidden images):
+   * serialized writes — a chained read-modify-write, so two near-simultaneous saves
+   * can't interleave and drop each other's entries — timestamped entries, and bounds
+   * by entry COUNT and (optionally) serialized BYTES. These used to be hand-copied
+   * near-clones, and the copies DRIFTED: the hidden-images clone shipped without the
+   * byte bound savePick had, a real sync-quota bug — so the shape now lives here
+   * once. (Cross-PROCESS atomicity — two tabs at once — is still best-effort;
+   * chrome.storage offers no lock.)
+   *   area:     () => storage area, resolved lazily (absent in the test harness)
+   *   key:      the single storage item holding the whole map
+   *   max:      LRU entry-count bound
+   *   maxBytes: optional serialized-size bound (headroom under the 8KB sync quota)
+   * API: read(k) → entry|null · readAll() → raw map · write(k, val, now?) → stores
+   * {…val, t} (val == null deletes k), prunes, resolves TRUE only on a CONFIRMED
+   * write / FALSE on failure (quota, unavailable, lastError) · remove(k). */
+  function makeMapStore({ area, key, max, maxBytes }) {
+    let chain = Promise.resolve();
+    const read = (k) => new Promise((resolve) => {
+      const a = area();
+      if (!a || !k) return resolve(null);
+      try { a.get(key, (d) => { const m = (d && d[key]) || {}; resolve(k in m ? m[k] : null); }); }
+      catch (e) { resolve(null); }
+    });
+    const readAll = () => new Promise((resolve) => {
+      const a = area();
+      if (!a) return resolve({});
+      try { a.get(key, (d) => resolve((d && d[key]) || {})); } catch (e) { resolve({}); }
+    });
+    const write = (k, val, now) => {
+      const run = () => new Promise((resolve) => {
+        const a = area();
+        if (!a || !k) return resolve(false);
+        const stamp = typeof now === 'number' ? now : Date.now();
+        try {
+          a.get(key, (d) => {
+            const map = (d && d[key]) || {};
+            if (val == null) {
+              if (!(k in map)) return resolve(true); // nothing to delete — skip the write
+              delete map[k];
+            } else {
+              map[k] = Object.assign({}, val, { t: stamp });
+            }
+            // LRU-prune by entry count, then (optionally) by serialized bytes.
+            const byAge = () => Object.keys(map).sort((x, y) => (map[x].t || 0) - (map[y].t || 0));
+            let keys = byAge();
+            while (keys.length > max) delete map[keys.shift()];
+            if (maxBytes) while (keys.length > 1 && JSON.stringify(map).length > maxBytes) delete map[(keys = byAge()).shift()];
+            try {
+              a.set({ [key]: map },
+                () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
+            } catch (e) { resolve(false); }
+          });
+        } catch (e) { resolve(false); }
+      });
+      chain = chain.then(run, run); // chain through failures too
+      return chain;
+    };
+    return { read, readAll, write, remove: (k) => write(k, null) };
+  }
+
+  const positionsStore = makeMapStore({ area: localArea, key: OBR.POSITIONS_KEY, max: OBR.POSITIONS_MAX });
 
   // Resolve to the saved fraction [0,1] for `key`, or null when none/unavailable.
-  OBR.loadPosition = function (key) {
-    return new Promise((resolve) => {
-      const area = localArea();
-      if (!area || !key) return resolve(null);
-      try {
-        area.get(OBR.POSITIONS_KEY, (data) => {
-          const map = (data && data[OBR.POSITIONS_KEY]) || {};
-          const e = map[key];
-          resolve(e && typeof e.f === 'number' ? e.f : null);
-        });
-      } catch (e) { resolve(null); }
-    });
-  };
-
-  // Serialize position writes so an in-flight read-modify-write can't interleave
-  // with the next one (the debounced save and the close() flush both touch the
-  // same shared map). Each write waits for the previous to land, so neither drops
-  // the other's entry. (Cross-PROCESS atomicity — two tabs at once — is still
-  // best-effort; chrome.storage offers no lock, and same-article-in-two-tabs is rare.)
-  let saveChain = Promise.resolve();
+  OBR.loadPosition = (key) => positionsStore.read(key).then((e) => (e && typeof e.f === 'number' ? e.f : null));
 
   // Persist the fraction for `key`, LRU-pruning the map to POSITIONS_MAX entries.
   OBR.savePosition = function (key, fraction, now) {
-    const run = () => new Promise((resolve) => {
-      const area = localArea();
-      if (!area || !key || typeof fraction !== 'number') return resolve();
-      const stamp = typeof now === 'number' ? now : Date.now();
-      try {
-        area.get(OBR.POSITIONS_KEY, (data) => {
-          const map = (data && data[OBR.POSITIONS_KEY]) || {};
-          map[key] = { f: Math.max(0, Math.min(1, fraction)), t: stamp };
-          const keys = Object.keys(map);
-          if (keys.length > OBR.POSITIONS_MAX) {
-            keys.sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
-            for (let i = 0; i < keys.length - OBR.POSITIONS_MAX; i++) delete map[keys[i]];
-          }
-          try { area.set({ [OBR.POSITIONS_KEY]: map }, resolve); }
-          catch (e) { resolve(); }
-        });
-      } catch (e) { resolve(); }
-    });
-    saveChain = saveChain.then(run, run); // chain through failures too
-    return saveChain;
+    if (!key || typeof fraction !== 'number') return Promise.resolve(false);
+    return positionsStore.write(key, { f: Math.max(0, Math.min(1, fraction)) }, now);
   };
 
   /* --------------------------------------------------------------- saved picks
@@ -469,85 +500,24 @@
   OBR.PICKS_MAX = 50;
   OBR.PICKS_MAX_BYTES = 7500; // headroom under chrome.storage.sync QUOTA_BYTES_PER_ITEM (8192)
 
-  function syncArea() {
-    try { return (globalThis.chrome && chrome.storage && chrome.storage.sync) || null; }
-    catch (e) { return null; }
-  }
+  // Bounds cover BOTH entry count and serialized bytes (a long structuralPath selector
+  // can be 100+ chars).
+  const picksStore = makeMapStore({ area: syncArea, key: OBR.PICKS_KEY, max: OBR.PICKS_MAX, maxBytes: OBR.PICKS_MAX_BYTES });
 
   // The whole saved-pick map { host: { sel, t } } — for the Options list view.
-  OBR.loadPicks = function () {
-    return new Promise((resolve) => {
-      const area = syncArea();
-      if (!area) return resolve({});
-      try {
-        area.get(OBR.PICKS_KEY, (data) => resolve((data && data[OBR.PICKS_KEY]) || {}));
-      } catch (e) { resolve({}); }
-    });
-  };
+  OBR.loadPicks = () => picksStore.readAll();
 
   // Resolve to the saved CSS selector string for `host`, or null when none/unavailable.
-  OBR.loadPick = function (host) {
-    return new Promise((resolve) => {
-      const area = syncArea();
-      if (!area || !host) return resolve(null);
-      try {
-        area.get(OBR.PICKS_KEY, (data) => {
-          const map = (data && data[OBR.PICKS_KEY]) || {};
-          const e = map[host];
-          resolve(e && typeof e.sel === 'string' ? e.sel : null);
-        });
-      } catch (e) { resolve(null); }
-    });
-  };
-
-  // Serialize pick writes (read-modify-write of the shared map), mirroring saveChain.
-  let picksChain = Promise.resolve();
+  OBR.loadPick = (host) => picksStore.read(host).then((e) => (e && typeof e.sel === 'string' ? e.sel : null));
 
   // Resolves to TRUE on a confirmed write, FALSE on any failure (quota, unavailable,
   // lastError) — so callers can tell the user instead of falsely reporting "saved".
   OBR.savePick = function (host, sel, now) {
-    const run = () => new Promise((resolve) => {
-      const area = syncArea();
-      if (!area || !host || !sel) return resolve(false);
-      const stamp = typeof now === 'number' ? now : Date.now();
-      try {
-        area.get(OBR.PICKS_KEY, (data) => {
-          const map = (data && data[OBR.PICKS_KEY]) || {};
-          map[host] = { sel: String(sel), t: stamp };
-          const byAge = () => Object.keys(map).sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
-          // Bound BOTH entry count and serialized BYTES (a long structuralPath selector can be
-          // 100+ chars), LRU-dropping oldest, so we stay under the 8KB sync per-item quota.
-          let keys = byAge();
-          while (keys.length > OBR.PICKS_MAX) delete map[keys.shift()];
-          while (keys.length > 1 && JSON.stringify(map).length > OBR.PICKS_MAX_BYTES) delete map[(keys = byAge()).shift()];
-          try {
-            area.set({ [OBR.PICKS_KEY]: map },
-              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
-          } catch (e) { resolve(false); }
-        });
-      } catch (e) { resolve(false); }
-    });
-    picksChain = picksChain.then(run, run);
-    return picksChain;
+    if (!host || !sel) return Promise.resolve(false);
+    return picksStore.write(host, { sel: String(sel) }, now);
   };
 
-  OBR.clearPick = function (host) {
-    const run = () => new Promise((resolve) => {
-      const area = syncArea();
-      if (!area || !host) return resolve();
-      try {
-        area.get(OBR.PICKS_KEY, (data) => {
-          const map = (data && data[OBR.PICKS_KEY]) || {};
-          if (host in map) {
-            delete map[host];
-            try { area.set({ [OBR.PICKS_KEY]: map }, resolve); } catch (e) { resolve(); }
-          } else resolve();
-        });
-      } catch (e) { resolve(); }
-    });
-    picksChain = picksChain.then(run, run);
-    return picksChain;
-  };
+  OBR.clearPick = (host) => (host ? picksStore.remove(host) : Promise.resolve(false));
 
   /* --------------------------------------------------------- gallery layout prefs
    * Per-site memory of the image-gallery LAYOUT (Wall masonry vs Ordered row-major) and
@@ -560,49 +530,19 @@
   OBR.GALLERY_KEY = 'obr_gallery';
   OBR.GALLERY_MAX = 60;
 
-  // Serialize gallery-pref writes (read-modify-write of the shared map), mirroring picksChain.
-  let galleryChain = Promise.resolve();
+  const galleryStore = makeMapStore({ area: syncArea, key: OBR.GALLERY_KEY, max: OBR.GALLERY_MAX });
 
   // Resolve to { ordered, cols } for `host`, or null when none/unavailable. `cols` is
   // undefined when the stored entry has no numeric column count (caller falls back to defaults).
-  OBR.loadGalleryPref = function (host) {
-    return new Promise((resolve) => {
-      const area = syncArea();
-      if (!area || !host) return resolve(null);
-      try {
-        area.get(OBR.GALLERY_KEY, (data) => {
-          const map = (data && data[OBR.GALLERY_KEY]) || {};
-          const e = map[host];
-          resolve(e && typeof e === 'object'
-            ? { ordered: !!e.ordered, cols: typeof e.cols === 'number' ? e.cols : undefined }
-            : null);
-        });
-      } catch (e) { resolve(null); }
-    });
-  };
+  OBR.loadGalleryPref = (host) => galleryStore.read(host).then((e) => (e && typeof e === 'object'
+    ? { ordered: !!e.ordered, cols: typeof e.cols === 'number' ? e.cols : undefined }
+    : null));
 
   // Persist { ordered, cols } for `host`, LRU-pruning to GALLERY_MAX entries. Resolves TRUE
-  // on a confirmed write, FALSE on any failure — mirrors savePick.
+  // on a confirmed write, FALSE on any failure.
   OBR.saveGalleryPref = function (host, pref, now) {
-    const run = () => new Promise((resolve) => {
-      const area = syncArea();
-      if (!area || !host || !pref) return resolve(false);
-      const stamp = typeof now === 'number' ? now : Date.now();
-      try {
-        area.get(OBR.GALLERY_KEY, (data) => {
-          const map = (data && data[OBR.GALLERY_KEY]) || {};
-          map[host] = { ordered: !!pref.ordered, cols: typeof pref.cols === 'number' ? pref.cols : 2, t: stamp };
-          const keys = Object.keys(map).sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
-          while (keys.length > OBR.GALLERY_MAX) delete map[keys.shift()];
-          try {
-            area.set({ [OBR.GALLERY_KEY]: map },
-              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
-          } catch (e) { resolve(false); }
-        });
-      } catch (e) { resolve(false); }
-    });
-    galleryChain = galleryChain.then(run, run);
-    return galleryChain;
+    if (!host || !pref) return Promise.resolve(false);
+    return galleryStore.write(host, { ordered: !!pref.ordered, cols: typeof pref.cols === 'number' ? pref.cols : 2 }, now);
   };
 
   /* --------------------------------------------------------- hidden images
@@ -667,73 +607,30 @@
     return { image, folder, host };
   };
 
+  const hiddenStore = makeMapStore({ area: syncArea, key: OBR.HIDDEN_KEY, max: OBR.HIDDEN_HOSTS_MAX, maxBytes: OBR.HIDDEN_MAX_BYTES });
+
   // Read the hidden-pattern list for `host` (a fresh array copy), or [] when none.
-  OBR.loadHidden = function (host) {
-    return new Promise((resolve) => {
-      const area = syncArea();
-      if (!area || !host) return resolve([]);
-      try {
-        area.get(OBR.HIDDEN_KEY, (data) => {
-          const map = (data && data[OBR.HIDDEN_KEY]) || {};
-          const e = map[host];
-          resolve(e && Array.isArray(e.p) ? e.p.slice() : []);
-        });
-      } catch (e) { resolve([]); }
-    });
-  };
+  OBR.loadHidden = (host) => hiddenStore.read(host).then((e) => (e && Array.isArray(e.p) ? e.p.slice() : []));
 
   // The whole hidden map { host: [pattern,...] } — for the Options list view.
-  OBR.loadHiddenMap = function () {
-    return new Promise((resolve) => {
-      const area = syncArea();
-      if (!area) return resolve({});
-      try {
-        area.get(OBR.HIDDEN_KEY, (data) => {
-          const map = (data && data[OBR.HIDDEN_KEY]) || {};
-          const out = {};
-          for (const h of Object.keys(map)) if (map[h] && Array.isArray(map[h].p)) out[h] = map[h].p.slice();
-          resolve(out);
-        });
-      } catch (e) { resolve({}); }
-    });
-  };
+  OBR.loadHiddenMap = () => hiddenStore.readAll().then((map) => {
+    const out = {};
+    for (const h of Object.keys(map)) if (map[h] && Array.isArray(map[h].p)) out[h] = map[h].p.slice();
+    return out;
+  });
 
-  let hiddenChain = Promise.resolve();
-
-  // Replace the WHOLE pattern list for `host` (empty list removes the host). De-dupes, caps to
-  // HIDDEN_PER_HOST_MAX, LRU-prunes hosts to HIDDEN_HOSTS_MAX. Resolves TRUE on a confirmed write.
+  // Replace the WHOLE pattern list for `host` (empty list removes the host). De-dupes, caps
+  // each pattern's length (quota-poison backstop: a data: payload smuggled in as a pattern
+  // would sink every later write for the host) and the per-host count; the store then
+  // LRU-prunes hosts by count AND bytes. Resolves TRUE on a confirmed write.
   OBR.saveHidden = function (host, pats, now) {
-    const run = () => new Promise((resolve) => {
-      const area = syncArea();
-      if (!area || !host) return resolve(false);
-      const stamp = typeof now === 'number' ? now : Date.now();
-      try {
-        area.get(OBR.HIDDEN_KEY, (data) => {
-          const map = (data && data[OBR.HIDDEN_KEY]) || {};
-          const clean = [];
-          for (const p of (pats || [])) {
-            const s = String(p || '').trim();
-            // Length cap = quota-poison backstop (a data: payload smuggled in as a pattern
-            // would sink every later write for the host).
-            if (s && s.length <= OBR.HIDDEN_PAT_MAX_LEN && !clean.includes(s)) clean.push(s);
-          }
-          if (clean.length) map[host] = { p: clean.slice(0, OBR.HIDDEN_PER_HOST_MAX), t: stamp };
-          else delete map[host];
-          // Bound BOTH host count and serialized BYTES, LRU-dropping oldest hosts, so the map
-          // stays under the 8KB sync per-item quota (mirrors savePick).
-          const byAge = () => Object.keys(map).sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
-          let keys = byAge();
-          while (keys.length > OBR.HIDDEN_HOSTS_MAX) delete map[keys.shift()];
-          while (keys.length > 1 && JSON.stringify(map).length > OBR.HIDDEN_MAX_BYTES) delete map[(keys = byAge()).shift()];
-          try {
-            area.set({ [OBR.HIDDEN_KEY]: map },
-              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
-          } catch (e) { resolve(false); }
-        });
-      } catch (e) { resolve(false); }
-    });
-    hiddenChain = hiddenChain.then(run, run);
-    return hiddenChain;
+    if (!host) return Promise.resolve(false);
+    const clean = [];
+    for (const p of (pats || [])) {
+      const s = String(p || '').trim();
+      if (s && s.length <= OBR.HIDDEN_PAT_MAX_LEN && !clean.includes(s)) clean.push(s);
+    }
+    return hiddenStore.write(host, clean.length ? { p: clean.slice(0, OBR.HIDDEN_PER_HOST_MAX) } : null, now);
   };
 
   // Estimated reading minutes from a word count (220 wpm). 0 when there's no
