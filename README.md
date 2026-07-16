@@ -53,14 +53,17 @@ src/content/
   readability.js         bundled Mozilla Readability (Apache-2.0)
   reader.js              text engine: extract → paginate → navigate (Shadow DOM)
   zip.js                 minimal ZIP writer (OBR._buildZip)
-  gallery.js             image mode: collect images → masonry + lightbox (Shadow DOM)
+  gallery.js             image mode: Wall masonry / Ordered rows + lightbox + image filter (Shadow DOM)
 src/options/             options page (html + js)
 icons/                   16/32/48/128
 ```
 
-Two modes: **text** (Alt+B) and **image gallery** (Alt+Shift+B). The engine is injected
-**only when invoked** — nothing runs against any page otherwise. Styles use Constructable
-Stylesheets inside a Shadow DOM, so strict-CSP sites can't block or interfere.
+Two modes: **text** (Alt+B) and **image gallery** (Alt+Shift+B). The gallery offers a
+masonry **Wall** for browsing and an **Ordered** layout that reads images in sequence
+(webtoons/manga — one page at a time at max size), plus a per-site filter that hides
+avatars and other repeated noise. The engine is injected **only when invoked** — nothing
+runs against any page otherwise. Styles use Constructable Stylesheets inside a Shadow DOM,
+so strict-CSP sites can't block or interfere.
 
 ## Permissions
 
