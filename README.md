@@ -51,6 +51,7 @@ src/background.js        service worker — injects engine on gesture; runs down
 src/content/
   settings.js            shared defaults + storage helpers (globalThis.OBR)
   readability.js         bundled Mozilla Readability (Apache-2.0)
+  reader.style.js        reader stylesheet (OBR._readerCSS) — injected before reader.js
   reader.js              text engine: extract → paginate → navigate (Shadow DOM)
   zip.js                 minimal ZIP writer (OBR._buildZip)
   gallery.js             image mode: Wall masonry / Ordered rows + lightbox + image filter (Shadow DOM)
@@ -88,9 +89,9 @@ image URLs to save them). Core reading/extraction is fully local.
 `npm run screenshots` loads the unpacked extension into headless Chromium and writes the
 Chrome Web Store listing images to `store-assets/` (gitignored — regenerate any time):
 
-- `01-reader-paper.png` … `05-options.png` — five 1280×800 feature shots (text reader paper +
-  dark/3-column, gallery masonry, lightbox, options page)
-- `promo-440x280.png` — the 440×280 promo tile
+- a set of 1280×800 feature shots (text reader paper, dark/multi-column, gallery masonry, lightbox,
+  options page, and before/after comparison frames) — see `store-assets/` for the current inventory
+- a 440×280 promo tile
 
 Shots are driven by the demo fixtures in `tests/fixtures/demo-*.html`, so they need no network.
 

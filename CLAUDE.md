@@ -30,24 +30,29 @@ On-demand injection — nothing runs on a page until the user invokes it (toolba
 text / `Alt+Shift+B` images).
 
 ```
-manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage)
+manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage, contextMenus)
 src/background.js    service worker — the only always-loaded script; injects the engine on gesture
 src/content/
   settings.js        shared globalThis.OBR namespace + DEFAULTS + load/saveSettings (storage.sync)
   readability.js     VENDORED Mozilla Readability (Apache-2.0) — do not edit; see READABILITY-LICENSE.md
+  reader.style.js    reader stylesheet as a JS string (OBR._readerCSS) — injected before reader.js
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
+  zip.js             minimal ZIP writer (OBR._buildZip) — used by the gallery's "Download as ZIP"
   gallery.js         IMAGE mode: collect images → Wall masonry / Ordered rows + lightbox (Shadow DOM)
 src/options/         options page (reuses settings.js)
 src/welcome.html     first-run activation page — onInstalled opens it (pin icon, shortcuts, sample article)
 src/report.html      ⚠ Report page (bundled, offline) — email OR a web form; opened via the SW relay
+src/permission.html  optional-permission request page (paired permission.js) — SW opens it on first
+                     download so the user's click can call chrome.permissions.request
 icons/               16/32/48/128
 site/                landing + privacy + uninstall survey (GitHub Pages; NOT shipped in the extension)
 tools/feedback-form/ Google Apps Script backend: the shared feedback collector form + bridge (NOT shipped)
 ```
 
 **Injection flow** (`background.js`): on click/command, `executeScript` probes `OBR._engineLoaded`;
-if absent, injects the files in order (settings, readability, reader, gallery — settings defines the
-namespace, reader needs `DEFAULTS`+`Readability`). Then dispatches: keyboard commands call the
+if absent, injects the files in order (settings, readability, reader.style, reader, zip, gallery —
+settings defines the namespace, reader.style supplies `OBR._readerCSS`, reader needs
+`DEFAULTS`+`Readability`, zip supplies `OBR._buildZip` for the gallery's ZIP download). Then dispatches: keyboard commands call the
 explicit toggle (`OBR.toggle` / `OBR.toggleGallery`); the **toolbar icon** calls `OBR._autoToggle`,
 which closes any open mode or auto-picks — gallery only when image-heavy (`_imageCount() >=
 autoGalleryMin`, default 10) AND not a real article (`_articleWordCount() < autoTextMinWords`,
@@ -296,6 +301,8 @@ npx playwright install chromium                # first run only
   font size, progress/resume, close/toggle, settings persistence.
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
   (stubbed SW), mode switching.
+- `options.spec.js` — options page (real extension context): the how-to-use guide, trigger + shortcut
+  docs, native `<details>` collapse, first-run open.
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
 - **Harness caveat**: headless Playwright can't click the real toolbar icon (no `activeTab`), so tests
   inject the content scripts the same way/order as `background.js` and exercise the unmodified engine;

@@ -392,8 +392,11 @@
   // whole-page path (extractArticle) and the scoped paths (a picked node / a
   // selection) so all three behave identically. `base` must be a Document (kept a
   // clone of the live document, so baseURI/documentURI resolve relative URLs).
-  // Strip live-script vectors from an extracted-content HTML string: <script>/<style>/
-  // <noscript>, every inline on* handler, and javascript: URLs. Vendored Readability is NOT
+  // Strip live-script + embedded-chrome vectors from an extracted-content HTML string: <script>/
+  // <style>/<noscript>/<iframe>/<form>, every inline on* handler, and javascript: URLs. <iframe>
+  // (cross-origin framing / clickjacking inside the trusted reader overlay) and <form> (a phishing
+  // surface rendered in the overlay chrome) are dropped wholesale — no article content needs them.
+  // Vendored Readability is NOT
   // a sanitizer (it keeps e.g. <img onerror>), and we inject content via innerHTML into the
   // reader's Shadow DOM and the print iframe — so EVERY content path (Readability and the
   // rawFallback) runs through this, making the "no live handlers" trust model actually true.
@@ -402,14 +405,14 @@
   function sanitizeContentHTML(html) {
     try {
       const doc = new DOMParser().parseFromString(html || '', 'text/html');
-      doc.querySelectorAll('script, style, noscript').forEach((n) => n.remove());
+      doc.querySelectorAll('script, style, noscript, iframe, form').forEach((n) => n.remove());
       doc.querySelectorAll('*').forEach((n) => {
         for (const a of Array.from(n.attributes)) {
           const name = a.name.toLowerCase();
           // srcdoc carries inline HTML that an <iframe> runs in THIS page's origin —
-          // a path our <script>/on* stripping above never sees. Drop it (src-based
-          // embeds like videos still work). Keep no equivalent for <iframe src> so
-          // legit https embeds survive.
+          // a path our <script>/on* stripping never sees. <iframe> itself is now removed
+          // wholesale above, so this is belt-and-suspenders for any stray srcdoc carrier;
+          // src-based media embeds (<video>/<audio>) still work.
           if (name.startsWith('on') || name === 'srcdoc') n.removeAttribute(a.name);
           else if (name === 'href' || name === 'src' || name === 'xlink:href'
             || name === 'action' || name === 'formaction') { // form*action can also carry javascript:
