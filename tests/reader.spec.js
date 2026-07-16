@@ -469,6 +469,30 @@ test('resumes the saved reading position when reopened on the same article', asy
   expect(Math.abs(progress(back) - fracLeft)).toBeLessThan(0.2);
 });
 
+// close() is only ONE way to leave — a tab-close or in-page navigation never calls it,
+// and the 400ms persist debounce would drop the last page turn. pagehide must flush.
+test('flushes the pending position on pagehide (tab-close path, no close())', async ({ page }) => {
+  await openReader(page);
+  await page.keyboard.press('End'); // move off page 1; schedules a debounced save
+  const fracLeft = progress(await readState(page));
+  expect(fracLeft).toBeGreaterThan(0.4); // genuinely past page 1
+
+  // A tab-close / in-page navigation never calls close(); pagehide must still flush the
+  // pending position. Spy on savePosition so the flush is observed synchronously (the
+  // store write itself is async) and prove it carries the CURRENT page, not a stale one.
+  const flushed = await page.evaluate(() => {
+    const calls = [];
+    const orig = globalThis.OBR.savePosition;
+    globalThis.OBR.savePosition = (key, f, now) => { calls.push(f); return orig(key, f, now); };
+    try { window.dispatchEvent(new Event('pagehide')); }
+    finally { globalThis.OBR.savePosition = orig; }
+    return calls;
+  });
+  expect(flushed).toHaveLength(1); // pagehide flushed exactly once, bypassing the debounce
+  expect(flushed[0]).toBeGreaterThan(0.4); // ...with the End position, not stuck at page 1
+  expect(Math.abs(flushed[0] - fracLeft)).toBeLessThan(0.05);
+});
+
 test('the progress hairline tracks position (0% at start, 100% at the end)', async ({ page }) => {
   await openReader(page);
   expect((await readState(page)).progressWidth).toBe('0%');

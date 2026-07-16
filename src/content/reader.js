@@ -1032,6 +1032,17 @@
     saveTimer = setTimeout(() => OBR.savePosition(posKey, f), 400);
   }
 
+  // Persist the position NOW, skipping the 400ms debounce. close() and the
+  // page-hide handlers call this so a tab-close / in-page navigation / tab
+  // backgrounding inside the debounce window doesn't drop the last page turn
+  // (resume would otherwise land a page early).
+  function flushPosition() {
+    clearTimeout(saveTimer);
+    if (active && posKey && totalColumns >= 1 && OBR.savePosition) {
+      OBR.savePosition(posKey, (currentSpread * pagesPerSpread) / totalColumns);
+    }
+  }
+
   function flip(dir) {
     // Flush any queued late-media re-pagination first, so we turn from the CURRENT page
     // count — not a stale one measured before a slow image finished (which can reject a
@@ -1517,10 +1528,7 @@
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
     // Flush the reading position now (don't wait out the debounce — the tab may go away).
-    clearTimeout(saveTimer);
-    if (posKey && totalColumns >= 1 && OBR.savePosition) {
-      OBR.savePosition(posKey, (currentSpread * pagesPerSpread) / totalColumns);
-    }
+    flushPosition();
     host.style.display = 'none';
     document.documentElement.style.overflow = '';
     window.scrollTo(0, savedScrollY);
@@ -1562,6 +1570,17 @@
       case 'p': case 'P': e.preventDefault(); printReader(); break; // capture Cmd/Ctrl+P too — clean print, not the clipped native one
     }
   }, true);
+
+  // A tab can go away — closed, navigated in-page, or discarded while backgrounded —
+  // inside the 400ms persist debounce, which would lose the last page turn (resume
+  // lands a page early). Flush synchronously on both MV3-safe signals: pagehide covers
+  // unload / bfcache; visibilitychange -> hidden catches a backgrounded tab the browser
+  // may discard without ever firing pagehide. (Deliberately NOT beforeunload — it is
+  // unreliable and blocks bfcache under MV3.)
+  window.addEventListener('pagehide', flushPosition);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPosition();
+  });
 
   // Live-apply settings changed elsewhere (e.g. the Options page) to an open reader.
   if (globalThis.chrome && chrome.storage && chrome.storage.onChanged) {
