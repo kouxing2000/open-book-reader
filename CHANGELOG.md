@@ -11,7 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.4.0] - 2026-07-06
+### Added
+- **Ordered gallery layout — read images in sequence.** The masonry Wall scrambles reading
+  order by design, so the gallery now has a **Wall / Ordered** toggle: Ordered lays images out
+  row by row in page order, and the Size slider goes all the way down to a single centered
+  page — a hands-free webtoon/manga reader when combined with Auto-scroll. Each site remembers
+  the layout and size you left it in.
+- **Fit-width lightbox reading.** A ⟷ toggle (or the `F` key) in the full-screen view fits a
+  tall page to the width and lets you scroll down it — for reading one comic/scan page at a
+  time — instead of shrinking the whole page to fit.
+- **Image filter — hide avatars and repeated noise.** Forums flood the gallery with profile
+  pics; a new automatic filter drops avatars/emoji/badges (detected by their markup, never by
+  size, so album art and product shots stay — and it's recoverable: filtered images ride the
+  "N hidden · Show" toggle, where Unhide whitelists one for good). A ⊘ **Hide** button on every
+  tile adds precise per-site rules: this image, its folder, the whole site, or **images in this
+  spot** (by page structure, for noise a URL can't distinguish) — hovering an option previews
+  exactly which images would disappear. Hidden rules are editable on the options page.
+
+### Changed
+- The options-page guide, README, and site now describe the new gallery features.
 
 ### Added
 - **Now available in Simplified Chinese (简体中文)** — 8 languages in total. The reader, gallery,
