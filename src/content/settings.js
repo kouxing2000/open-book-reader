@@ -67,6 +67,10 @@
     galleryFitWidth: false, // image-gallery lightbox: fit a tall page to the WIDTH (fills across +
                             // scrolls down) instead of shrinking the whole page to fit the viewport
                             // — for reading manga/comic/scan pages one at a time. Toggle in the lightbox.
+    galleryHideAvatars: true, // image-gallery: high-precision auto-filter that drops avatar/icon
+                            // images (profile pics, emoji, badges) — detected by profile-link wrapper
+                            // + avatar/gravatar/emoji class/alt/src token, NOT by size, so album art /
+                            // product shots stay. Complements the manual per-site Hide (obr_hidden).
     autoGalleryMin: 10,    // toolbar-icon auto-mode: open the gallery instead of the
                            // reader when the page has >= this many images (0 = off).
                            // Only the toolbar icon auto-picks; Alt+B / Alt+Shift+B stay explicit.
@@ -599,6 +603,137 @@
     });
     galleryChain = galleryChain.then(run, run);
     return galleryChain;
+  };
+
+  /* --------------------------------------------------------- hidden images
+   * Per-site image filter: a list of URL glob patterns whose matches the gallery drops
+   * (forum avatars, badges, emoji CDNs — noise a different-URL-per-user set that dedup and
+   * the min-size filter can't catch). Map { host: { p:[pattern,...], t } } in
+   * chrome.storage.SYNC (follows the user like saved picks / mode-rules), bounded by host
+   * count AND per-host pattern count, LRU-pruned. Patterns are globs over `host+pathname`,
+   * matched with the SAME globToRegExp compiler as the site-rules. No new permission. */
+  OBR.HIDDEN_KEY = 'obr_hidden';
+  OBR.HIDDEN_HOSTS_MAX = 80;
+  OBR.HIDDEN_PER_HOST_MAX = 40;
+  OBR.HIDDEN_MAX_BYTES = 7500;   // headroom under chrome.storage.sync QUOTA_BYTES_PER_ITEM (8192)
+  OBR.HIDDEN_PAT_MAX_LEN = 500;  // quota-poison backstop: one giant pattern must not sink the map
+
+  // The glob target for an image URL: normalized `host + pathname`, lowercased (query/hash
+  // dropped so a pattern isn't defeated by cache-busting params). Null when unparseable —
+  // and for non-http(s) URLs: a data:/blob: "pathname" is the whole payload (tens of KB of
+  // base64), which would poison the 8KB sync quota; those images are hidden by the ELEMENT
+  // (`css:`) scope instead.
+  OBR.hiddenTarget = function (url) {
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+      return (OBR.normalizeHost(u.hostname) + u.pathname).toLowerCase();
+    } catch (e) { return null; }
+  };
+
+  // True when `url` matches any URL glob in `pats` (reuses the site-rule glob compiler).
+  // Entries prefixed `css:` are ELEMENT selectors (matched in the gallery via img.matches,
+  // for noise a URL can't discriminate — same-CDN avatars vs content), and entries prefixed
+  // `+` are per-image ALLOWS (avatar-auto-filter overrides) — both skipped here.
+  OBR.urlMatchesHidden = function (url, pats) {
+    if (!Array.isArray(pats) || !pats.length) return false;
+    const target = OBR.hiddenTarget(url);
+    if (!target) return false;
+    for (const p of pats) {
+      if (typeof p === 'string' && (p.startsWith('css:') || p.startsWith('+'))) continue;
+      const re = globToRegExp(p);
+      if (re && re.test(target)) return true;
+    }
+    return false;
+  };
+
+  // Derive the three "hide like this" scope patterns from an image URL — { image, folder, host }.
+  // PURE + testable. `folder` snaps to a known avatar/icon path token when present (so one rule
+  // catches every user's avatar under `/user_avatar/<user>/...`), else the immediate parent dir.
+  OBR.hidePatternsFor = function (url) {
+    let u;
+    try { u = new URL(url); } catch (e) { return null; }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null; // data:/blob: → element scope only
+    const host = OBR.normalizeHost(u.hostname);
+    const path = u.pathname || '/';
+    const image = host + path; // exact (no wildcard) — matches just this URL
+    const AVT = /^(avatars?|user[_-]?avatars?|gravatars?|profiles?|userpics?|emojis?|badges?|icons?|thumbs?)$/i;
+    const segs = path.split('/').filter(Boolean);
+    let tokenIdx = -1;
+    for (let i = 0; i < segs.length; i++) if (AVT.test(segs[i])) { tokenIdx = i; break; }
+    let folder;
+    if (tokenIdx >= 0) folder = host + '/' + segs.slice(0, tokenIdx + 1).join('/') + '/*';
+    else { const dir = path.slice(0, path.lastIndexOf('/') + 1); folder = host + (dir === '/' ? '/*' : dir + '*'); }
+    return { image, folder, host };
+  };
+
+  // Read the hidden-pattern list for `host` (a fresh array copy), or [] when none.
+  OBR.loadHidden = function (host) {
+    return new Promise((resolve) => {
+      const area = syncArea();
+      if (!area || !host) return resolve([]);
+      try {
+        area.get(OBR.HIDDEN_KEY, (data) => {
+          const map = (data && data[OBR.HIDDEN_KEY]) || {};
+          const e = map[host];
+          resolve(e && Array.isArray(e.p) ? e.p.slice() : []);
+        });
+      } catch (e) { resolve([]); }
+    });
+  };
+
+  // The whole hidden map { host: [pattern,...] } — for the Options list view.
+  OBR.loadHiddenMap = function () {
+    return new Promise((resolve) => {
+      const area = syncArea();
+      if (!area) return resolve({});
+      try {
+        area.get(OBR.HIDDEN_KEY, (data) => {
+          const map = (data && data[OBR.HIDDEN_KEY]) || {};
+          const out = {};
+          for (const h of Object.keys(map)) if (map[h] && Array.isArray(map[h].p)) out[h] = map[h].p.slice();
+          resolve(out);
+        });
+      } catch (e) { resolve({}); }
+    });
+  };
+
+  let hiddenChain = Promise.resolve();
+
+  // Replace the WHOLE pattern list for `host` (empty list removes the host). De-dupes, caps to
+  // HIDDEN_PER_HOST_MAX, LRU-prunes hosts to HIDDEN_HOSTS_MAX. Resolves TRUE on a confirmed write.
+  OBR.saveHidden = function (host, pats, now) {
+    const run = () => new Promise((resolve) => {
+      const area = syncArea();
+      if (!area || !host) return resolve(false);
+      const stamp = typeof now === 'number' ? now : Date.now();
+      try {
+        area.get(OBR.HIDDEN_KEY, (data) => {
+          const map = (data && data[OBR.HIDDEN_KEY]) || {};
+          const clean = [];
+          for (const p of (pats || [])) {
+            const s = String(p || '').trim();
+            // Length cap = quota-poison backstop (a data: payload smuggled in as a pattern
+            // would sink every later write for the host).
+            if (s && s.length <= OBR.HIDDEN_PAT_MAX_LEN && !clean.includes(s)) clean.push(s);
+          }
+          if (clean.length) map[host] = { p: clean.slice(0, OBR.HIDDEN_PER_HOST_MAX), t: stamp };
+          else delete map[host];
+          // Bound BOTH host count and serialized BYTES, LRU-dropping oldest hosts, so the map
+          // stays under the 8KB sync per-item quota (mirrors savePick).
+          const byAge = () => Object.keys(map).sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
+          let keys = byAge();
+          while (keys.length > OBR.HIDDEN_HOSTS_MAX) delete map[keys.shift()];
+          while (keys.length > 1 && JSON.stringify(map).length > OBR.HIDDEN_MAX_BYTES) delete map[(keys = byAge()).shift()];
+          try {
+            area.set({ [OBR.HIDDEN_KEY]: map },
+              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
+          } catch (e) { resolve(false); }
+        });
+      } catch (e) { resolve(false); }
+    });
+    hiddenChain = hiddenChain.then(run, run);
+    return hiddenChain;
   };
 
   // Estimated reading minutes from a word count (220 wpm). 0 when there's no

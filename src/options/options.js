@@ -18,7 +18,7 @@
 
   const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
-  const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'galleryFitWidth', 'printSourceUrl'];
+  const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl'];
   const savedEl = document.getElementById('saved');
   let saveTimer;
 
@@ -269,10 +269,63 @@
     });
   }
 
+  /* ------------------------------------------------ hidden images (per-site filter) */
+  // The per-site image-filter glob patterns (the ⊘ Hide result), stored under obr_hidden.
+  // View + remove only here; they're created in the gallery.
+  let hiddenMap = {}; // { host: [pattern,...] }
+
+  function renderHidden() {
+    const wrap = document.getElementById('hidden');
+    if (!wrap) return;
+    wrap.textContent = '';
+    let hosts = Object.keys(hiddenMap).filter((h) => (hiddenMap[h] || []).length).sort();
+    if (filterSite) hosts = hosts.filter((h) => h === filterSite); // hidden lists are keyed by exact host
+    const countEl = document.getElementById('hiddenCount');
+    const total = hosts.reduce((n, h) => n + hiddenMap[h].length, 0);
+    if (countEl) countEl.textContent = total ? '(' + total + ')' : '';
+    if (!hosts.length) {
+      const empty = document.createElement('div');
+      empty.className = 'site-empty';
+      empty.textContent = filterSite ? OBR.t('optNoHiddenForSite', [filterSite]) : OBR.t('optNoHidden');
+      wrap.appendChild(empty);
+      return;
+    }
+    hosts.forEach((host) => {
+      const row = document.createElement('div');
+      row.className = 'pick-row';
+      const head = document.createElement('div');
+      head.className = 'pick-head';
+      const h = document.createElement('span');
+      h.className = 'pick-host'; h.textContent = host;
+      head.appendChild(h);
+      row.appendChild(head);
+      hiddenMap[host].forEach((pat) => {
+        const line = document.createElement('div');
+        line.className = 'pick-edit';
+        const code = document.createElement('span');
+        code.className = 'pick-sel-input'; code.textContent = pat;
+        code.style.userSelect = 'text'; code.style.overflow = 'hidden'; code.style.textOverflow = 'ellipsis';
+        const remove = document.createElement('button');
+        remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = OBR.t('optRemoveHidden');
+        remove.addEventListener('click', () => {
+          const next = (hiddenMap[host] || []).filter((p) => p !== pat);
+          OBR.saveHidden(host, next).then((ok) => {
+            if (ok === false) return; // write failed (quota?) — keep the list truthful
+            if (next.length) hiddenMap[host] = next; else delete hiddenMap[host];
+            renderHidden(); flashSaved();
+          });
+        });
+        line.append(code, remove);
+        row.appendChild(line);
+      });
+      wrap.appendChild(row);
+    });
+  }
+
   document.getElementById('reset').addEventListener('click', () => {
-    // Reset to defaults wipes the settings blob (incl. site rules) AND the separate
-    // saved-pick map — a full clear of the user's customizations.
-    chrome.storage.sync.remove(OBR.PICKS_KEY, () => {
+    // Reset to defaults wipes the settings blob (incl. site rules), the saved-pick map, AND the
+    // hidden-images map — a full clear of the user's customizations.
+    chrome.storage.sync.remove([OBR.PICKS_KEY, OBR.HIDDEN_KEY], () => {
       chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {
         OBR.loadSettings().then((s) => {
           SLIDERS.forEach((k) => { setSliderFromSetting(k, s[k]); reflectValue(k); });
@@ -282,6 +335,8 @@
           renderSites();
           picks = {};
           renderPicks();
+          hiddenMap = {};
+          renderHidden();
           flashSaved();
         });
       });
@@ -313,6 +368,7 @@
     setFilterBar();
     renderSites();
     renderPicks();
+    renderHidden();
   }
   setFilterBar(); // initial ?site scope (the data renders below already respect filterSite)
 
@@ -322,6 +378,7 @@
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* drop the ?site param */ }
     renderSites();
     renderPicks();
+    renderHidden();
   });
 
   OBR.loadSettings().then((s) => {
@@ -331,6 +388,7 @@
   });
 
   OBR.loadPicks().then((p) => { picks = p || {}; renderPicks(); });
+  OBR.loadHiddenMap().then((m) => { hiddenMap = m || {}; renderHidden(); });
 
   // The reader/gallery ⚙ routes through openOptionsPage() (so an open options tab is focused,
   // not duplicated) and hands the site to scope via a one-shot chrome.storage.local key, not a
@@ -361,6 +419,10 @@
           const next = s.siteRules || [];
           if (JSON.stringify(next) !== JSON.stringify(rules)) { rules = next; renderSites(); }
         });
+      }
+      // The hidden-images map can change from the gallery (another tab) or a device sync.
+      if (area === 'sync' && changes[OBR.HIDDEN_KEY]) {
+        OBR.loadHiddenMap().then((m) => { hiddenMap = m || {}; renderHidden(); });
       }
     });
   }

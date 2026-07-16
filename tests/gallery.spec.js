@@ -1081,3 +1081,221 @@ test.describe('ordered gallery layout', () => {
     expect(saved).toBe(true); // persisted to storage.sync
   });
 });
+
+/* Image filter — the avatar auto-filter + the manual per-site ⊘ Hide (obr_hidden). Forums flood
+ * the gallery with profile pics (a distinct URL per user, so dedup can't merge them); this drops
+ * that noise. Pins the pattern derivation, the auto-filter, hide/reveal/unhide, and per-site memory. */
+test.describe('gallery image filter', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoImages(page);
+    await injectGallery(page);
+  });
+
+  test('hidePatternsFor snaps the folder to an avatar path token; urlMatchesHidden globs it', async ({ page }) => {
+    const r = await page.evaluate(() => ({
+      p: globalThis.OBR.hidePatternsFor('https://cdn.forum.com/user_avatar/example.com/alice/90.png'),
+      hit: globalThis.OBR.urlMatchesHidden('https://cdn.forum.com/user_avatar/bob/120.png', ['cdn.forum.com/user_avatar/*']),
+      miss: globalThis.OBR.urlMatchesHidden('https://cdn.forum.com/photos/sunset.jpg', ['cdn.forum.com/user_avatar/*']),
+    }));
+    expect(r.p.folder).toBe('cdn.forum.com/user_avatar/*'); // snapped to the /user_avatar/ token, not per-user
+    expect(r.p.host).toBe('cdn.forum.com');
+    expect(r.hit).toBe(true);
+    expect(r.miss).toBe(false);
+  });
+
+  test('data:/blob: URLs get NO URL scopes (their pathname is the payload — sync-quota poison)', async ({ page }) => {
+    const r = await page.evaluate(() => ({
+      pats: globalThis.OBR.hidePatternsFor('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg'),
+      target: globalThis.OBR.hiddenTarget('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg'),
+      httpTarget: globalThis.OBR.hiddenTarget('https://x.com/a/b.png?v=1#f'),
+    }));
+    expect(r.pats).toBe(null);       // hide menu offers only the element scope for these
+    expect(r.target).toBe(null);
+    expect(r.httpTarget).toBe('x.com/a/b.png'); // http(s) still works, query/hash dropped
+  });
+
+  test('the avatar auto-filter drops avatar-marked images; toggling it off keeps them', async ({ page }) => {
+    await page.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 100; c.height = 100;
+      c.getContext('2d').fillStyle = '#0a7'; c.getContext('2d').fillRect(0, 0, 100, 100);
+      const img = document.createElement('img');
+      img.className = 'avatar'; img.width = 100; img.height = 100; img.id = 'inject-av';
+      img.src = c.toDataURL('image/png');
+      document.body.appendChild(img);
+    });
+    await page.waitForFunction(() => { const a = document.getElementById('inject-av'); return a && a.complete && a.naturalWidth > 0; });
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(6); // avatar excluded (class token), content unchanged
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryHideAvatars: false }));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(7); // filter off → the avatar is collected
+  });
+
+  // A served (http) image — URL scopes need a real URL (data: images are element-scope only).
+  const addServedImg = (page, query) => page.evaluate((q) => {
+    const img = document.createElement('img');
+    img.src = '/pic.png' + q; // fixture PNG, 128x128 — clears the min-size filter
+    img.id = 'served-img';
+    document.body.appendChild(img);
+    return new Promise((res) => { img.onload = () => res(img.src); });
+  }, query || '?v=1');
+
+  test('⊘ Hide drops the image + persists per-site; reveal→unhide restores it', async ({ page }) => {
+    const url = await addServedImg(page);
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(7); // 6 fixture + the served image
+    await page.evaluate((u) => globalThis.OBR._galleryHide(globalThis.OBR.hiddenTarget(u)), url);
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(6);
+    expect((await page.evaluate(() => globalThis.OBR._galleryHiddenPatterns())).length).toBe(1);
+    const saved = await page.evaluate(() => globalThis.OBR.loadHidden(globalThis.OBR.normalizeHost(location.href)));
+    expect(saved.length).toBe(1); // persisted under the host
+    // Peek at hidden → the tile returns, tagged; unhide it → fully restored, pattern cleared.
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(7);
+    expect(await page.evaluate(() => !!document.getElementById('obr-gallery-host').shadowRoot.querySelector('.tile.tile-is-hidden'))).toBe(true);
+    await clickInGallery(page, '.tile.tile-is-hidden .tile-unhide');
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns().length)).toBe(0);
+  });
+
+  test('a hidden image stays hidden across a reopen (per-site memory)', async ({ page }) => {
+    const url = await addServedImg(page);
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(7);
+    await page.evaluate((u) => globalThis.OBR._galleryHide(globalThis.OBR.hiddenTarget(u)), url);
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(6);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(6); // still filtered on reopen
+  });
+
+  test('an avatar-filter false positive is visible via Show and recoverable via Unhide (allow entry)', async ({ page }) => {
+    // A served image the auto-filter flags (class token) — auto-hidden, but never invisible:
+    // it rides the "N hidden · Show" toggle, and Unhide stores a per-image '+' allow.
+    await page.evaluate(() => {
+      const img = document.createElement('img');
+      img.className = 'avatar'; img.src = '/pic.png?av=1'; img.id = 'served-av';
+      document.body.appendChild(img);
+      return new Promise((res) => { img.onload = res; });
+    });
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(6); // auto-filtered out
+    const toggleVisible = () => page.evaluate(() => {
+      const b = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.hidden-toggle');
+      return !!b && b.style.display !== 'none';
+    });
+    expect(await toggleVisible()).toBe(true); // "1 hidden · Show" is offered — not silent loss
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(7);
+    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').click({ force: true });
+    // The allow entry persists and overrides the auto-filter from now on.
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns()))
+      .toEqual(['+' + new URL(page.url()).hostname.replace(/^www\./, '') + '/pic.png']);
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(7); // allowed → stays
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(7); // allow survives a reopen
+  });
+});
+
+/* Element-selector hides (`css:` entries) — the 4th Hide scope, for when the URL can't
+ * discriminate (same-CDN avatars vs content) but the noise sits in a distinct container.
+ * Pins derivation (own class / ancestor class), the popover option, end-to-end hide →
+ * reveal → unhide, and that URL-glob matching ignores css: entries. */
+test.describe('gallery element-selector hide', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoImages(page);
+    await injectGallery(page);
+  });
+
+  // Two same-class SERVED images + their URLs, appended to the fixture page (same file,
+  // distinct query strings → distinct collected URLs; 128px natural size clears the filter;
+  // http URLs so the hide menu offers the URL scopes alongside the element scope).
+  const addClassedImgs = (page) => page.evaluate(() => {
+    const mk = (q) => new Promise((res) => {
+      const img = document.createElement('img');
+      img.className = 'promo-tile'; img.src = '/pic.png?promo=' + q;
+      img.onload = () => res(img.src);
+      document.body.appendChild(img);
+    });
+    return Promise.all([mk(1), mk(2)]);
+  });
+
+  test('urlMatchesHidden ignores css: entries', async ({ page }) => {
+    expect(await page.evaluate(() =>
+      globalThis.OBR.urlMatchesHidden('https://x.com/a.png', ['css:img.promo-tile']))).toBe(false);
+  });
+
+  test('derives the selector from the image class, or a stable ancestor class', async ({ page }) => {
+    const [u1] = await addClassedImgs(page);
+    await page.evaluate(() => { // class-less img inside a stable-classed container
+      const c = document.createElement('canvas'); c.width = 110; c.height = 110;
+      c.getContext('2d').fillRect(0, 0, 110, 110);
+      const box = document.createElement('div'); box.className = 'comment-author';
+      const img = document.createElement('img'); img.width = 110; img.height = 110;
+      img.src = c.toDataURL('image/png'); img.id = 'wrapped-img';
+      box.appendChild(img); document.body.appendChild(box);
+    });
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
+    await openGallery(page);
+    const sels = await page.evaluate((u) => ({
+      own: globalThis.OBR._gallerySelectorFor(u),
+      wrapped: globalThis.OBR._gallerySelectorFor(document.getElementById('wrapped-img').src),
+    }), u1);
+    expect(sels.own).toBe('img.promo-tile');       // the image's own semantic class
+    expect(sels.wrapped).toBe('.comment-author img'); // ancestor container class
+  });
+
+  test('the Hide menu offers the element scope, and picking it hides ALL images in that spot', async ({ page }) => {
+    const [u1] = await addClassedImgs(page);
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(8); // 6 fixture + 2 promo-tile
+    // Open the ⊘ menu on the first promo-tile image's tile.
+    const idx = await page.evaluate((u) => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      return +[...r.querySelectorAll('.tile')].find((t) => t.getAttribute('href') === u).dataset.idx;
+    }, u1);
+    await page.locator(`#obr-gallery-host >> .tile[data-idx="${idx}"]`).hover();
+    await page.locator(`#obr-gallery-host >> .tile[data-idx="${idx}"] .tile-hide`).click({ force: true });
+    const menu = await page.evaluate(() => {
+      const m = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.hide-menu');
+      const first = m.querySelectorAll('.hm-opt')[0]; // (not :first-child — the header div precedes the options)
+      return { opts: m.querySelectorAll('.hm-opt').length, first: first.querySelector('.hm-s').textContent, rec: first.classList.contains('rec') };
+    });
+    expect(menu.opts).toBe(4);                          // element scope + image / folder / host
+    expect(menu.first).toContain('img.promo-tile');     // element scope LEADS, showing the selector + count
+    expect(menu.first).toContain('2');                  // ...and the count reflects both same-class images
+    expect(menu.rec).toBe(true);                        // ...and carries the recommendation
+    // Hovering the element option live-marks the tiles that scope would hide.
+    await page.locator('#obr-gallery-host >> .hide-menu .hm-opt').first().hover();
+    await expect.poll(() => page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile.hide-preview').length)).toBe(2);
+    await page.locator('#obr-gallery-host >> .hide-menu .hm-opt').first().click();
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(6); // BOTH promo tiles gone
+    expect(await page.evaluate(() => // preview marks cleared with the menu
+      document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile.hide-preview').length)).toBe(0);
+    expect(await page.evaluate(() => globalThis.OBR._galleryHiddenPatterns())).toEqual(['css:img.promo-tile']);
+    // Reveal → both come back tagged; unhide one → the css entry is dropped, both restored.
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
+    await expect.poll(() => page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile.tile-is-hidden').length)).toBe(2);
+    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').first().click({ force: true });
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns().length)).toBe(0);
+    await expect.poll(() => page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile.tile-is-hidden').length)).toBe(0);
+  });
+
+  test('a css: hide persists per-site across a reopen', async ({ page }) => {
+    await addClassedImgs(page);
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(8);
+    await page.evaluate(() => globalThis.OBR._galleryHide('css:img.promo-tile'));
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(6);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(6); // still element-filtered on reopen
+  });
+});

@@ -33,6 +33,11 @@
   // Lightbox "fit to width" glyph (a horizontal double-arrow).
   const FIT_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="m7 8-4 4 4 4"/><path d="m17 8 4 4-4 4"/></svg>';
+  // Hide (eye-off) + Show (eye) glyphs for the image filter.
+  const HIDE_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13 13 0 0 1-1.67 2.68"/><path d="M6.6 6.6A13 13 0 0 0 2 12s3 8 10 8a9 9 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/><path d="m2 2 20 20"/></svg>';
+  const EYE_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
 
   /* -------------------------------------------------- pure helpers (DOM-free) */
   // Whitespace-anchored srcset parser (handles comma-bearing CDN/data URLs); defined once
@@ -150,6 +155,11 @@
   let renderedCols = 0;      // column count of the CURRENTLY rendered layout (0 = empty state)
   let galleryHost = '';      // normalized host for the current page (per-site layout memory key)
   let fitWidth = false;      // lightbox: fit a tall page to width (fills + scrolls) vs shrink-to-fit
+  let hiddenPatterns = [];   // per-site image-filter glob patterns (obr_hidden), loaded on open
+  let revealHidden = false;  // session peek: show filtered images (dimmed + unhide) instead of dropping
+  let hiddenSkipped = 0;     // how many images the hidden-pattern filter dropped this collect
+  let lastHide = null;       // last pattern added, for one-tap Undo
+  let hideMenuEl = null, undoTimer = 0;
   const selected = new Set(); // selected image URLs (survives re-render)
   let autoScroll = false;          // hands-free auto-scroll engaged
   let autoRaf = 0;                 // requestAnimationFrame handle (0 = idle)
@@ -255,10 +265,95 @@
     return { url, full: largestVariant(img) || url, w, h };
   }
 
+  // High-precision "is this an avatar / icon / badge?" test for the auto-filter (settings
+  // .galleryHideAvatars). Deliberately NOT size-based (album art / product shots are small
+  // squares too): a token match on the element's own class/id/alt/src, OR a profile-link
+  // wrapper AROUND a small near-square image. Kept tight so it doesn't eat real content.
+  const AVATAR_TOKEN = /\bavatars?\b|user[_-]?avatars?|gravatar|profile[_-]?(pic|photo|image)s?|\buserpics?\b|\bemoji\b|\bbadges?\b|\bsprite\b/i;
+  const PROFILE_HREF = /(^|\/)(u|user|users|profile|profiles|member|members|people)(\/|$)|\/@[\w.-]/i;
+  function isAvatarish(img) {
+    try {
+      const hay = ((img.className || '') + ' ' + (img.id || '') + ' ' + (img.alt || '') + ' ' + (img.getAttribute('src') || '')).toLowerCase();
+      if (AVATAR_TOKEN.test(hay)) return true;
+      const a = img.closest && img.closest('a[href]');
+      if (a && PROFILE_HREF.test(a.getAttribute('href') || '')) {
+        const nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
+        if (nw && nh && Math.max(nw, nh) <= 180 && Math.abs(nw - nh) <= Math.max(nw, nh) * 0.25) return true; // small + near-square
+      }
+    } catch (e) { /* defensive */ }
+    return false;
+  }
+
+  /* ---- element-selector hides (`css:` entries in obr_hidden) ----
+   * The URL scopes can't discriminate when content and noise share an origin+path
+   * (cdn.site.com/uploads/<hash>.jpg for both) but the noise sits in a distinct container
+   * (.comment-author img). These entries match by PAGE STRUCTURE instead: `css:<selector>`,
+   * tested with img.matches(). Only <img> elements can be element-matched; background-image
+   * and <picture><source> entries have no element here and keep URL-only filtering. */
+  function cssHiddenSelectors() {
+    const out = [];
+    for (const p of hiddenPatterns) if (typeof p === 'string' && p.startsWith('css:') && p.length > 4) out.push(p.slice(4));
+    return out;
+  }
+  function matchesCssHidden(img, sels) {
+    for (const s of sels) { try { if (img.matches(s)) return true; } catch (e) { /* bad selector — skip */ } }
+    return false;
+  }
+  // A class that names WHAT the element is (usable as a hide anchor), not a state/utility flag.
+  function stableClass(c) {
+    return /^[a-zA-Z][\w-]{2,29}$/.test(c) && !/^(js-|is-|has-)/.test(c) &&
+      !/(active|current|loaded|loading|lazy|shown|visible|hidden|hover|focus|open)/i.test(c);
+  }
+  // Derive the "images in this spot" selector for an <img>: its own semantic class
+  // (`img.avatar-img`), else a stable-classed ancestor (`.comment-author img`, up to 4 levels),
+  // else the reader's unique structural path (single-image; OBR._cssPathFor — reader.js loads
+  // before gallery.js in the real injection order, guarded for the gallery-only test harness).
+  function selectorScopeFor(img) {
+    try {
+      for (const c of img.classList) if (stableClass(c)) return 'img.' + CSS.escape(c);
+      let el = img.parentElement, depth = 0;
+      while (el && el !== document.body && depth < 4) {
+        for (const c of el.classList) if (stableClass(c)) return '.' + CSS.escape(c) + ' img';
+        el = el.parentElement; depth++;
+      }
+      if (OBR._cssPathFor) { const s = OBR._cssPathFor(img); if (s) return s; }
+    } catch (e) { /* defensive */ }
+    return null;
+  }
+  // The live page <img> whose collected URL is `url` (for deriving/removing element hides).
+  // Null for background-image / <source>-only entries — those have no <img>.
+  function findImgFor(url) {
+    let found = null;
+    document.querySelectorAll('img').forEach((img) => {
+      if (found) return;
+      const e = galleryImgEntry(img);
+      if (e && resolveUrl(e.url, location.href) === url) found = img;
+    });
+    return found;
+  }
+
+  // Per-image ALLOW entries ('+<target>' in obr_hidden): the recovery path for an avatar
+  // auto-filter false positive — "Unhide" on a revealed auto-hidden tile stores one, and the
+  // filter then skips exactly that image. Exact-target compares (no globs).
+  function isAllowed(url) {
+    const t = OBR.hiddenTarget && OBR.hiddenTarget(url);
+    if (!t) return false;
+    for (const p of hiddenPatterns) if (typeof p === 'string' && p.startsWith('+') && p.slice(1) === t) return true;
+    return false;
+  }
+
   function eachGalleryImg(fn) {
+    const hideAv = settings.galleryHideAvatars;
+    const sels = cssHiddenSelectors();
     document.querySelectorAll('img').forEach((img) => {
       const e = galleryImgEntry(img);
-      if (e) fn(e);
+      if (!e) return;
+      // Avatar auto-filter: TAG, never silently vanish — tagged entries ride the same
+      // hiddenSkipped count / "N hidden · Show" reveal as manual hides, so a false positive
+      // is visible and recoverable (Unhide stores a per-image '+' allow entry).
+      if (hideAv && isAvatarish(img) && !isAllowed(resolveUrl(e.url, location.href))) e.autoHidden = true;
+      else if (sels.length && matchesCssHidden(img, sels)) e.elHidden = true; // tagged; collect() drops or (peeking) keeps it
+      fn(e);
     });
   }
 
@@ -301,16 +396,22 @@
   function collect(withBackgrounds) {
     const seen = new Set();
     const out = [];
-    const push = (rawUrl, w, h, fullRaw) => {
+    hiddenSkipped = 0; // recomputed each collect (drives the "N hidden" toggle)
+    const push = (rawUrl, w, h, fullRaw, elHidden, autoHidden) => {
       if (!rawUrl || isSkippableDataUri(rawUrl)) return;
       const url = resolveUrl(rawUrl, location.href);
       if (!url || seen.has(url)) return;
       seen.add(url);
+      // Per-site image filter — URL globs here; element (`css:`) and avatar-auto matches
+      // tagged upstream in eachGalleryImg: drop matches (or, while peeking, keep them tagged).
+      const hidden = !!elHidden || !!autoHidden ||
+        (hiddenPatterns.length && OBR.urlMatchesHidden && OBR.urlMatchesHidden(url, hiddenPatterns));
+      if (hidden && !revealHidden) { hiddenSkipped++; return; }
       const full = (fullRaw && resolveUrl(fullRaw, location.href)) || url;
-      out.push({ url, full, w: w || 0, h: h || 0 });
+      out.push({ url, full, w: w || 0, h: h || 0, hidden, auto: !!autoHidden });
     };
 
-    eachGalleryImg((e) => push(e.url, e.w, e.h, e.full));
+    eachGalleryImg((e) => push(e.url, e.w, e.h, e.full, e.elHidden, e.autoHidden));
     eachPictureSource(push); // <picture> fallback sources: full === url
     if (withBackgrounds) eachBackgroundImage(push);
 
@@ -334,7 +435,7 @@
       seen.add(url);
       n++;
     };
-    eachGalleryImg((e) => tally(e.url));
+    eachGalleryImg((e) => { if (!e.autoHidden && !e.elHidden) tally(e.url); }); // filtered images don't inflate the badge
     eachPictureSource(tally);
     return n;
   }
@@ -419,6 +520,36 @@
       color: #fff; background: rgba(20,20,24,.78); padding: 0; display: flex; align-items: center; justify-content: center; }
     .tile-dl:hover { background: #7c6cff; }
     .tile-dl svg, .lb-dl svg { width: 16px; height: 16px; }
+    /* ⊘ Hide button — sits left of the download button on hover. */
+    .tile-hide { right: 44px; width: 30px; height: 30px; border: none; border-radius: 8px; cursor: pointer;
+      color: #fff; background: rgba(20,20,24,.78); padding: 0; display: flex; align-items: center; justify-content: center; }
+    .tile-hide:hover { background: #d05a6a; }
+    .tile-hide svg { width: 16px; height: 16px; }
+    /* Revealed (peeking) hidden tile: dimmed image + an always-visible Unhide affordance. */
+    .tile.tile-is-hidden img { opacity: .4; filter: grayscale(.6); }
+    /* Blast-radius preview: tiles a hovered Hide scope would remove. */
+    .tile.hide-preview { border-color: #d05a6a; box-shadow: 0 0 0 2px #d05a6a inset; }
+    .tile.hide-preview img { opacity: .45; }
+    .tile-unhide { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 3;
+      display: inline-flex; align-items: center; gap: 6px; background: rgba(20,20,24,.9); color: #fff;
+      border: 1px solid #7c6cff; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px;
+      font-family: inherit; opacity: .95; }
+    .tile-unhide:hover { background: #7c6cff; opacity: 1; }
+    .tile-unhide svg { width: 15px; height: 15px; }
+    .hidden-toggle.on { background: #7c6cff; color: #fff; border-color: #7c6cff; }
+    .hidden-toggle.on:hover { background: #6a5aef; }
+    /* ⊘ Hide scope popover (floated over the overlay). */
+    .hide-menu { position: fixed; z-index: 2147483647; width: 320px; max-width: 92vw;
+      background: #1b1b20; border: 1px solid #34343c; border-radius: 12px; padding: 8px;
+      box-shadow: 0 14px 44px rgba(0,0,0,.55); }
+    .hm-h { color: #9a9aa2; font-size: 12px; padding: 6px 8px 8px; }
+    .hm-opt { display: block; width: 100%; text-align: left; background: transparent; border: none;
+      border-radius: 8px; padding: 8px 10px; margin-bottom: 2px; cursor: pointer; font-family: inherit; }
+    .hm-opt:hover { background: #26262c; }
+    .hm-opt.rec { background: rgba(124,108,255,.16); box-shadow: inset 0 0 0 1px rgba(124,108,255,.5); }
+    .hm-t { display: block; font-size: 13px; font-weight: 600; color: #e8e8ea; }
+    .hm-s { display: block; font-size: 11px; color: #9a9aa2; margin-top: 1px;
+      font-family: ui-monospace, SFMono-Regular, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .empty { padding: 60px 0; text-align: center; color: #9a9aa2; width: 100%; }
     .lb { position: fixed; inset: 0; z-index: 2147483647; background: rgba(8,8,10,.94);
       display: none; align-items: center; justify-content: center; }
@@ -509,6 +640,8 @@
         <button class="btn rescan" title="${OBR.t('galleryLoadAllTitle')}">${RESCAN_ICON}<span>${OBR.t('galleryLoadAll')}</span></button>
         <button class="btn autoscroll" aria-pressed="false" title="${OBR.t('galleryAutoScrollTitle')}"><span class="icon">${PLAY_ICON}</span><span class="lbl">${OBR.t('galleryAutoScroll')}</span></button>
         <label class="autospeed" title="${OBR.t('galleryAutoScrollSpeedTitle')}"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="${OBR.t('galleryAutoScrollSpeedAria')}"> ${OBR.t('gallerySpeedUnit')}</label>
+        <button class="btn hidden-toggle" aria-pressed="false" style="display:none" title="${OBR.t('galleryShowFilteredTitle')}"><span class="icon">${EYE_ICON}</span><span class="lbl"></span></button>
+        <button class="btn undo-hide" style="display:none" title="${OBR.t('galleryUndoHideTitle')}">${OBR.t('galleryUndo')}</button>
         <span class="status"></span>
         <span class="spacer"></span>
         <span class="seg layout" role="group" aria-label="${OBR.t('galleryLayoutGroup')}">
@@ -610,6 +743,20 @@
       e.stopPropagation(); toggleFit();
       e.currentTarget.blur(); // drop focus so arrow / A keys keep driving the lightbox
     });
+    wrap.querySelector('.hidden-toggle').addEventListener('click', (e) => { toggleReveal(); e.currentTarget.blur(); });
+    wrap.querySelector('.undo-hide').addEventListener('click', (e) => { undoLastHide(); e.currentTarget.blur(); });
+    // The ⊘ Hide scope popover, floated over the overlay (position:fixed → viewport coords).
+    hideMenuEl = document.createElement('div');
+    hideMenuEl.className = 'hide-menu';
+    hideMenuEl.style.display = 'none';
+    wrap.appendChild(hideMenuEl);
+    // Close it on any click outside the menu (composedPath crosses the shadow boundary), and on
+    // a grid scroll (a fixed popover would otherwise detach from its anchor tile).
+    document.addEventListener('click', (e) => {
+      if (!hideMenuOpen()) return;
+      const path = e.composedPath ? e.composedPath() : [];
+      if (path.indexOf(hideMenuEl) === -1) closeHideMenu();
+    }, true);
     wrap.querySelector('.rescan').addEventListener('click', () => hydratePage(true));
     wrap.querySelector('.autoscroll').addEventListener('click', (e) => {
       toggleAutoScroll();
@@ -785,6 +932,27 @@
     dl.innerHTML = DL_ICON;
     dl.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); downloadOne(im.full || im.url, i); });
     tile.appendChild(dl);
+
+    const hb = document.createElement('button');
+    hb.className = 'tile-ctl tile-hide';
+    hb.title = OBR.t('galleryHide');
+    hb.innerHTML = HIDE_ICON;
+    hb.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openHideMenu(im, hb); });
+    tile.appendChild(hb);
+
+    if (im.hidden) { // shown only while peeking (revealHidden): mark it + offer to un-hide
+      tile.classList.add('tile-is-hidden');
+      // An auto-hidden (avatar-filter) image un-hides via a per-image '+' allow entry, which
+      // needs an http(s) target — a data: avatar (rare) gets no button (Options toggle remains).
+      const canUnhide = !im.auto || (OBR.hiddenTarget && OBR.hiddenTarget(im.url));
+      if (canUnhide) {
+        const uh = document.createElement('button');
+        uh.className = 'tile-unhide';
+        uh.innerHTML = EYE_ICON + '<span>' + OBR.t('galleryUnhide') + '</span>';
+        uh.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); unhideImage(im); });
+        tile.appendChild(uh);
+      }
+    }
     return tile;
   }
 
@@ -1026,6 +1194,7 @@
     countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
     relayoutActive(false);
     updateSelUI();
+    updateHiddenToggle();
   }
 
   // Re-justify every Ordered row in place (widths depend on the viewport width). Cheap — style
@@ -1035,6 +1204,159 @@
     if (!rowsEl) return;
     for (let r = 0; r < rowsEl.children.length; r++) justifyRow(rowsEl.children[r]);
   }
+
+  /* -------------------------------------------------- image filter (Hide) */
+  // Re-collect with the current filter state and re-lay-out, preserving scroll position. Used
+  // after a hide / undo / unhide / reveal toggle (all infrequent, so a full re-collect is fine).
+  function refreshFilter() {
+    const sy = scrollerEl ? scrollerEl.scrollTop : 0;
+    images = collect(true);
+    if (countEl) countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
+    relayoutActive(false);
+    if (scrollerEl) scrollerEl.scrollTop = Math.min(sy, Math.max(0, scrollerEl.scrollHeight - scrollerEl.clientHeight));
+    updateSelUI();
+    updateHiddenToggle();
+  }
+  // Live blast-radius preview: while hovering a popover option, mark the grid tiles that
+  // scope would hide, so "which images are the same type" is visible before choosing.
+  function previewHide(pattern) {
+    clearHidePreview();
+    if (!pattern || !gridEl) return;
+    const marks = new Set();
+    if (pattern.startsWith('css:')) {
+      const s = pattern.slice(4);
+      document.querySelectorAll('img').forEach((img) => {
+        if (!matchesCssHidden(img, [s])) return;
+        const e = galleryImgEntry(img);
+        const u = e && resolveUrl(e.url, location.href);
+        if (u) marks.add(u);
+      });
+    } else {
+      images.forEach((m) => { if (OBR.urlMatchesHidden && OBR.urlMatchesHidden(m.url, [pattern])) marks.add(m.url); });
+    }
+    gridEl.querySelectorAll('.tile').forEach((t) => {
+      const m = images[+t.dataset.idx];
+      if (m && marks.has(m.url)) t.classList.add('hide-preview');
+    });
+  }
+  function clearHidePreview() {
+    if (gridEl) gridEl.querySelectorAll('.tile.hide-preview').forEach((t) => t.classList.remove('hide-preview'));
+  }
+
+  // The ⊘ Hide popover. The ELEMENT scope ("images in this spot", by page structure) leads
+  // and carries the recommendation — it's what discriminates when URLs can't — followed by
+  // the URL scopes (this image / folder / host). URL scopes are absent for data:/blob:
+  // images (hidePatternsFor → null: their "pathname" is the whole payload).
+  function openHideMenu(im, anchorBtn) {
+    if (!hideMenuEl) return;
+    hideMenuEl.replaceChildren();
+    const opts = [];
+    const imgEl = findImgFor(im.url);
+    const sel = imgEl && selectorScopeFor(imgEl);
+    if (sel) {
+      // Count only images the gallery would actually show, so the number matches the marks.
+      let n = 0;
+      try { n = [...document.querySelectorAll(sel)].filter((el) => el.tagName === 'IMG' && galleryImgEntry(el)).length; } catch (e) { n = 0; }
+      opts.push({ t: OBR.t('galleryHideSelector'), s: sel + ' · ' + OBR.t('galleryImageCount', [String(n)]), p: 'css:' + sel, rec: true });
+    }
+    const pats = OBR.hidePatternsFor ? OBR.hidePatternsFor(im.url) : null;
+    if (pats) {
+      opts.push({ t: OBR.t('galleryHideThis'), s: pats.image, p: pats.image });
+      opts.push({ t: OBR.t('galleryHideFolder'), s: pats.folder, p: pats.folder, rec: !sel });
+      opts.push({ t: OBR.t('galleryHideHost'), s: pats.host, p: pats.host });
+    }
+    if (!opts.length) return; // data: image with no derivable selector (test harness only)
+    const head = document.createElement('div'); head.className = 'hm-h'; head.textContent = OBR.t('galleryHideMenuTitle');
+    hideMenuEl.appendChild(head);
+    opts.forEach((o) => {
+      const b = document.createElement('button'); b.className = 'hm-opt' + (o.rec ? ' rec' : '');
+      const tt = document.createElement('span'); tt.className = 'hm-t'; tt.textContent = o.t;
+      const ss = document.createElement('span'); ss.className = 'hm-s'; ss.textContent = o.s;
+      b.appendChild(tt); b.appendChild(ss);
+      b.addEventListener('mouseenter', () => previewHide(o.p)); // mark what this scope would hide
+      b.addEventListener('mouseleave', clearHidePreview);
+      b.addEventListener('click', (e) => { e.stopPropagation(); closeHideMenu(); if (o.p) applyHide(o.p); });
+      hideMenuEl.appendChild(b);
+    });
+    hideMenuEl.style.display = 'block';
+    const r = anchorBtn.getBoundingClientRect();
+    const mw = hideMenuEl.offsetWidth, mh = hideMenuEl.offsetHeight;
+    let left = Math.min(Math.max(8, r.right - mw), Math.max(8, innerWidth - 8 - mw));
+    let top = r.bottom + 6; if (top + mh > innerHeight - 8) top = Math.max(8, r.top - 6 - mh);
+    hideMenuEl.style.left = left + 'px';
+    hideMenuEl.style.top = top + 'px';
+  }
+  function closeHideMenu() { if (hideMenuEl) hideMenuEl.style.display = 'none'; clearHidePreview(); }
+  function hideMenuOpen() { return !!hideMenuEl && hideMenuEl.style.display === 'block'; }
+  // Persist the current pattern list. saveHidden resolves FALSE on a failed write (quota /
+  // storage unavailable) — surface it in the console instead of silently losing the hide.
+  function persistHidden() {
+    if (!galleryHost || !OBR.saveHidden) return;
+    OBR.saveHidden(galleryHost, hiddenPatterns).then((ok) => {
+      if (ok === false) { try { console.warn('[OpenBookReader] hidden-image save failed (storage quota?) — the filter applies this session only'); } catch (e) { /* */ } }
+    });
+  }
+  function applyHide(pattern) {
+    if (!pattern) return;
+    if (!hiddenPatterns.includes(pattern)) hiddenPatterns.push(pattern);
+    lastHide = pattern;
+    persistHidden();
+    revealHidden = false;
+    refreshFilter();
+    flashUndo();
+  }
+  function undoLastHide() {
+    if (!lastHide) return;
+    const i = hiddenPatterns.indexOf(lastHide);
+    if (i >= 0) hiddenPatterns.splice(i, 1);
+    lastHide = null;
+    persistHidden();
+    hideUndo();
+    refreshFilter();
+  }
+  // Un-hide a specific revealed image. Auto-hidden (avatar filter) → store a per-image '+'
+  // allow entry; manual hides → drop every stored pattern that matches it (usually one) —
+  // URL globs by URL, `css:` element entries by re-testing against the image's live <img>.
+  function unhideImage(im) {
+    if (im.auto) {
+      const t = OBR.hiddenTarget && OBR.hiddenTarget(im.url);
+      if (!t) return; // no stable key to allow (data: avatar) — the Options toggle remains
+      if (!hiddenPatterns.includes('+' + t)) hiddenPatterns.push('+' + t);
+    } else {
+      const imgEl = findImgFor(im.url);
+      hiddenPatterns = hiddenPatterns.filter((p) => {
+        if (typeof p === 'string' && p.startsWith('css:')) return !(imgEl && matchesCssHidden(imgEl, [p.slice(4)]));
+        if (typeof p === 'string' && p.startsWith('+')) return true; // allows are unhide state — keep
+        return !(OBR.urlMatchesHidden && OBR.urlMatchesHidden(im.url, [p]));
+      });
+    }
+    persistHidden();
+    refreshFilter();
+  }
+  function toggleReveal() { revealHidden = !revealHidden; refreshFilter(); }
+  function updateHiddenToggle() {
+    const btn = wrap && wrap.querySelector('.hidden-toggle');
+    if (!btn) return;
+    const hiddenNow = revealHidden ? images.filter((im) => im.hidden).length : hiddenSkipped;
+    btn.style.display = (hiddenNow > 0 || revealHidden) ? '' : 'none';
+    btn.classList.toggle('on', revealHidden);
+    btn.setAttribute('aria-pressed', revealHidden ? 'true' : 'false');
+    btn.title = revealHidden ? OBR.t('galleryHideFilteredTitle') : OBR.t('galleryShowFilteredTitle');
+    const lbl = btn.querySelector('.lbl');
+    if (lbl) lbl.textContent = revealHidden ? OBR.t('galleryShowingHidden') : OBR.t('galleryHiddenCount', [String(hiddenNow)]);
+  }
+  function flashUndo() {
+    const btn = wrap && wrap.querySelector('.undo-hide');
+    if (!btn) return;
+    btn.style.display = '';
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(hideUndo, 6000);
+  }
+  function hideUndo() { const btn = wrap && wrap.querySelector('.undo-hide'); if (btn) btn.style.display = 'none'; clearTimeout(undoTimer); }
+  OBR._galleryHide = (pat) => applyHide(pat);                 // drive (tests)
+  OBR._galleryHiddenPatterns = () => hiddenPatterns.slice();  // state (tests)
+  OBR._galleryRevealHidden = (on) => { revealHidden = !!on; refreshFilter(); };
+  OBR._gallerySelectorFor = (url) => { const el = findImgFor(url); return el ? selectorScopeFor(el) : null; }; // derive (tests)
 
   // Re-collect and APPEND any images not already shown (lazy/late/inserted) to the
   // shortest column, without disturbing existing tiles or the user's selection.
@@ -1064,6 +1386,11 @@
         lbCounter.textContent = OBR.t('galleryLightboxCounter', [String(lightboxIndex + 1), String(images.length)]);
       }
     }
+    // The collect() above recomputed hiddenSkipped — hydration can surface newly-filtered
+    // images even when nothing visible was added, so the "N hidden · Show" toggle must
+    // refresh here too (not just on render/hide/reveal), else it sits stale/invisible on
+    // exactly the lazy-forum pages the filter is for.
+    updateHiddenToggle();
     return added;
   }
 
@@ -1167,6 +1494,7 @@
   // Prefetch the next chunk EARLY — while the user is still ~1.5 screens from the
   // bottom of the gallery — so the new tiles are there before they scroll to them.
   function onScrollerScroll() {
+    if (hideMenuOpen()) closeHideMenu(); // a fixed popover would detach from its tile on scroll
     if (!scrollerEl || sweeping || fullyHydrated || softDone || !settings.galleryAutoLoad) return;
     const remaining = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight;
     if (remaining < scrollerEl.clientHeight * 1.5) hydratePage(false);
@@ -1410,6 +1738,9 @@
     ordered = pref ? !!pref.ordered : false;
     if (pref && typeof pref.cols === 'number') settings[ordered ? 'galleryOrderedCols' : 'galleryColumns'] = pref.cols;
     fitWidth = !!settings.galleryFitWidth;
+    // Per-site image filter (hidden patterns). Fresh filter state each open.
+    revealHidden = false; lastHide = null;
+    try { hiddenPatterns = OBR.loadHidden ? await OBR.loadHidden(galleryHost) : []; } catch (e) { hiddenPatterns = []; }
     if (OBR.close) OBR.close(); // ensure the text reader isn't also showing
     build();
     applyStylesheet();
@@ -1466,6 +1797,9 @@
     if (shown('obr-gallery-host')) { close(); return Promise.resolve('closed-images'); }
     const load = OBR.loadSettings ? OBR.loadSettings() : Promise.resolve(OBR.DEFAULTS);
     return load.then((s) => {
+      // Sync the module-local settings (imageCount()'s avatar filter reads them) so a
+      // pre-open auto-mode decision honors the user's galleryHideAvatars, not DEFAULTS.
+      if (s) settings = Object.assign({}, settings, s);
       // Per-site rule wins over the auto-pick ladder (toolbar icon only; keyboard commands
       // and context-menu submodes bypass _autoToggle entirely). Most-specific rule wins.
       const override = OBR.matchSiteRule ? OBR.matchSiteRule(location.href, s && s.siteRules) : null;
@@ -1518,6 +1852,10 @@
 
   document.addEventListener('keydown', (e) => {
     if (!active) return;
+    if (hideMenuOpen()) { // the Hide popover owns keys while it's up
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeHideMenu(); }
+      return;
+    }
     if (lightboxIndex >= 0) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeLightbox(); }
       else if (isFormFocused()) { /* editing the seconds field — leave caret/typing keys to it */ }

@@ -192,6 +192,38 @@ thumbnail filmstrip, a timed slideshow. The **⟷ Fit width** toggle (`F` key, `
 page — instead of shrinking the whole page to fit; the `.lb.lb-fit` class switches the chrome to
 `position:fixed` so it stays pinned while the image scrolls under it.
 
+**Image filter — hide avatars / repeated noise** (`gallery.js` + `settings.js` `obr_hidden`). Forums
+flood the gallery with profile pics — a DIFFERENT URL per user, so dedup can't merge them and they
+clear the 80px min-size filter. Two zero-new-permission layers: (1) a **high-precision avatar
+auto-filter** (`isAvatarish`, `settings.galleryHideAvatars`, default on) drops avatars/emoji/badges,
+matched on the element's avatar/gravatar/emoji **class/id/alt/src token** OR a **profile-link wrapper
+around a small near-square image** — deliberately NOT size-based (album art / product shots are small
+squares too). It runs inside `eachGalleryImg`, so `collect()` AND the badge `imageCount()` exclude the
+same set — auto-filtered images are TAGGED, never silently vanished: they ride the same "N hidden"
+count/reveal, and Unhide on one stores a per-image **`+<target>` allow entry** that overrides the
+auto-filter from then on (the false-positive recovery path). (2) a manual **⊘ Hide** control on each
+tile → a scope popover. The ELEMENT scope **"Images in this spot"** LEADS and carries the
+recommendation — it's what discriminates when URLs can't (content and avatars on the same CDN path):
+a CSS selector stored as a `css:`-prefixed entry (`selectorScopeFor`: the image's own semantic class →
+a stable ancestor class + ` img` → `OBR._cssPathFor` unique-path fallback, which needs `reader.js` —
+always loaded before `gallery.js` in the real injection order, guarded for the gallery-only harness),
+matched element-level via `img.matches()` in `eachGalleryImg` (`<img>` only; background/`<source>`
+entries stay URL-filtered). Below it, three URL scopes (`OBR.hidePatternsFor`: this image / its
+folder — snapped to a known avatar path token when present / its whole host) — **absent for
+data:/blob: images** (their "pathname" is the whole base64 payload, a sync-quota poison; the element
+scope is their tool). **Hovering a popover option live-marks the tiles that scope would hide**
+(`previewHide`, `.hide-preview`), and the element option shows its live match count — blast radius
+visible before choosing. Everything is stored **per-site** in the `obr_hidden` sync map, bounded by
+host count AND serialized bytes (`HIDDEN_MAX_BYTES`, mirrors `obr_picks`; plus a per-pattern length
+cap); entry prefixes: none = URL glob (matched by the shared `globToRegExp` over `host+pathname`),
+`css:` = element selector, `+` = per-image allow — `urlMatchesHidden` skips the prefixed kinds.
+`collect()` drops matches (tagging them `hidden` while peeking); a **"N hidden · Show"** toolbar
+toggle (kept fresh by `mergeNewImages` too, for lazy-hydrating pages) reveals them dimmed with an
+Unhide button (manual hides: drops the matching pattern, re-testing `css:` entries against the live
+element; auto-hides: stores the `+` allow), plus a one-tap **Undo** on the last hide. The Options page lists + removes
+hidden patterns per site (scoped like saved picks) and carries the avatar-toggle checkbox. Only the
+gallery is filtered; the reader is untouched.
+
 **Gallery downloads** (the only network feature): content scripts can't call `chrome.downloads` or
 fetch cross-origin, so `gallery.js` messages `background.js` — `obr-download-one` →
 `chrome.downloads.download` (no host perm needed); `obr-fetch-bytes` → SW `fetch` (needs

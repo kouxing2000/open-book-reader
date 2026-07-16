@@ -205,6 +205,15 @@
       whether the selector is valid. Remove one to go back to automatic extraction.</span>
     </div>
     <div id="picks"></div>
+
+    <div class="subhead">
+      <span data-i18n="optHiddenHead">Hidden images</span> <span id="hiddenCount" class="subhead-count"></span>
+      <span class="hint" data-i18n-html="optHiddenHint">The per-site image filter. The <b>⊘ Hide</b> button in the gallery
+      drops an image (or its folder / host) from the wall — useful for avatars, badges and other repeated noise.
+      Hidden patterns are listed here as URL globs (<code>*</code> = wildcard). Entries starting with <code>css:</code>
+      match images by their place in the page instead of by URL. Remove one to bring those images back.</span>
+    </div>
+    <div id="hidden"></div>
   </section>
 
   <section class="card">
@@ -223,6 +232,11 @@
     <div class="row">
       <label><span data-i18n="optGalFitWidth">Fit tall pages to width</span> <span class="hint" data-i18n-html="optGalFitWidthHint">In the big-image view, fit a tall page to the <b>width</b> and scroll down it (for reading manga / comic / scan pages) instead of shrinking the whole page to fit. Toggle live with the lightbox <b>⟷</b> button or the <b>F</b> key.</span></label>
       <span><input type="checkbox" id="galleryFitWidth" /></span>
+    </div>
+
+    <div class="row">
+      <label><span data-i18n="optGalHideAvatars">Hide avatars &amp; icons</span> <span class="hint" data-i18n-html="optGalHideAvatarsHint">Auto-filter avatars, emoji and badges out of the gallery (the profile-pic clutter on forums &amp; comment threads) — detected by their <b>profile links</b> and <b>avatar/gravatar/emoji</b> markup, <b>not by size</b>, so album art and product shots stay. Hide anything it misses with the <b>⊘ Hide</b> button on a tile.</span></label>
+      <span><input type="checkbox" id="galleryHideAvatars" /></span>
     </div>
 
     <div class="row">
