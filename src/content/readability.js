@@ -55,10 +55,17 @@ function Readability(doc, options) {
   this._disableJSONLD = !!options.disableJSONLD;
   this._allowedVideoRegex = options.allowedVideoRegex || this.REGEXPS.videos;
 
-  // Start with all flags set
+  // OpenBookReader-LOCAL option (NOT in upstream Mozilla Readability). When true,
+  // conditional cleaning is skipped so image-dominant posts keep their images
+  // instead of being discarded as low-text blocks. Consumed by the reader's
+  // image-rescue re-parse, which used to reach into the private _flags field.
+  // >>> Re-apply this option (and the flag line below) after any Readability refresh. <<<
+  this._disableConditionalCleaning = !!options.disableConditionalCleaning;
+
+  // Start with all flags set (minus any disabled by the options above)
   this._flags = this.FLAG_STRIP_UNLIKELYS |
                 this.FLAG_WEIGHT_CLASSES |
-                this.FLAG_CLEAN_CONDITIONALLY;
+                (this._disableConditionalCleaning ? 0 : this.FLAG_CLEAN_CONDITIONALLY);
 
 
   // Control whether log messages are sent to the console

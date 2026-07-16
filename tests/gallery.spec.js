@@ -1299,3 +1299,56 @@ test.describe('gallery element-selector hide', () => {
     expect((await galleryState(page)).tiles).toBe(6); // still element-filtered on reopen
   });
 });
+
+test.describe('ZIP download SSRF hardening (service-worker fetchBytesBase64)', () => {
+  // The ZIP "download all" fetches page-supplied <img> URLs in the SW after an
+  // on-demand <all_urls> grant. A hostile page can seed those URLs, so the fetch
+  // is hardened (http(s)-only + no credentials). These tests exercise the SW
+  // helper directly via a test hook, because the real message path needs an
+  // interactive permission grant headless Chromium can't produce.
+
+  test('exposes the fetch helper as a test hook', async ({ serviceWorker }) => {
+    const hasHook = await serviceWorker.evaluate(
+      () => typeof self.__obrFetchBytesBase64 === 'function'
+    );
+    expect(hasHook).toBe(true);
+  });
+
+  test('rejects non-http(s) URLs so a hostile <img src> cannot pull local/other-scheme resources', async ({ serviceWorker }) => {
+    const out = await serviceWorker.evaluate(async () => {
+      const urls = [
+        'file:///etc/passwd',
+        'data:text/plain;base64,aGk=',
+        'chrome://version/',
+        'ftp://host/f.png',
+        'blob:https://x.test/abc',
+      ];
+      const r = {};
+      for (const u of urls) {
+        try { await self.__obrFetchBytesBase64(u); r[u] = 'resolved'; }
+        catch (e) { r[u] = 'rejected'; }
+      }
+      return r;
+    });
+    for (const [u, verdict] of Object.entries(out)) {
+      expect(verdict, `${u} must be rejected`).toBe('rejected');
+    }
+  });
+
+  test('fetches image URLs without credentials (no cookies to authenticated endpoints)', async ({ serviceWorker }) => {
+    const creds = await serviceWorker.evaluate(async () => {
+      const realFetch = self.fetch;
+      let captured = 'MISSING';
+      // Spy on the actual fetch to capture the credentials mode, returning a tiny
+      // fake image body so fetchBytesBase64 completes without a real network hit.
+      self.fetch = (_url, opts) => {
+        captured = opts && 'credentials' in opts ? opts.credentials : 'MISSING';
+        return Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+      };
+      try { await self.__obrFetchBytesBase64('https://example.test/pic.png'); }
+      finally { self.fetch = realFetch; }
+      return captured;
+    });
+    expect(creds).toBe('omit');
+  });
+});

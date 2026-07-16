@@ -446,14 +446,12 @@
     const keptImgs = imageUrlSetFromHtml(article.content);
     const textLen = (article.textContent || '').replace(/\s+/g, '').length;
     if (pageImgs.size >= 4 && keptImgs.size * 2 < pageImgs.size && textLen < 1500) {
-      const loose = new Readability(base.cloneNode(true));
-      // Disable conditional cleaning by clearing its flag. Reaches into the
-      // vendored Readability's internals (_flags / FLAG_CLEAN_CONDITIONALLY,
-      // present as of the bundled version); guard so a future upstream rename
-      // degrades to a normal parse instead of silently NaN-ing the flag.
-      if (typeof loose._flags === 'number' && loose.FLAG_CLEAN_CONDITIONALLY) {
-        loose._flags &= ~loose.FLAG_CLEAN_CONDITIONALLY;
-      }
+      // Re-parse with conditional cleaning disabled so the image-dominant block
+      // survives. Uses the vendored Readability's public `disableConditionalCleaning`
+      // constructor option (defined in readability.js) rather than mutating its
+      // private _flags field — the coupling now lives in one documented spot in the
+      // lib. An upstream refresh that drops the option degrades to a normal parse.
+      const loose = new Readability(base.cloneNode(true), { disableConditionalCleaning: true });
       const alt = loose.parse();
       if (alt && alt.content && imageUrlSetFromHtml(alt.content).size > keptImgs.size) {
         article = alt;

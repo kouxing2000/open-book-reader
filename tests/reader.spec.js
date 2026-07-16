@@ -959,3 +959,34 @@ test.describe('content override', () => {
     await expect.poll(() => readState(page).then((x) => x.contentText)).toContain('DECOY-MARKER');
   });
 });
+
+test('vendored Readability exposes disableConditionalCleaning as a public option (image-rescue no longer mutates private _flags)', async ({ page }) => {
+  // Finding #4 fix: the image-dominant re-parse switched from clearing the private
+  // _flags field in reader.js to this constructor option on the vendored lib. Verify
+  // the option toggles exactly the conditional-cleaning flag and leaves the others
+  // intact. (Reading _flagIsActive here is test-only introspection of the vendored
+  // library; the point of the fix is that APPLICATION code no longer does this. The
+  // end-to-end behavior is guarded by the "image-dominant forum post" test above.)
+  const r = await page.evaluate(() => {
+    const doc = () => new DOMParser().parseFromString(
+      '<!DOCTYPE html><html><body><p>x</p></body></html>', 'text/html');
+    const def = new Readability(doc());
+    const off = new Readability(doc(), { disableConditionalCleaning: true });
+    return {
+      defaultConditional: def._flagIsActive(def.FLAG_CLEAN_CONDITIONALLY),
+      disabledConditional: off._flagIsActive(off.FLAG_CLEAN_CONDITIONALLY),
+      defaultStrip: def._flagIsActive(def.FLAG_STRIP_UNLIKELYS),
+      disabledStrip: off._flagIsActive(off.FLAG_STRIP_UNLIKELYS),
+      defaultWeight: def._flagIsActive(def.FLAG_WEIGHT_CLASSES),
+      disabledWeight: off._flagIsActive(off.FLAG_WEIGHT_CLASSES),
+    };
+  });
+  // Default: conditional cleaning ON; with the option: OFF.
+  expect(r.defaultConditional).toBe(true);
+  expect(r.disabledConditional).toBe(false);
+  // The option must touch ONLY conditional cleaning; the other two flags stay on.
+  expect(r.defaultStrip).toBe(true);
+  expect(r.disabledStrip).toBe(true);
+  expect(r.defaultWeight).toBe(true);
+  expect(r.disabledWeight).toBe(true);
+});

@@ -189,20 +189,34 @@ chrome.runtime.onStartup.addListener(() => { createMenus(); });
 const FETCH_CONCURRENCY = 5;
 
 async function fetchBytesBase64(url) {
-  // Send the site's own cookies (the cross-origin default is `omit`), so images behind a
-  // login/session gate resolve instead of 403-ing — the single-download path already uses the
-  // browser's cookie jar, so the ZIP looked randomly broken without this. The cookies go ONLY
-  // to the image's own origin, exactly as the browser already sends them when it renders that
-  // <img> on the page; nothing goes to the developer, so the privacy posture holds. (Referer-
-  // based hotlink protection still can't be satisfied from an SW fetch — those stay in the
-  // per-image "failed" count; the user can single-download them via chrome.downloads.)
-  const res = await fetch(url, { credentials: 'include' });
+  // These URLs are page-supplied <img> src values, so a hostile/compromised page can
+  // seed them. The ZIP "download all" fetches each in the service worker after the
+  // on-demand <all_urls> grant, so harden against SSRF-into-local-file:
+  //   1. Protocol allowlist — only http(s). Blocks file:/blob:/data:/chrome:/ftp:, so
+  //      a crafted <img src="file:///etc/passwd"> can't route a local file into the ZIP.
+  //   2. No credentials — a seeded URL pointing at an authenticated same-site endpoint
+  //      then gets no cookies, so no logged-in/private content is captured. (Trade-off:
+  //      images strictly behind a login/session gate now 403 and land in the per-image
+  //      "failed" count; the user can still single-download those via chrome.downloads,
+  //      which uses the browser's own cookie jar.)
+  let parsed;
+  try { parsed = new URL(url); } catch (e) { throw new Error('invalid URL'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('unsupported protocol: ' + parsed.protocol);
+  }
+  const res = await fetch(url, { credentials: 'omit' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const buf = new Uint8Array(await res.arrayBuffer());
   let bin = '';
   for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
   return btoa(bin);
 }
+
+// Test-only hook: exposes the ZIP-fetch helper so the e2e suite can assert the SSRF
+// hardening above (protocol allowlist + credential-less fetch) directly, since the
+// message path needs an interactive <all_urls> grant that headless tests can't drive.
+// Mirrors the unconditional `OBR._*` test helpers the content scripts already expose.
+if (typeof self !== 'undefined') self.__obrFetchBytesBase64 = fetchBytesBase64;
 
 // Run an async worker over items with bounded concurrency.
 async function runPool(items, limit, worker) {
