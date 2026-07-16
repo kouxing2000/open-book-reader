@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-16
+
 ### Added
 - **Ordered gallery layout — read images in sequence.** The masonry Wall scrambles reading
   order by design, so the gallery now has a **Wall / Ordered** toggle: Ordered lays images out
@@ -30,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The options-page guide, README, and site now describe the new gallery features.
+
+## [1.4.0] - 2026-07-06
 
 ### Added
 - **Now available in Simplified Chinese (简体中文)** — 8 languages in total. The reader, gallery,
@@ -163,7 +167,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.5.0
 [1.4.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.4.0
 [1.3.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.3.1
 [1.2.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.2.1
