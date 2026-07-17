@@ -75,11 +75,21 @@
                            // reader when the page has >= this many images (0 = off).
                            // Only the toolbar icon auto-picks; Alt+B / Alt+Shift+B stay explicit.
     autoTextMinWords: 200, // ...but a real article still wins: if the page has >= this
-                           // many words in substantial prose blocks (see reader.js
-                           // _articleWordCount — live-DOM, not Readability), open the
+                           // many words in substantial prose blocks (see OBR._proseStats —
+                           // live-DOM, not Readability), open the
                            // reader even when image-heavy (so a figure-rich long read
                            // isn't dumped into the gallery). 0 = decide by image count alone.
-    siteRules: []          // per-site rules: [{ match: '<glob>', mode: 'text'|'images'|'auto' }]
+    autoAnchorWords: 80,   // auto-open (sentinel) text gate: besides the total-words bar,
+                           // at least ONE single prose block must carry this many words.
+                           // A forum index can accumulate 200 words of long topic titles,
+                           // but only a real post has one substantial paragraph. Not
+                           // surfaced in the options UI (MVP) — documented here.
+    siteRules: []          // per-site rules: [{ match: '<glob>', mode: 'text'|'images'|'auto', auto?: true }]
+                           // `auto: true` = auto-open: on a page matching this rule, the
+                           // registered sentinel (src/content/sentinel.js) may open the
+                           // rule's mode WITHOUT a gesture once the content gate passes.
+                           // Needs a per-origin host permission, granted when the flag is
+                           // set (context menu / options); see OBR.originsForRule.
                            // `match` is a glob (`*` wildcard) tested against `host + pathname`,
                            // e.g. 'example.com' (whole site), 'example.com/blog/*' (a path),
                            // '*.example.com/*' (all subdomains). It overrides the toolbar-icon
@@ -273,16 +283,27 @@
   // match the www-stripped target (so a stray "www." in a hand-edited pattern still works).
   function globToRegExp(pattern) {
     try {
-      const p = String(pattern).trim().toLowerCase().replace(/^www\./, '');
+      let p = String(pattern).trim().toLowerCase().replace(/^www\./, '');
+      // A leading "*." (subdomain wildcard) ALSO matches the apex, mirroring Chrome's
+      // "*.example.com" match-pattern semantics (which includes example.com itself). So a
+      // "*.example.com/*" rule fires on example.com and www.example.com too — not only on
+      // dotted subdomains — keeping it consistent with the origin permission originsForRule()
+      // grants for it (auto-open registers the sentinel on the apex/www as well, and the
+      // target host is www-stripped before matching, so it arrives here as the bare apex).
+      let sub = '';
+      if (p.startsWith('*.')) { sub = '(?:[^/]*\\.)?'; p = p.slice(2); }
       const esc = p.replace(/[.+^${}()|[\]\\?]/g, '\\$&').replace(/\*/g, '.*');
       const tail = p.indexOf('/') === -1 ? '(?:/.*)?' : '';
-      return new RegExp('^' + esc + tail + '$');
+      return new RegExp('^' + sub + esc + tail + '$');
     } catch (e) { return null; }
   }
 
-  // Pick the mode of the most-specific site rule matching `url`, or null if none match.
+  // The most-specific site rule OBJECT matching `url`, or null if none match.
   // Specificity = literal length of the pattern (wildcards removed); longest wins.
-  OBR.matchSiteRule = function (url, rules) {
+  // The auto-open paths need the whole rule (its `auto` flag and exact `match`, e.g.
+  // for the chip's "stop auto-opening"), so this returns the entry itself;
+  // OBR.matchSiteRule below stays the mode-only wrapper every older call site uses.
+  OBR.matchSiteRuleEx = function (url, rules) {
     if (!Array.isArray(rules) || !rules.length) return null;
     let target;
     try {
@@ -295,10 +316,40 @@
       const re = globToRegExp(r.match);
       if (re && re.test(target)) {
         const score = String(r.match).trim().replace(/\*/g, '').length;
-        if (score > bestScore) { bestScore = score; best = r.mode; }
+        if (score > bestScore) { bestScore = score; best = r; }
       }
     }
     return best;
+  };
+
+  // Pick the MODE of the most-specific site rule matching `url`, or null if none match.
+  OBR.matchSiteRule = function (url, rules) {
+    const r = OBR.matchSiteRuleEx(url, rules);
+    return r ? r.mode : null;
+  };
+
+  // Map a site-rule glob to the Chrome origin match patterns a sentinel registration (or a
+  // permissions.request) needs to cover it. Origins are HOST-scoped — the path part of a
+  // rule is enforced by the sentinel's own rule check, not the grant. Returns [] when the
+  // host part can't form a valid match pattern (a mid-host `*`, an empty host): callers
+  // MUST treat [] as "cannot auto-open" — one invalid pattern rejects a whole
+  // registerContentScripts call. PURE + testable.
+  //   'example.com'        -> ['*://example.com/*', '*://www.example.com/*']
+  //   'example.com/t/*'    -> ['*://example.com/*', '*://www.example.com/*']
+  //   '*.example.com/...'  -> ['*://*.example.com/*']  (already covers www)
+  OBR.originsForRule = function (match) {
+    const p = OBR.normalizePattern(match);
+    if (!p) return [];
+    const host = p.split('/')[0].replace(/:\d+$/, ''); // match patterns can't carry a port
+    if (!host) return [];
+    if (host.startsWith('*.')) {
+      const base = host.slice(2);
+      // A match-pattern host allows ONE leading "*." wildcard and nothing else.
+      if (!base || base.includes('*')) return [];
+      return ['*://*.' + base + '/*'];
+    }
+    if (host.includes('*')) return []; // mid-host wildcard — not expressible as a match pattern
+    return ['*://' + host + '/*', '*://www.' + host + '/*'];
   };
 
   // Migrate the legacy exact-host `sites` map ({host:{mode}}) into `siteRules` on a RAW
@@ -328,11 +379,33 @@
   // from mutating the passed object — no storage I/O — so the service worker's context-menu
   // rule handler (and tests) call it directly. `host` should be pre-normalized via
   // OBR.normalizeHost.
-  OBR.upsertSiteRule = function (raw, host, mode) {
+  // `opts.auto`: true sets the auto-open flag, false clears it, absent PRESERVES whatever
+  // the replaced rule had — so "Always open as Gallery" on an auto-enabled site changes the
+  // mode without silently killing auto-open.
+  OBR.upsertSiteRule = function (raw, host, mode, opts) {
     OBR.migrateSiteRules(raw); // fold in any legacy map; guarantees raw.siteRules is an array
+    const prev = raw.siteRules.find((r) => r && r.match === host);
     raw.siteRules = raw.siteRules.filter((r) => !(r && r.match === host)); // drop existing whole-site rule
-    if (mode) raw.siteRules.push({ match: host, mode });
+    if (mode) {
+      const rule = { match: host, mode };
+      const auto = opts && 'auto' in opts ? !!opts.auto : !!(prev && prev.auto);
+      if (auto) rule.auto = true; // absent (not `false`) when off — keeps sync bytes lean
+      raw.siteRules.push(rule);
+    }
     return raw;
+  };
+
+  // Set / clear the auto-open flag on the EXACT rule `match` in a fresh copy of `rules`
+  // (no mutation — callers hand the result to saveSettings). Used by the auto chip's
+  // "stop auto-opening" (which must clear `auto` on whichever rule matched — possibly a
+  // path rule — while KEEPING its mode) and the options page checkbox.
+  OBR.setRuleAuto = function (rules, match, on) {
+    return (Array.isArray(rules) ? rules : []).map((r) => {
+      if (!r || r.match !== match) return r;
+      const c = Object.assign({}, r);
+      if (on) c.auto = true; else delete c.auto;
+      return c;
+    });
   };
 
   // Read settings merged over defaults (chrome.storage.sync).
@@ -638,5 +711,143 @@
   OBR.readingTimeMin = function (words) {
     const w = Math.max(0, Math.floor(words || 0));
     return w < 1 ? 0 : Math.max(1, Math.round(w / 220));
+  };
+
+  /* ---------------------------------------------------------- prose heuristics
+   * "Article-ness" signals shared by the toolbar auto-mode (gallery.js _autoToggle),
+   * the reader's suspect-extraction banner, AND the auto-open sentinel — ONE
+   * implementation so the three verdicts always agree. (Lived in reader.js
+   * originally; moved here because the sentinel loads only settings.js+sentinel.js.)
+   * DOM access is strictly call-time — see the load-time constraint at the top.
+   *
+   * We count a block (<p>/<blockquote>/<li>) only when it holds >= MIN_PARA_WORDS
+   * itself — a real article is carried by big paragraphs, whereas captions, nav,
+   * tags and one-line snippets are short and don't count. Read straight off the
+   * live DOM rather than Readability's extraction, so it still scores a real
+   * article even when extraction undercounts, and it's far cheaper than a full
+   * parse. (Our own UI is in Shadow DOM, so querySelectorAll never sees it.) */
+  const MIN_PARA_WORDS = 20;
+  // CJK (incl. compatibility ideographs), kana, and hangul write without spaces, so a
+  // whole Chinese/Japanese/Korean paragraph is ONE whitespace token — it would never
+  // clear MIN_PARA_WORDS and the count would read ~0 on a real CJK article. Count each
+  // CJK/kana/hangul glyph as its own word, plus the space-delimited tokens of whatever's
+  // left (Latin, digits, punctuation). Pure-Latin text is unaffected.
+  const CJK_RE = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\uff66-\uff9f]/g;
+
+  // CJK-aware word count of a plain string (the shared tokenizer).
+  OBR._countWords = function (text) {
+    const t = (text || '').trim();
+    if (!t) return 0;
+    return (t.match(CJK_RE) || []).length + (t.replace(CJK_RE, ' ').match(/\S+/g) || []).length;
+  };
+
+  // { words, maxBlock }: total words in substantial prose leaf blocks, and the word
+  // count of the single largest leaf block (the auto-open "anchor block" — a forum
+  // index can total 200 words of long topic titles, but only a real post carries one
+  // substantial paragraph).
+  OBR._proseStats = function () {
+    let words = 0, maxBlock = 0;
+    document.querySelectorAll('p, blockquote, li').forEach((el) => {
+      if (el.querySelector('p, blockquote, li')) return; // leaf blocks only — no nesting double-count
+      const w = OBR._countWords(el.textContent);
+      if (w > maxBlock) maxBlock = w;
+      if (w >= MIN_PARA_WORDS) words += w;
+    });
+    return { words, maxBlock };
+  };
+
+  // Long-standing alias (gallery/_autoToggle, reports, tests).
+  OBR._articleWordCount = function () { return OBR._proseStats().words; };
+
+  /* ---------------------------------------------------------- auto-open shared bits
+   * The in-page suppression set + page key shared by both engines and the sentinel
+   * (registered content scripts and executeScript injections share the extension's
+   * one isolated world per frame), the "stop auto-opening here" writer, and the
+   * transient status chip. */
+
+  // Suppression key: origin+pathname+SEARCH. Query-routed forums (viewtopic.php?t=123)
+  // put every topic on one pathname — an Esc keyed on pathname alone would silence the
+  // whole forum. The set is in-memory (page-session lifetime), so unlike OBR.positionKey
+  // there is no quota reason to strip the query.
+  OBR._autoPageKey = function () {
+    try { return location.origin + location.pathname + location.search; }
+    catch (e) { return (globalThis.location && location.href) || ''; }
+  };
+
+  // Record a user-initiated dismissal of reading mode on this page. The sentinel never
+  // auto-opens a recorded page again this page session; a full reload starts fresh.
+  OBR._autoSuppress = function () {
+    (OBR._autoSuppressed = OBR._autoSuppressed || new Set()).add(OBR._autoPageKey());
+  };
+
+  // Clear the auto flag on whichever rule matched the current URL (possibly a path
+  // rule), KEEPING its mode — "stop automating" must not also forget "this site is a
+  // gallery site". Resolves true on a confirmed write, false when nothing matched.
+  OBR._stopAutoHere = function () {
+    return OBR.loadSettings().then((s) => {
+      const rule = OBR.matchSiteRuleEx(location.href, s.siteRules);
+      if (!rule || !rule.auto) return false;
+      return OBR.saveSettings({ siteRules: OBR.setRuleAuto(s.siteRules, rule.match, false) });
+    });
+  };
+
+  // Transient auto-open status chip, in its OWN tiny shadow host so it rides above
+  // either engine's overlay — and can exist with no engine at all (the enable-time
+  // confirmation, §3.1 of docs/auto-open-spec.md). kind: 'opened' (auto-opened; carries
+  // the Stop button) | 'enabled' (auto-open armed but this page didn't qualify) |
+  // 'stopped' (feedback after Stop). Best-effort UI: never throws into an open().
+  let chipTimer = null;
+  OBR._showAutoChip = function (kind, host) {
+    try {
+      const prev = document.getElementById('obr-auto-chip-host');
+      if (prev) prev.remove();
+      clearTimeout(chipTimer);
+      const made = OBR.makeShadowHost('obr-auto-chip-host');
+      const el = made.host, root = made.root;
+      OBR.adoptStyles(root, `
+        .chip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+          z-index: 2147483647; display: flex; align-items: center; gap: 9px;
+          padding: 8px 10px 8px 14px; border-radius: 12px;
+          font: 12.5px/1.4 -apple-system, system-ui, "PingFang SC", sans-serif;
+          background: rgba(24,25,30,.96); color: #eee;
+          box-shadow: 0 8px 26px rgba(0,0,0,.35); max-width: 92vw; }
+        .msg { opacity: .92; }
+        button { border: none; cursor: pointer; border-radius: 7px; font: inherit; }
+        .stop { background: #7c6cff; color: #fff; padding: 5px 11px; white-space: nowrap; }
+        .stop:hover { background: #6a59f2; }
+        .x { background: transparent; color: inherit; opacity: .6; padding: 4px 7px; }
+        .x:hover { opacity: 1; }`);
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      const msg = document.createElement('span');
+      msg.className = 'msg';
+      const gone = () => { clearTimeout(chipTimer); el.remove(); };
+      if (kind === 'opened') {
+        msg.textContent = OBR.t('autoChipOpened');
+        const stop = document.createElement('button');
+        stop.className = 'stop';
+        stop.textContent = OBR.t('autoChipStop');
+        stop.addEventListener('click', () => {
+          // Only confirm "turned off" when a rule was actually cleared — _stopAutoHere
+          // resolves false on a no-op (no matching auto rule), so don't flash a misleading
+          // confirmation then.
+          OBR._stopAutoHere().then((ok) => { if (ok) OBR._showAutoChip('stopped'); });
+        });
+        chip.append(msg, stop);
+      } else {
+        msg.textContent = kind === 'stopped'
+          ? OBR.t('autoChipStopped')
+          : OBR.t('autoChipEnabled', [host || '']);
+        chip.append(msg);
+      }
+      const x = document.createElement('button');
+      x.className = 'x';
+      x.textContent = '✕';
+      x.setAttribute('aria-label', OBR.t('autoChipDismiss'));
+      x.addEventListener('click', gone);
+      chip.append(x);
+      root.append(chip);
+      chipTimer = setTimeout(gone, kind === 'opened' ? 6000 : 5000);
+    } catch (e) { /* chip is best-effort — never break an open over it */ }
   };
 })();

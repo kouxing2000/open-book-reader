@@ -55,6 +55,7 @@ src/content/
   reader.js              text engine: extract → paginate → navigate (Shadow DOM)
   zip.js                 minimal ZIP writer (OBR._buildZip)
   gallery.js             image mode: Wall masonry / Ordered rows + lightbox + image filter (Shadow DOM)
+  sentinel.js            auto-open sentinel — runs only on sites you explicitly enable auto-open for
 src/options/             options page (html + js)
 icons/                   16/32/48/128
 ```
@@ -63,8 +64,15 @@ Two modes: **text** (Alt+B) and **image gallery** (Alt+Shift+B). The gallery off
 masonry **Wall** for browsing and an **Ordered** layout that reads images in sequence
 (webtoons/manga — one page at a time at max size), plus a per-site filter that hides
 avatars and other repeated noise. The engine is injected **only when invoked** — nothing
-runs against any page otherwise. Styles use Constructable Stylesheets inside a Shadow DOM,
-so strict-CSP sites can't block or interfere.
+runs against any page otherwise (the one exception is opt-in, below). Styles use
+Constructable Stylesheets inside a Shadow DOM, so strict-CSP sites can't block or interfere.
+
+**Per-site auto-open (opt-in):** right-click → *Auto-open on this site*, and content pages
+there — forum topics, manga chapters, articles — open in reading mode with zero clicks,
+while list and search pages stay untouched. `Esc` always closes (and remembers that page for
+the session), a chip offers one-click stop, and the decision ladder is deliberately strict:
+when unsure, it does nothing (design + rationale in `docs/auto-open-spec.md`). Enabling asks
+once for a permission scoped to that site only.
 
 ## Permissions
 
@@ -79,10 +87,13 @@ Requested **only on first use, never at install** (optional permissions):
 
 - `downloads` — save images you explicitly download from the gallery
 - `<all_urls>` host access — fetch image bytes cross-origin to bundle a ZIP you request
+- per-site host access — granted when you turn on auto-open for a site (a per-origin subset
+  of the same optional host permission), so the tiny sentinel can run there on page load
 
 No data collection, no telemetry, nothing sent to the developer. The extension makes
 network requests **only when you explicitly download images** (the browser fetches those
-image URLs to save them). Core reading/extraction is fully local.
+image URLs to save them). Core reading/extraction is fully local — auto-open included: the
+sentinel reads the page locally to decide, and transmits nothing.
 
 ## Store assets
 

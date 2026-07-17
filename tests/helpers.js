@@ -32,6 +32,13 @@ export const GALLERY_FILES = [
 // All modes together (for cross-mode switching tests).
 export const ALL_FILES = [...CONTENT_FILES, path.join(CONTENT, 'zip.js'), path.join(CONTENT, 'gallery.js')];
 
+// The auto-open sentinel loads with ONLY settings.js beside it (mirrors the SW's
+// registered-script list and the enable-time injection).
+export const SENTINEL_FILES = [
+  path.join(CONTENT, 'settings.js'),
+  path.join(CONTENT, 'sentinel.js'),
+];
+
 /**
  * A minimal chrome.storage.sync shim backed by localStorage, injected into the
  * page before the reader scripts run. The reader normally runs in a content-script
@@ -255,6 +262,46 @@ export function sentMessages(page) {
 
 export async function injectGallery(page) {
   for (const file of GALLERY_FILES) await page.addScriptTag({ path: file });
+}
+
+/* ----------------------------------------------------------------- auto-open */
+
+/** Navigate to any fixture with the storage + i18n + message-capture shims installed
+ *  (the generic sibling of gotoArticle/gotoImages, for the auto-open fixtures). */
+export async function gotoFixture(page, file) {
+  await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
+  await page.addInitScript(downloadShim); // captures chrome.runtime.sendMessage on __obrMsgs
+  await page.goto('/' + file.replace(/^\/+/, ''));
+}
+
+/** Seed the shimmed chrome.storage.sync obr_settings (e.g. siteRules with auto flags). */
+export function seedSettings(page, settings) {
+  return page.evaluate(
+    (s) => new Promise((res) => chrome.storage.sync.set({ obr_settings: s }, res)),
+    settings
+  );
+}
+
+/** Inject settings.js + sentinel.js the way the SW registers them, with FAST probe
+ *  delays (the production 0/1s/2.5s/5s schedule would make every negative test crawl). */
+export async function injectSentinel(page, { delays = [0, 60, 140, 240] } = {}) {
+  await page.evaluate((d) => { (globalThis.OBR = globalThis.OBR || {})._sentinelDelays = d; }, delays);
+  for (const file of SENTINEL_FILES) await page.addScriptTag({ path: file });
+}
+
+/** Poll the sentinel's test hook until the schedule of arm #minArm (or later) has
+ *  concluded, then return a snapshot of its observable state. `minArm` matters for
+ *  SPA re-arm tests: polling bare `done` right after triggering a re-arm could catch
+ *  the PREVIOUS arm's done flag before arm() resets it. */
+export async function waitSentinelDone(page, minArm = 1) {
+  await expect
+    .poll(() => page.evaluate((min) => {
+      const s = globalThis.OBR && globalThis.OBR._sentinelState;
+      return !!(s && s.done && s.armCount >= min);
+    }, minArm), { timeout: 8000 })
+    .toBe(true);
+  return page.evaluate(() => Object.assign({}, globalThis.OBR._sentinelState));
 }
 
 export async function injectAll(page) {

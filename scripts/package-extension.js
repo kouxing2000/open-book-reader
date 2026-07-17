@@ -51,6 +51,7 @@ const REQUIRED_FILES = [
   'src/content/reader.js',
   'src/content/zip.js',
   'src/content/gallery.js',
+  'src/content/sentinel.js', // auto-open: registered by the SW; missing = silent dead feature
   'src/permission.html',
   'src/permission.js',
   'src/options/options.html',

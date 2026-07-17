@@ -85,8 +85,9 @@
       <ul>
         <li><strong>downloads</strong> — used only to save images you explicitly download from the image gallery.</li>
         <li><strong>host access (<code>&lt;all_urls&gt;</code>)</strong> — used only to fetch image bytes when you ask to download a ZIP of selected images. It is never used to read, monitor, or transmit page content.</li>
+        <li><strong>per-site host access</strong> — granted only if you turn on <em>auto-open</em> for a site (right-click → Auto-open on this site). It lets the extension check that one site's pages as they load — entirely inside your browser — to open reading mode on content pages. Nothing is read for any other purpose and nothing is transmitted; you can revoke it any time in the site's rules or in <code>chrome://extensions</code>.</li>
       </ul>
-      <p>The extension only runs when you click its icon or press its keyboard shortcut. It does not run in the background or on pages you have not activated it on.</p>
+      <p>The extension only runs when you click its icon or press its keyboard shortcut — or on sites where you explicitly turned auto-open on. It does not run in the background or on any other page.</p>
 
       <h2>Contact</h2>
       <p>For questions about this policy, open an issue at the project's repository or email the developer.</p>

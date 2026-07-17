@@ -630,6 +630,21 @@
     wrap.className = 'wrap';
     wrap.innerHTML = `
       <div class="bar">
+        <!-- View cluster, leading the bar: the PRIMARY mode switch (Text ⇄ Images, the
+             same control the reader carries), then the gallery's own layout sub-switch
+             (Wall ⇄ Ordered) + its column-count Size, grouped right beside it — the
+             layout is a sub-mode of Images, so it sits under the mode switch, not off in
+             a corner. A divider sets this "how it's shown" cluster off from the rest. -->
+        <span class="seg" role="group" aria-label="${OBR.t('galleryReadingModeGroup')}">
+          <button class="seg-btn switch" data-act="text" title="${OBR.t('gallerySwitchToReaderTitle')}">${ICON_BOOK}<span>${OBR.t('galleryModeText')}</span></button>
+          <button class="seg-btn is-active" data-act="images" aria-current="true" title="${OBR.t('galleryCurrentModeTitle')}">${ICON_IMAGES}<span>${OBR.t('galleryModeImages')}</span></button>
+        </span>
+        <span class="seg layout" role="group" aria-label="${OBR.t('galleryLayoutGroup')}">
+          <button class="seg-btn lay-wall is-active" data-lay="wall" aria-current="true" title="${OBR.t('galleryLayoutWallTitle')}">${GRID_ICON}<span>${OBR.t('galleryLayoutWall')}</span></button>
+          <button class="seg-btn lay-ordered" data-lay="ordered" aria-current="false" title="${OBR.t('galleryLayoutOrderedTitle')}">${ROWS_ICON}<span>${OBR.t('galleryLayoutOrdered')}</span></button>
+        </span>
+        <label>${OBR.t('gallerySizeLabel')} <input type="range" class="range" min="2" step="1" aria-label="${OBR.t('gallerySizeAria')}"></label>
+        <span class="sep"></span>
         <span class="title">${OBR.t('galleryTitle')}</span>
         <span class="count"></span>
         <span class="sep"></span>
@@ -644,15 +659,6 @@
         <button class="btn undo-hide" style="display:none" title="${OBR.t('galleryUndoHideTitle')}">${OBR.t('galleryUndo')}</button>
         <span class="status"></span>
         <span class="spacer"></span>
-        <span class="seg layout" role="group" aria-label="${OBR.t('galleryLayoutGroup')}">
-          <button class="seg-btn lay-wall is-active" data-lay="wall" aria-current="true" title="${OBR.t('galleryLayoutWallTitle')}">${GRID_ICON}<span>${OBR.t('galleryLayoutWall')}</span></button>
-          <button class="seg-btn lay-ordered" data-lay="ordered" aria-current="false" title="${OBR.t('galleryLayoutOrderedTitle')}">${ROWS_ICON}<span>${OBR.t('galleryLayoutOrdered')}</span></button>
-        </span>
-        <label>${OBR.t('gallerySizeLabel')} <input type="range" class="range" min="2" step="1" aria-label="${OBR.t('gallerySizeAria')}"></label>
-        <span class="seg" role="group" aria-label="${OBR.t('galleryReadingModeGroup')}">
-          <button class="seg-btn switch" data-act="text" title="${OBR.t('gallerySwitchToReaderTitle')}">${ICON_BOOK}<span>${OBR.t('galleryModeText')}</span></button>
-          <button class="seg-btn is-active" data-act="images" aria-current="true" title="${OBR.t('galleryCurrentModeTitle')}">${ICON_IMAGES}<span>${OBR.t('galleryModeImages')}</span></button>
-        </span>
         <button class="btn report" data-act="report" title="${OBR.t('galleryReportTitle')}">${OBR.t('galleryReport')}</button>
         <button class="btn settings" data-act="settings" title="${OBR.t('gallerySettingsTitle')}">${OBR.t('gallerySettings')}</button>
         <button class="btn close" data-act="close">${OBR.t('galleryClose')}</button>
@@ -701,7 +707,7 @@
       });
     });
     wrap.querySelector('.switch').addEventListener('click', () => {
-      close();
+      close({ suppress: false }); // mode switch — still reading, not dismissing
       if (OBR.open) OBR.open(); // switch to the text reader
     });
     wrap.querySelector('.lb-close').addEventListener('click', (e) => { e.stopPropagation(); closeLightbox(); });
@@ -1737,8 +1743,11 @@
   }
 
   /* -------------------------------------------------- open / close */
-  async function open() {
+  // opts.trigger === 'auto': opened by the auto-open sentinel (no gesture) — show the
+  // transient "Auto-opened" chip with its escape hatch.
+  async function open(opts) {
     if (active) return;
+    const trigger = opts && opts.trigger;
     settings = await OBR.loadSettings();
     // Per-site layout memory: a host reopens in the layout (+ column count) you left it in. Wall
     // is the default; a site only opens Ordered if it was remembered that way.
@@ -1751,7 +1760,7 @@
     // Per-site image filter (hidden patterns). Fresh filter state each open.
     revealHidden = false; lastHide = null;
     try { hiddenPatterns = OBR.loadHidden ? await OBR.loadHidden(galleryHost) : []; } catch (e) { hiddenPatterns = []; }
-    if (OBR.close) OBR.close(); // ensure the text reader isn't also showing
+    if (OBR.close) OBR.close({ suppress: false }); // ensure the text reader isn't also showing (defensive — not a user dismissal)
     build();
     applyStylesheet();
     updateLayoutToggle();  // reflect the resolved layout on the Wall/Ordered switch
@@ -1768,9 +1777,14 @@
     render();
     startWatching(); // pick up late/lazy/inserted images without user action
     maybePreload();  // if the grid is shorter than the viewport, pull one chunk now
+    if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
   }
-  function close() {
+  // Records a USER-initiated dismissal into the shared auto-open suppression set —
+  // internal close paths (mode switch, the reader's defensive cross-close) pass
+  // { suppress: false }. Mirrors reader.js close(); see there for the why.
+  function close(opts) {
     if (!active) return;
+    if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
     stopAutoScroll(); // cancel the rAF before hiding the host (no orphan scrollTop writes)
     speedSetting.flush();     // persist a just-edited speed before a reopen reads storage
     slideSecsSetting.flush(); // persist a just-edited slideshow dwell too

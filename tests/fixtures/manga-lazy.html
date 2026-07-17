@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Chapter 12 — Lazy Manga Reader</title>
+  <style>
+    .page { display: block; margin: 12px auto; background: #eee; }
+  </style>
+</head>
+<body>
+  <!-- A lazy-loading manga/webtoon chapter: twelve pages, NONE decoded at probe time
+       (no src — only data-src, the classic lazy-loader shape) but every placeholder box
+       is laid out at its final size. The auto-open image gate must count these via the
+       lazy-evidence + layout-box arm; a naturalWidth-only count would see zero. -->
+  <main>
+    <h1>Chapter 12</h1>
+    <img class="page" loading="lazy" data-src="/pic.png?p=1" width="360" height="480" alt="page 1" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=2" width="360" height="480" alt="page 2" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=3" width="360" height="480" alt="page 3" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=4" width="360" height="480" alt="page 4" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=5" width="360" height="480" alt="page 5" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=6" width="360" height="480" alt="page 6" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=7" width="360" height="480" alt="page 7" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=8" width="360" height="480" alt="page 8" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=9" width="360" height="480" alt="page 9" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=10" width="360" height="480" alt="page 10" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=11" width="360" height="480" alt="page 11" />
+    <img class="page" loading="lazy" data-src="/pic.png?p=12" width="360" height="480" alt="page 12" />
+  </main>
+</body>
+</html>

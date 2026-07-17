@@ -6,9 +6,11 @@
 > dumps. It ALSO covers the maintainer's **private ops / tooling** — names of personal `~/.claude`
 > skills or slash commands (e.g. a feedback-triage command), your internal issue-triage workflow, or
 > how you personally process reports. These are not secrets, but they don't belong in a public repo.
-> Such things live ONLY in gitignored paths (`.env.chrome-webstore`, `.meta/`, `metrics/`) or your
+> Such things live ONLY in gitignored paths (`.env.chrome-webstore`, `.meta`, `metrics/`) or your
 > private `~/.claude/` config — never in `CLAUDE.md`, `README.md`, `SECURITY.md`, `store/`, `src/`,
-> tests, or commit messages. In tracked files describe features **generically** ("emails feedback to
+> tests, or commit messages. (`.meta` here is a **gitignored symlink** to off-repo private storage —
+> that's what gives its contents a backup without exposing them; never commit the link, name its
+> target in a tracked file, or `git add` it.) In tracked files describe features **generically** ("emails feedback to
 > the developer's inbox", "a machine-readable marker") — never reference private tooling by name. The
 > sole deliberate public contact is the in-app feedback address
 > `studio.peach.go+open-book-reader@gmail.com` (a project alias, by design). **Scan every diff for
@@ -27,7 +29,8 @@ reload the unpacked extension. (`package.json`/`scripts/` are release tooling on
 ## Architecture
 
 On-demand injection — nothing runs on a page until the user invokes it (toolbar click / `Alt+B`
-text / `Alt+Shift+B` images).
+text / `Alt+Shift+B` images). The one deliberate exception: sites where the user explicitly
+enabled per-site **auto-open** (its registered sentinel is the only pre-gesture code; see below).
 
 ```
 manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage, contextMenus)
@@ -39,6 +42,8 @@ src/content/
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
   zip.js             minimal ZIP writer (OBR._buildZip) — used by the gallery's "Download as ZIP"
   gallery.js         IMAGE mode: collect images → Wall masonry / Ordered rows + lightbox (Shadow DOM)
+  sentinel.js        AUTO-OPEN sentinel — the ONLY pre-gesture code, and only on sites the user
+                     enabled auto-open for (registered by the SW; see the Auto-open section)
 src/options/         options page (reuses settings.js)
 src/welcome.html     first-run activation page — onInstalled opens it (pin icon, shortcuts, sample article)
 src/report.html      ⚠ Report page (bundled, offline) — email OR a web form; opened via the SW relay
@@ -57,12 +62,46 @@ explicit toggle (`OBR.toggle` / `OBR.toggleGallery`); the **toolbar icon** calls
 which closes any open mode or auto-picks — gallery only when image-heavy (`_imageCount() >=
 autoGalleryMin`, default 10) AND not a real article (`_articleWordCount() < autoTextMinWords`,
 default 200), so a substantial article always wins. Only the icon auto-picks; shortcuts honor their
-named mode. `_articleWordCount` (`reader.js`) is NOT Readability — it counts words in prose blocks
-(`<p>`/`<blockquote>`/`<li>`, ≥20 words each) off the live DOM, so it's cheap and robust.
+named mode. The prose stats are NOT Readability — `OBR._proseStats()` (in `settings.js`, shared with
+the sentinel; `OBR._articleWordCount` is its long-standing alias) counts words in prose leaf blocks
+(`<p>`/`<blockquote>`/`<li>`, ≥20 words each, CJK-aware) off the live DOM, so it's cheap and robust.
 
 **Two modes, one namespace**: `reader.js` → `OBR.open/close/toggle` (`#obr-host`); `gallery.js` →
 `OBR.openGallery/closeGallery/toggleGallery` (`#obr-gallery-host`). Each is a separate open Shadow
 DOM; opening one closes the other; in-overlay buttons switch (🖼 in reader, 📖 in gallery).
+
+**Auto-open — per-site, opt-in, strict** (`sentinel.js` + `background.js`; full spec:
+`docs/auto-open-spec.md`). A `siteRules` entry may carry `auto: true`: the SW then keeps ONE
+registered content script (`syncSentinelRegistration()`, id `obr-sentinel`, `js:
+[settings.js, sentinel.js]`, `persistAcrossSessions`, matches = union of `originsForRule()` over
+auto rules filtered by `permissions.contains`) so content pages on that site (forum topics, manga
+chapters) open with zero clicks while list/search pages stay untouched. The sentinel runs a
+**strict-bias ladder** on every probe of a settle window (document_idle + ~1s/2.5s/5s, re-armed on
+SPA URL change via popstate/hashchange + a MutationObserver href compare): (0) suppression set +
+visibility + no-live-overlay check → (1) `matchSiteRuleEx` must return a rule with `auto:true` →
+(2) JSON-LD **list-type veto** (`CollectionPage`/`ItemList`/`SearchResultsPage`/`ProfilePage`,
+TOP-LEVEL nodes only — types nested under `itemListElement`/`item` never count, or Google's
+carousel markup on category pages would neuter the veto; exact `@type` equality only, else
+`BreadcrumbList` — schema.org's ItemList subtype on every news article — vetoes the web; an
+article-ish top-level type alongside suspends the veto but NEVER lowers thresholds; `og:type` has
+no role) → (3) content gate (text: `_proseStats().words >= autoTextMinWords` AND one block `>=
+autoAnchorWords` — the anchor is what rejects an index of long topic titles; images: ≥
+`autoGalleryMin` `<img>`s with decoded size OR lazy-evidence + layout box ≥ 120px — lazy manga
+pages have decoded nothing at probe time). Pass → `obr-auto-open` message → the SW **re-validates
+against fresh settings** (never trusts page state) → `invokeReader(…, {auto:true})` →
+`OBR.open({trigger:'auto'})` + the "Auto-opened" chip (`OBR._showAutoChip`, its own shadow host;
+Stop clears only the `auto` flag via `OBR.setRuleAuto`). A **user-initiated** `close()` (Esc/✕/
+toolbar) records `origin+pathname+search` (query matters: phpBB routes every topic through one
+pathname) into the shared in-page `OBR._autoSuppressed` set; internal closes (mode switch, cross-
+close) pass `{suppress:false}`. **Permissions: zero manifest delta** — per-origin
+`permissions.request` subsets of the already-optional `<all_urls>`; `originsForRule` → `[]` means
+"can't auto-open" (load-bearing: one invalid pattern rejects the whole registration; valid-but-
+ungranted patterns register fine and silently never inject). The enable flow (context-menu
+`obr-rule-auto` → permission popup with `reason=auto-open`, or the options checkbox) also
+`executeScript`s the sentinel into the CURRENT tab — registration only affects future document
+loads, the SPA gap — and re-arms with a one-shot flag: a qualifying page opens immediately, a
+non-qualifying one (enabled from a list page) shows an "Auto-open is on" confirmation chip instead
+of wrongly opening.
 
 **Rendering** (`reader.js`): Readability parses a `document.cloneNode(true)`; output renders into an
 open Shadow DOM styled via Constructable Stylesheets (`adoptedStyleSheets`) so strict-CSP sites can't
@@ -269,7 +308,9 @@ user's optional email for a repliable report; absent on a mailto → a reply goe
 - All shared state hangs off `globalThis.OBR` so injected files and the options page share one namespace.
 - Settings live in `chrome.storage.sync` under `obr_settings`, merged over `OBR.DEFAULTS` (`settings.js`).
   New setting → add to `DEFAULTS`, and (if user-tunable) to `options.html`/`options.js`.
-- Double-injection guards: `reader.js` via `OBR._engineLoaded`, `gallery.js` via `OBR._galleryLoaded`.
+- Double-injection guards: `reader.js` via `OBR._engineLoaded`, `gallery.js` via
+  `OBR._galleryLoaded`, `sentinel.js` via `OBR._sentinelLoaded` (its re-arm entry point for the
+  enable flow is `OBR._sentinelArm` — the IIFE won't re-run on a re-enable).
 
 ## Dev workflow
 
@@ -301,6 +342,11 @@ npx playwright install chromium                # first run only
   font size, progress/resume, close/toggle, settings persistence.
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
   (stubbed SW), mode switching.
+- `auto-open.spec.js` — the sentinel's decision ladder end-to-end (content gates, metadata veto,
+  suppression + SPA re-arm, enable-time chip, engine chip/suppress integration) plus the pure rule
+  helpers; the SW-side registration sync is covered in `extension-load.spec.js` with a stubbed
+  grant check, and the remaining SW slices (permission prompt, `obr-auto-open` handler) are
+  manual-verified per `docs/auto-open-spec.md` §10.
 - `options.spec.js` — options page (real extension context): the how-to-use guide, trigger + shortcut
   docs, native `<details>` collapse, first-run open.
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
@@ -369,6 +415,25 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   items → 8 `Cannot create item with duplicate id obr-*` unchecked-lastError entries and a red **Errors**
   badge on the extension card. Don't "simplify" it back. Failures log via `console.warn`, never
   `console.error` — chrome://extensions collects the worker's `console.error` into that same Errors list.
+  The menu is **state-aware**: `createMenus()` reads `siteRules` and scopes the "Stop auto-opening" and
+  "Clear rule" rows with `documentUrlPatterns` so they appear only on the matching site (auto rules /
+  whole-site rules respectively), and it re-runs on the `storage.onChanged` `siteRules` delta (alongside
+  `syncSentinelRegistration`), plus `onInstalled`/`onStartup`. Chrome has no `onShown` event and we hold
+  no `tabs` permission, so this declarative per-site scoping is the ONLY way to reflect state — and
+  patterns can only ADD a row, never HIDE the always-present generic one (no negative match patterns),
+  so "Stop" sits BESIDE "Auto-open on this site" (a pair), it doesn't replace it.
+- **`syncSentinelRegistration()` must stay SERIALIZED on its promise chain** — the exact
+  `onInstalled`+`onStartup` double-fire that broke the context menu applies, and two overlapping
+  syncs would race the register/update/unregister diff. Registration mechanics that are easy to
+  get wrong: zero auto rules must UNREGISTER (an empty `matches` array is invalid); one INVALID
+  pattern rejects a whole `registerContentScripts` call (hence `originsForRule`'s `[]` guard);
+  a valid-but-ungranted pattern registers fine and silently never injects. Gate the
+  `storage.onChanged` trigger on an actual `siteRules` delta — every font nudge and debounced
+  gallery persist writes `obr_settings` and would otherwise wake a pointless re-diff.
+- Prose counting (`OBR._proseStats`/`_countWords`) lives in **settings.js**, shared by the reader,
+  the gallery's `_autoToggle`, AND the sentinel — one implementation so the verdicts agree. It
+  touches the DOM at call time only: settings.js is `importScripts`'d into the SW, where a
+  top-level DOM access would kill worker registration.
 - `readability.js` is third-party vendored code — keep it pristine; fixes go upstream.
 - `reader.js` injects `article.content` via `innerHTML` into the Shadow DOM (and the print iframe).
   Vendored Readability is NOT a sanitizer (it keeps e.g. `<img onerror>`), so EVERY content path —

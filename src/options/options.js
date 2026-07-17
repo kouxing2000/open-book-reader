@@ -105,6 +105,51 @@
     return sel;
   }
 
+  // Ask for the per-site origin permission an auto-open rule needs. This page is an
+  // extension page and the change event runs in a click's gesture context, so
+  // permissions.request can prompt directly — no popup relay needed here.
+  function requestOrigins(origins, cb) {
+    try {
+      if (chrome.permissions && chrome.permissions.request) {
+        chrome.permissions.request({ origins }, (granted) => { void chrome.runtime.lastError; cb(!!granted); });
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    cb(false);
+  }
+
+  // The per-row Auto-open checkbox. Checking asks for the site permission first (a
+  // denied prompt reverts the box); unchecking only clears the flag — the permission is
+  // never auto-revoked (it may serve other features; revoking is the user's call in
+  // chrome://extensions). Rules whose host part can't form a Chrome match pattern
+  // (a mid-host `*`) can't auto-open: disabled box + a title explaining why.
+  function autoCheckbox(rule) {
+    const label = document.createElement('label');
+    label.className = 'site-auto';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = rule.auto === true;
+    const text = document.createElement('span');
+    text.textContent = OBR.t('optAutoCol');
+    const origins = OBR.originsForRule(rule.match);
+    if (!origins.length) {
+      cb.disabled = true;
+      label.title = OBR.t('optAutoNoPattern');
+    } else {
+      label.title = OBR.t('optAutoHint');
+      cb.addEventListener('change', () => {
+        const commit = (on) => persistRules(OBR.setRuleAuto(cloneRules(), rule.match, on));
+        if (!cb.checked) return commit(false);
+        requestOrigins(origins, (granted) => {
+          if (!granted) { cb.checked = false; return; }
+          commit(true);
+        });
+      });
+    }
+    label.append(cb, text);
+    return label;
+  }
+
   function removeRule(i) {
     const next = cloneRules();
     next.splice(i, 1);
@@ -148,7 +193,7 @@
       remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = OBR.t('optRemove');
       remove.addEventListener('click', () => removeRule(i));
 
-      row.append(name, mode, remove);
+      row.append(name, mode, autoCheckbox(rule), remove);
       wrap.appendChild(row);
     });
   }
@@ -158,12 +203,25 @@
     const match = OBR.normalizePattern(input.value);
     if (!match) return;
     const modeVal = document.getElementById('siteMode').value;
-    const next = cloneRules();
-    const existing = next.find((r) => r.match === match); // update in place if same pattern
-    if (existing) existing.mode = modeVal;
-    else next.push({ match, mode: modeVal });
-    persistRules(next, renderSites);
-    input.value = '';
+    const autoCb = document.getElementById('siteAuto');
+    const finish = (auto) => {
+      const next = cloneRules();
+      const existing = next.find((r) => r.match === match); // update in place if same pattern
+      if (existing) { existing.mode = modeVal; if (auto) existing.auto = true; }
+      else { const r = { match, mode: modeVal }; if (auto) r.auto = true; next.push(r); }
+      persistRules(next, renderSites);
+      input.value = '';
+      if (autoCb) autoCb.checked = false;
+    };
+    if (autoCb && autoCb.checked) {
+      // Auto-open needs the site permission; a denied prompt (or an un-grantable
+      // pattern) still adds the rule, just without the auto flag — the row's checkbox
+      // shows the state and can retry.
+      const origins = OBR.originsForRule(match);
+      if (!origins.length) return finish(false);
+      return requestOrigins(origins, (granted) => finish(granted));
+    }
+    finish(false);
   }
 
   document.getElementById('siteAddBtn').addEventListener('click', addRule);

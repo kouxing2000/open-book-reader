@@ -99,6 +99,14 @@
     overlay.className = 'obr-overlay ' + resolveTheme();
     overlay.innerHTML = `
       <div class="obr-topbar">
+        <!-- The mode switch (Text ⇄ Images) LEADS the bar — it's the highest-level control
+             (which reading mode entirely), shared with the gallery, so it sits in the same
+             prominent far-left slot in both overlays rather than buried among the tools. -->
+        <span class="obr-seg" role="group" aria-label="${OBR.t('readerSegGroupLabel')}">
+          <button class="obr-seg-btn is-active" data-act="text" aria-current="true" title="${OBR.t('readerSegTextTitle')}">${ICON_BOOK}<span>${OBR.t('readerSegTextLabel')}</span></button>
+          <button class="obr-seg-btn" data-act="images" title="${OBR.t('readerSegImagesTitle')}">${ICON_IMAGES}<span>${OBR.t('readerSegImagesLabel')}</span><span class="obr-seg-badge" hidden></span></button>
+        </span>
+        <span class="obr-topdiv"></span>
         <span class="obr-doc-title"></span>
         <span class="obr-doc-meta"></span>
         <span class="obr-controls">
@@ -106,10 +114,6 @@
           <button class="obr-btn" data-act="font+" title="${OBR.t('readerBtnFontLargerTitle')}">A+</button>
           <button class="obr-btn" data-act="theme" title="${OBR.t('readerBtnThemeTitle')}">${OBR.t('readerBtnThemeLabel')}</button>
           <button class="obr-btn" data-act="columns" title="${OBR.t('readerBtnColumnsTitle')}">⊞ 2</button>
-          <span class="obr-seg" role="group" aria-label="${OBR.t('readerSegGroupLabel')}">
-            <button class="obr-seg-btn is-active" data-act="text" aria-current="true" title="${OBR.t('readerSegTextTitle')}">${ICON_BOOK}<span>${OBR.t('readerSegTextLabel')}</span></button>
-            <button class="obr-seg-btn" data-act="images" title="${OBR.t('readerSegImagesTitle')}">${ICON_IMAGES}<span>${OBR.t('readerSegImagesLabel')}</span><span class="obr-seg-badge" hidden></span></button>
-          </span>
           <button class="obr-btn" data-act="pick" title="${OBR.t('readerBtnPickTitle')}">${OBR.t('readerBtnPickLabel')}</button>
           <button class="obr-btn" data-act="print" title="${OBR.t('readerBtnPrintTitle')}">${OBR.t('readerBtnPrintLabel')}</button>
           <button class="obr-btn" data-act="report" title="${OBR.t('readerBtnReportTitle')}">${OBR.t('readerBtnReportLabel')}</button>
@@ -198,7 +202,7 @@
     if (act === 'pick') return startPicker();
     if (act === 'print') return printReader();
     if (act === 'text') return; // already in the text reader — active segment is a no-op
-    if (act === 'images') { close(); if (OBR.openGallery) OBR.openGallery(); return; }
+    if (act === 'images') { close({ suppress: false }); if (OBR.openGallery) OBR.openGallery(); return; } // mode switch — still reading, not dismissing
   }
 
   /* ----------------------------------------------------- print / save as PDF */
@@ -851,48 +855,19 @@
   }
 
   // "Article-ness" signal for the toolbar auto-mode (gallery.js `_autoToggle`): the
-  // number of words that live in SUBSTANTIAL prose blocks on the page. We count a
-  // block (<p>/<blockquote>/<li>) only when it holds >= MIN_PARA_WORDS itself — a real
-  // article is carried by big paragraphs, whereas captions, nav, tags and one-line
-  // snippets (an image board's "text") are short and don't count. Read straight off
-  // the live DOM rather than Readability's extraction, so it still scores a real
-  // article even when extraction undercounts, and it's far cheaper than a full parse.
-  // (Our own UI is in Shadow DOM, so querySelectorAll never sees it.)
-  const MIN_PARA_WORDS = 20;
-  // CJK (incl. compatibility ideographs), kana, and hangul write without spaces, so a
-  // whole Chinese/Japanese/Korean paragraph is ONE whitespace token — it would never
-  // clear MIN_PARA_WORDS and proseWordCount would read ~0 on a real CJK article. That
-  // mis-scores the toolbar auto-mode: an image-rich Chinese page (forum, blog) looks
-  // text-less and opens the gallery instead of the reader. Count each CJK/kana/hangul
-  // glyph as its own word, plus the space-delimited tokens of whatever's left (Latin,
-  // digits, punctuation). Pure-Latin text is unaffected (the class matches nothing).
-  const CJK_RE = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\uff66-\uff9f]/g;
-  function wordsIn(el) {
-    const t = el.textContent.trim();
-    if (!t) return 0;
-    const cjk = (t.match(CJK_RE) || []).length;
-    return cjk + (t.replace(CJK_RE, ' ').match(/\S+/g) || []).length;
-  }
-  function proseWordCount() {
-    let total = 0;
-    document.querySelectorAll('p, blockquote, li').forEach((el) => {
-      if (el.querySelector('p, blockquote, li')) return; // count leaf blocks, no nesting double-count
-      const w = wordsIn(el);
-      if (w >= MIN_PARA_WORDS) total += w;
-    });
-    return total;
-  }
+  // number of words that live in SUBSTANTIAL prose blocks on the page. The counting
+  // itself (the CJK-aware tokenizer + leaf-block walk) lives in settings.js as
+  // OBR._proseStats / OBR._countWords, so the auto-open sentinel — which loads only
+  // settings.js + sentinel.js — shares the ONE implementation with the reader and
+  // the gallery, and the verdicts always agree.
+  function proseWordCount() { return OBR._proseStats().words; }
   OBR._articleWordCount = proseWordCount;
 
-  // CJK-aware word count of a plain string — same TOKENIZATION as wordsIn (so the ratio below
-  // isn't skewed by a Latin-vs-CJK scoring mismatch). Note it counts ALL of the extracted text,
-  // whereas proseWordCount counts only substantial leaf p/blockquote/li blocks — a deliberate
-  // asymmetry that inflates `kept`, biasing toward NOT flagging (fewer false nags).
-  function countWords(text) {
-    const t = (text || '').trim();
-    if (!t) return 0;
-    return (t.match(CJK_RE) || []).length + (t.replace(CJK_RE, ' ').match(/\S+/g) || []).length;
-  }
+  // CJK-aware word count of a plain string — same TOKENIZATION as _proseStats (so the ratio
+  // below isn't skewed by a Latin-vs-CJK scoring mismatch). Note it counts ALL of the extracted
+  // text, whereas proseWordCount counts only substantial leaf p/blockquote/li blocks — a
+  // deliberate asymmetry that inflates `kept`, biasing toward NOT flagging (fewer false nags).
+  const countWords = (text) => OBR._countWords(text);
   // Does a whole-page extraction look wrong? True when it failed outright (placeholder showing),
   // or when it kept far less text than the live page actually has in prose — the "grabbed a
   // sidebar / related-list / truncated teaser" cases. A wrong block of SIMILAR size won't trip
@@ -1452,12 +1427,15 @@
   }
 
   /* ---------------------------------------------------------------- open/close */
-  async function open() {
+  // opts.trigger === 'auto': opened by the auto-open sentinel (no gesture) — show the
+  // transient "Auto-opened" chip with its escape hatch.
+  async function open(opts) {
     if (active) return;
+    const trigger = opts && opts.trigger;
     const gen = ++openGen; // claim this open; abort below if a newer open()/close() supersedes us
     settings = await OBR.loadSettings();
     if (gen !== openGen) return;
-    if (OBR.closeGallery) OBR.closeGallery(); // ensure image mode isn't also showing
+    if (OBR.closeGallery) OBR.closeGallery({ suppress: false }); // ensure image mode isn't also showing (defensive — not a user dismissal)
     build();
     applyStylesheet();
     overlay.className = 'obr-overlay ' + resolveTheme();
@@ -1519,12 +1497,19 @@
     showChrome(); // show controls briefly, then auto-hide
     requestAnimationFrame(() => layout(false));
     watchMedia(); // re-paginate once late-loading images / fonts settle
+    if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
     OBR._opensCompleted = (OBR._opensCompleted || 0) + 1; // test hook: full inits that ran to completion
   }
 
-  function close() {
+  // Records a USER-initiated dismissal (Esc, ✕, toolbar toggle-off) into the shared
+  // suppression set so the auto-open sentinel never re-opens this page in the same page
+  // session (SPA back/forward). Internal close paths — the in-overlay mode switch and
+  // the gallery's defensive cross-close — pass { suppress: false }: the user is still
+  // reading, not dismissing.
+  function close(opts) {
     openGen++; // invalidate any in-flight open() (e.g. the gallery taking over mid-open)
     if (!active) return;
+    if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
     if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open

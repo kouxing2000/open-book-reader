@@ -23,6 +23,7 @@ test('package-extension.js produces a clean, complete zip', () => {
   expect(entries).toContain('src/background.js');
   expect(entries).toContain('src/content/reader.style.js');
   expect(entries).toContain('src/content/reader.js');
+  expect(entries).toContain('src/content/sentinel.js'); // auto-open registers this at runtime — a miss ships a dead feature
   expect(entries).toContain('icons/icon128.png');
   // Localization must ship: the default locale is load-bearing (manifest declares
   // default_locale), and the translated locales are the whole point of shipping them.

@@ -38,6 +38,11 @@ test('Chrome loads the shipped manifest (name + minimal install permissions)', a
   // downloads + <all_urls> are OPTIONAL, requested on first image download.
   expect(manifest.optional_permissions).toEqual(['downloads']);
   expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
+  // Auto-open ships with ZERO manifest delta: per-site origin requests ride the
+  // optional <all_urls> above, registerContentScripts + persistAcrossSessions are
+  // Chrome 96+ — a bump past 102 (once proposed off a wrong claim; 105 is Firefox's
+  // milestone) would strand users for nothing.
+  expect(manifest.minimum_chrome_version).toBe('102');
 
   // The resolved English (default-locale) store name lives in the messages catalog.
   await page.goto(`chrome-extension://${extensionId}/_locales/en/messages.json`);
@@ -73,10 +78,14 @@ test('racing createMenus() calls rebuild the menu without duplicate-id errors', 
     return { created, errs };
   });
 
-  // Positive landmark FIRST: both racing builds ran to completion, each creating all 8 items.
-  // Without this, a build that silently created nothing would satisfy the no-errors assertion.
+  // Positive landmark FIRST: both racing builds ran to completion, each creating all 11
+  // ALWAYS-present items. (The fresh test profile has no rules, so the state-scoped
+  // "Stop"/"Clear" rows aren't created here — that's the whole point of the redesign, and
+  // it's covered by the state-aware test below.) Without this, a build that silently
+  // created nothing would satisfy the no-errors assertion.
   const ids = ['obr-open', 'obr-open-auto', 'obr-open-text', 'obr-open-images',
-    'obr-sep', 'obr-rule-text', 'obr-rule-images', 'obr-rule-clear'];
+    'obr-sep', 'obr-rule-text', 'obr-rule-images', 'obr-sep2', 'obr-rule-auto',
+    'obr-sep-opts', 'obr-open-options'];
   for (const id of ids) {
     expect(created.filter((c) => c === id), `creates of ${id}`).toHaveLength(2);
   }
@@ -99,4 +108,123 @@ test('by default the SW holds no downloads/host access (opt-in only)', async ({ 
   expect(caps.containsHost).toBe(false);      // optional host access not yet granted
   expect(caps.hasDownloads).toBe(false);      // chrome.downloads appears only after grant
   expect(caps.fetchBlocked).toBe(true);       // cross-origin fetch blocked without host access
+});
+
+test('syncSentinelRegistration tracks the auto rules: register, skip invalid globs, unregister', async ({ serviceWorker }) => {
+  // Headless can't GRANT an origin, but registration itself is drivable: stub only the
+  // grant check and exercise the real registerContentScripts round-trip in the real SW.
+  const r = await serviceWorker.evaluate(async () => {
+    const out = {};
+    const realContains = chrome.permissions.contains;
+    chrome.permissions.contains = (_need, cb) => cb(true); // pretend the origins are granted
+    try {
+      await new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteRules: [
+        { match: 'example.com', mode: 'text', auto: true },
+        { match: 'ex*ample.com', mode: 'text', auto: true }, // originsForRule → [] — must not poison the batch
+      ] } }, res));
+      await syncSentinelRegistration();
+      const regged = await chrome.scripting.getRegisteredContentScripts({ ids: ['obr-sentinel'] });
+      out.matches = regged[0] && regged[0].matches.slice().sort();
+      out.persist = regged[0] && regged[0].persistAcrossSessions;
+      out.js = regged[0] && regged[0].js.map((p) => p.split('/').pop());
+
+      // Dropping the last auto flag must UNREGISTER (an empty matches array is invalid).
+      await new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteRules: [
+        { match: 'example.com', mode: 'text' },
+      ] } }, res));
+      await syncSentinelRegistration();
+      out.after = (await chrome.scripting.getRegisteredContentScripts({ ids: ['obr-sentinel'] })).length;
+    } finally {
+      chrome.permissions.contains = realContains;
+    }
+    return out;
+  });
+  expect(r.matches).toEqual(['*://example.com/*', '*://www.example.com/*']);
+  expect(r.persist).toBe(true); // survives browser restarts without re-registration
+  expect(r.js).toEqual(['settings.js', 'sentinel.js']);
+  expect(r.after).toBe(0);
+});
+
+test('the "Auto-open on this site" context item is created (real SW build)', async ({ serviceWorker }) => {
+  // The exact item a user right-clicks to turn the feature on. Capture what createMenus()
+  // actually creates in the LIVE service worker (there's no contextMenus "get all" API).
+  const created = await serviceWorker.evaluate(async () => {
+    const seen = [];
+    const real = chrome.contextMenus.create;
+    chrome.contextMenus.create = function (props, cb) {
+      return real.call(chrome.contextMenus, props, () => { void chrome.runtime.lastError; seen.push({ id: props.id, title: props.title }); if (cb) cb(); });
+    };
+    try { await createMenus(); } finally { chrome.contextMenus.create = real; }
+    return seen;
+  });
+  const auto = created.find((m) => m.id === 'obr-rule-auto');
+  expect(auto, 'obr-rule-auto must be among the created menu items').toBeTruthy();
+  expect(auto.title).toBe('Auto-open on this site'); // resolved i18n, not a blank/placeholder title
+
+  const opts = created.find((m) => m.id === 'obr-open-options');
+  expect(opts, 'the "Settings…" jump to the options page must be present').toBeTruthy();
+  expect(opts.title).toBe('Settings…'); // resolved i18n
+});
+
+test('the menu is state-aware: Clear only where a rule exists, Stop only on auto sites', async ({ serviceWorker }) => {
+  // The redesign: menu rows follow the SITE's saved rules via documentUrlPatterns (rebuilt
+  // on rule changes), since Chrome can't morph the menu at click time without the `tabs`
+  // permission. Seed two rules and capture what the REAL service worker builds.
+  const created = await serviceWorker.evaluate(async () => {
+    await new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteRules: [
+      { match: 'ruled.com', mode: 'text' },              // a view rule, NOT auto
+      { match: 'auto.com', mode: 'auto', auto: true },   // auto-open on
+    ] } }, res));
+    const seen = [];
+    const real = chrome.contextMenus.create;
+    chrome.contextMenus.create = function (props, cb) {
+      return real.call(chrome.contextMenus, props, () => {
+        void chrome.runtime.lastError;
+        seen.push({ id: props.id, patterns: props.documentUrlPatterns || null });
+        if (cb) cb();
+      });
+    };
+    try { await createMenus(); } finally { chrome.contextMenus.create = real; }
+    return seen;
+  });
+  const byId = (id) => created.find((m) => m.id === id);
+  expect(byId('obr-rule-auto'), '"Auto-open" (turn-on) is always present').toBeTruthy();
+
+  const clear = byId('obr-rule-clear');
+  expect(clear, 'Clear appears once a whole-site rule exists').toBeTruthy();
+  expect(clear.patterns.slice().sort())
+    .toEqual(['*://auto.com/*', '*://ruled.com/*', '*://www.auto.com/*', '*://www.ruled.com/*']); // scoped to BOTH ruled sites
+
+  const stop = byId('obr-rule-auto-stop');
+  expect(stop, 'Stop appears only where auto-open is on').toBeTruthy();
+  expect(stop.patterns.slice().sort()).toEqual(['*://auto.com/*', '*://www.auto.com/*']);
+  expect(stop.patterns).not.toContain('*://ruled.com/*'); // NOT offered on the non-auto site
+});
+
+test('enabling auto-open (the menu-click path) writes the rule and registers the sentinel', async ({ serviceWorker }) => {
+  // This is the whole "turn it on" flow the user drives from the context menu, run against
+  // the REAL service worker: enableAutoOpen() upserts an auto rule and syncs registration.
+  // Only the native permission PROMPT is unavailable headless, so we stub contains→granted
+  // (the popup's job) and drive the rest for real.
+  const r = await serviceWorker.evaluate(async () => {
+    const realContains = chrome.permissions.contains;
+    chrome.permissions.contains = (_need, cb) => cb(true); // as if the site origin were already granted
+    try {
+      await new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteRules: [] } }, res));
+      enableAutoOpen('example.com', { id: 999999 }); // bogus tab id: injectSentinelNow just no-ops (caught)
+      // enableAutoOpen is fire-and-forget — poll until the rule lands.
+      let rule = null;
+      for (let i = 0; i < 40 && !rule; i++) {
+        await new Promise((res) => setTimeout(res, 50));
+        const s = await new Promise((res) => chrome.storage.sync.get('obr_settings', (d) => res(d.obr_settings || {})));
+        rule = (s.siteRules || []).find((x) => x.match === 'example.com') || null;
+      }
+      const regged = await chrome.scripting.getRegisteredContentScripts({ ids: ['obr-sentinel'] });
+      return { rule, matches: regged[0] && regged[0].matches.slice().sort() };
+    } finally {
+      chrome.permissions.contains = realContains;
+    }
+  });
+  expect(r.rule).toEqual({ match: 'example.com', mode: 'auto', auto: true }); // flagged in real storage
+  expect(r.matches).toEqual(['*://example.com/*', '*://www.example.com/*']);  // sentinel registered for it
 });

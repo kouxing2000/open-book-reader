@@ -22,7 +22,11 @@ const FILES = [
 
 // mode: 'text' (reader), 'images' (masonry gallery), or 'auto' (toolbar icon —
 // pick the mode by how many images the page has; see the func below).
-async function invokeReader(tabId, url, mode) {
+// opts.auto: the auto-open sentinel triggered this (no gesture): dispatch calls
+// OBR.open/openGallery DIRECTLY with { trigger: 'auto' } — never the toggles, which
+// could CLOSE a just-opened overlay on a rare double fire — and the engines show the
+// "Auto-opened" chip.
+async function invokeReader(tabId, url, mode, opts) {
   if (!tabId) return;
   // Don't try to inject into restricted pages.
   if (url && /^(chrome|edge|about|chrome-extension|edge-extension|view-source):/i.test(url)) {
@@ -42,9 +46,14 @@ async function invokeReader(tabId, url, mode) {
     // Toggle the requested mode.
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: (m) => {
+      func: (m, auto) => {
         const OBR = globalThis.OBR;
         if (!OBR) return;
+        if (auto) {
+          // Sentinel-triggered: open directly (mode was resolved page-side).
+          if (m === 'images') return OBR.openGallery && OBR.openGallery({ trigger: 'auto' });
+          return OBR.open && OBR.open({ trigger: 'auto' });
+        }
         // Explicit intent from the keyboard commands — always honor the named mode.
         if (m === 'images') return OBR.toggleGallery && OBR.toggleGallery();
         if (m === 'text') return OBR.toggle && OBR.toggle();
@@ -52,7 +61,7 @@ async function invokeReader(tabId, url, mode) {
         if (OBR._autoToggle) return OBR._autoToggle();
         return OBR.toggle && OBR.toggle();
       },
-      args: [mode]
+      args: [mode, !!(opts && opts.auto)]
     });
   } catch (err) {
     console.error('[OpenBookReader] injection failed:', err);
@@ -86,6 +95,41 @@ chrome.commands.onCommand.addListener(async (command) => {
 // this serialization exists to prevent. A warn keeps the failure visible in the SW console
 // (and one failed parent means every child fails too, i.e. NO menu — worth seeing) without
 // re-creating the symptom.
+// Open the options page, optionally SCOPED to a site (its rules/picks/hidden lists filter
+// to that host, with a "Show all" chip). Shared by the reader/gallery ⚙ relay and the
+// context-menu "Settings…" item. Always routes through openOptionsPage() so an already-open
+// options tab is FOCUSED, not duplicated (we can't dedupe via tabs.query without the `tabs`
+// permission — a deliberate non-goal). The scope rides a one-shot chrome.storage.local key
+// instead of a ?site= URL: options.js reads + clears it on load, and its storage.onChanged
+// listener re-scopes a tab that's already open. (local, not session — session doesn't
+// reliably survive the SW→page handoff; the key is consumed immediately so it never lingers.)
+function openOptionsForSite(site) {
+  const s = site && String(site).trim();
+  const openPage = () => { try { chrome.runtime.openOptionsPage(); } catch (e) { /* */ } };
+  try {
+    if (s && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ obr_options_site: s }, openPage); // stash, THEN open
+    } else {
+      openPage();
+    }
+  } catch (e) { openPage(); }
+}
+
+// The migrated siteRules from storage (a fresh array; [] on any failure). Used by
+// createMenus() to tailor the menu to the current site's saved state.
+function getSiteRules() {
+  return new Promise((res) => {
+    try {
+      chrome.storage.sync.get('obr_settings', (d) => {
+        void chrome.runtime.lastError;
+        const raw = (d && d.obr_settings) || {};
+        OBR.migrateSiteRules(raw);
+        res(raw.siteRules || []);
+      });
+    } catch (e) { res([]); }
+  });
+}
+
 let menuBuild = Promise.resolve();
 function createMenus() {
   menuBuild = menuBuild.then(async () => {
@@ -100,16 +144,54 @@ function createMenus() {
       if (err) console.warn('[OpenBookReader] contextMenus.create', props.id + ':', err.message);
       res();
     }));
+
+    // State-aware menu (docs/auto-open-spec.md): the menu reflects the current SITE's
+    // saved rules. Chrome has no "menu about to open" event and we hold no `tabs`
+    // permission, so we can't morph by the page under the cursor at click time — but
+    // `documentUrlPatterns` makes an item appear only on matching sites (declarative,
+    // permission-free), and we rebuild here on every siteRules change. Hard limit:
+    // patterns only ADD an item, they can't HIDE a generic one (match patterns have no
+    // negation), so a site's state shows as an ADDED "Stop"/"Clear" beside the
+    // always-present actions — a pair, not a swap.
+    const rules = await getSiteRules();
+    const uniq = (a) => [...new Set(a)];
+    // "Clear rule" (menu) removes only the WHOLE-SITE rule, so offer it only where one
+    // exists (`match` with no path) — this kills the old no-op "Clear" on fresh sites.
+    const clearPatterns = uniq(rules
+      .filter((r) => r && r.match && r.mode && r.match.indexOf('/') === -1)
+      .flatMap((r) => OBR.originsForRule(r.match)));
+    // "Stop auto-opening" appears wherever an auto rule matches (path rules too; the
+    // handler uses info.pageUrl to clear the exact one).
+    const autoPatterns = uniq(rules
+      .filter((r) => r && r.auto === true && r.match && r.mode)
+      .flatMap((r) => OBR.originsForRule(r.match)));
+
     await removeAll();
     await add({ id: 'obr-open', title: OBR.t('ctxOpenTitle'), contexts: ctx });
+    // Band 1 — open once (one-shot, this visit only).
     await add({ id: 'obr-open-auto', parentId: 'obr-open', title: OBR.t('ctxAuto'), contexts: ctx });
     await add({ id: 'obr-open-text', parentId: 'obr-open', title: OBR.t('ctxReader'), contexts: ctx });
     await add({ id: 'obr-open-images', parentId: 'obr-open', title: OBR.t('ctxGallery'), contexts: ctx });
-    // Set a persistent whole-site rule (most-specific path rules are typed in Options).
+    // Band 2 — the site's DEFAULT VIEW (a persistent whole-site rule; path rules are
+    // typed in Options). This is the "which view" axis.
     await add({ id: 'obr-sep', parentId: 'obr-open', type: 'separator', contexts: ctx });
     await add({ id: 'obr-rule-text', parentId: 'obr-open', title: OBR.t('ctxAlwaysReader'), contexts: ctx });
     await add({ id: 'obr-rule-images', parentId: 'obr-open', title: OBR.t('ctxAlwaysGallery'), contexts: ctx });
-    await add({ id: 'obr-rule-clear', parentId: 'obr-open', title: OBR.t('ctxClearRule'), contexts: ctx });
+    // Band 3 — AUTO-OPEN, a separate axis (whether the view opens with no click). Kept
+    // apart from Band 2 by its own divider — the user asked not to conflate the two.
+    await add({ id: 'obr-sep2', parentId: 'obr-open', type: 'separator', contexts: ctx });
+    await add({ id: 'obr-rule-auto', parentId: 'obr-open', title: OBR.t('ctxAutoOpen'), contexts: ctx });
+    if (autoPatterns.length) {
+      await add({ id: 'obr-rule-auto-stop', parentId: 'obr-open', title: OBR.t('ctxStopAutoOpen'), contexts: ctx, documentUrlPatterns: autoPatterns });
+    }
+    // Clear — only on sites that actually carry a whole-site rule.
+    if (clearPatterns.length) {
+      await add({ id: 'obr-sep3', parentId: 'obr-open', type: 'separator', contexts: ctx, documentUrlPatterns: clearPatterns });
+      await add({ id: 'obr-rule-clear', parentId: 'obr-open', title: OBR.t('ctxClearRule'), contexts: ctx, documentUrlPatterns: clearPatterns });
+    }
+    // Footer — a jump to the full options page (scoped to this site), always available.
+    await add({ id: 'obr-sep-opts', parentId: 'obr-open', type: 'separator', contexts: ctx });
+    await add({ id: 'obr-open-options', parentId: 'obr-open', title: OBR.t('ctxOptions'), contexts: ctx });
   }).catch((e) => {
     // Swallow so a failed build can't poison the chain for the next one — but say so.
     console.warn('[OpenBookReader] context menu build failed:', e);
@@ -120,21 +202,187 @@ function createMenus() {
 // Add/replace/remove the WHOLE-SITE rule for `host` (read-modify-write the raw settings
 // object). OBR.upsertSiteRule folds in any legacy `sites` map and does the add/replace/
 // remove — the same shared helper the read (loadSettings) and save paths use.
-function setSiteRule(host, mode) {
+// `opts.auto` (optional) sets/clears the auto-open flag; absent preserves it.
+// `then` (optional) runs after the write commits.
+function setSiteRule(host, mode, opts, then) {
   if (!host) return;
   chrome.storage.sync.get('obr_settings', (data) => {
     void chrome.runtime.lastError;
     const raw = (data && data.obr_settings) || {};
-    OBR.upsertSiteRule(raw, host, mode);
-    chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; });
+    OBR.upsertSiteRule(raw, host, mode, opts);
+    chrome.storage.sync.set({ obr_settings: raw }, () => {
+      void chrome.runtime.lastError;
+      if (then) then();
+    });
   });
 }
+
+/* --------------------------------------------------------- auto-open sentinel
+ * Per-site auto-open (docs/auto-open-spec.md): rules carrying `auto: true` get a tiny
+ * REGISTERED content script (the sentinel) on their granted origins, which runs the
+ * strict decision ladder on each page load / SPA navigation and messages back here to
+ * open. Registration is DECLARATIVE state in Chrome — this block keeps it in sync with
+ * the settings + the granted permissions. */
+const SENTINEL_ID = 'obr-sentinel';
+const SENTINEL_FILES = ['src/content/settings.js', 'src/content/sentinel.js'];
+
+// Serialized + idempotent on a promise chain, exactly like createMenus(): onInstalled
+// and onStartup can both fire in one worker activation, and two overlapping syncs would
+// race the register/update/unregister diff. Failures log via console.warn, never
+// console.error (the chrome://extensions red-badge rule).
+let sentinelSync = Promise.resolve();
+function syncSentinelRegistration() {
+  sentinelSync = sentinelSync.then(async () => {
+    const raw = await new Promise((res) => {
+      try { chrome.storage.sync.get('obr_settings', (d) => { void chrome.runtime.lastError; res((d && d.obr_settings) || {}); }); }
+      catch (e) { res({}); }
+    });
+    OBR.migrateSiteRules(raw);
+    // The union of origin patterns over all auto rules...
+    let patterns = [];
+    for (const r of raw.siteRules) {
+      if (r && r.auto === true && r.match && r.mode) patterns.push(...OBR.originsForRule(r.match));
+    }
+    patterns = [...new Set(patterns)];
+    // ...filtered to what's actually granted. Registering an UNGRANTED (but valid)
+    // pattern would merely never inject — this filter is hygiene, keeping the
+    // registration equal to what can run. (Invalid globs never get here:
+    // originsForRule returns [] for them, which matters — one invalid pattern
+    // rejects a whole registerContentScripts call.)
+    const granted = [];
+    for (const p of patterns) {
+      const has = await new Promise((res) => {
+        try { chrome.permissions.contains({ origins: [p] }, (h) => { void chrome.runtime.lastError; res(!!h); }); }
+        catch (e) { res(false); }
+      });
+      if (has) granted.push(p);
+    }
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [SENTINEL_ID] }).catch(() => []);
+    const current = existing && existing[0];
+    if (!granted.length) {
+      // No active auto rules → UNREGISTER entirely (an empty `matches` array is invalid).
+      if (current) await chrome.scripting.unregisterContentScripts({ ids: [SENTINEL_ID] });
+      return;
+    }
+    const desired = {
+      id: SENTINEL_ID,
+      js: SENTINEL_FILES,
+      matches: granted,
+      runAt: 'document_idle',
+      persistAcrossSessions: true, // Chrome 96+; survives restarts so startup needs no re-registration
+    };
+    const same = current && JSON.stringify((current.matches || []).slice().sort()) === JSON.stringify(granted.slice().sort());
+    if (!current) await chrome.scripting.registerContentScripts([desired]);
+    else if (!same) await chrome.scripting.updateContentScripts([desired]);
+  }).catch((e) => {
+    console.warn('[OpenBookReader] sentinel registration sync failed:', e && e.message ? e.message : e);
+  });
+  return sentinelSync;
+}
+
+// Registration only affects FUTURE document loads — on an SPA forum the enabling tab
+// would stay sentinel-less until a full reload (no auto-open on the very next topic
+// click). So the enable flow also injects the sentinel straight into the current tab,
+// then re-arms it with the one-shot "just enabled" flag (the ladder decides between
+// opening right away and showing the confirmation chip; on a RE-enable the sentinel's
+// own double-injection guard makes the file loads a no-op and the explicit arm is what
+// restarts probing).
+async function injectSentinelNow(tabId) {
+  if (!tabId) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => { (globalThis.OBR = globalThis.OBR || {})._justEnabled = true; }
+    });
+    await chrome.scripting.executeScript({ target: { tabId }, files: SENTINEL_FILES });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => { const O = globalThis.OBR; if (O && O._sentinelArm) O._sentinelArm(); }
+    });
+  } catch (e) {
+    console.warn('[OpenBookReader] sentinel inject failed:', e && e.message ? e.message : e);
+  }
+}
+
+// The context-menu "Auto-open on this site" flow: ensure the origin permission (via the
+// permission popup when not yet granted — its click is the genuine gesture
+// permissions.request needs), flag the rule, sync registration, arm the current tab.
+function enableAutoOpen(host, tab) {
+  const origins = OBR.originsForRule(host);
+  if (!origins.length) return; // host can't form a match pattern — options page explains this case
+  const finish = () => {
+    chrome.storage.sync.get('obr_settings', (data) => {
+      void chrome.runtime.lastError;
+      const raw = (data && data.obr_settings) || {};
+      OBR.migrateSiteRules(raw);
+      const prev = raw.siteRules.find((r) => r && r.match === host);
+      const mode = (prev && prev.mode) || 'auto'; // keep an existing mode choice; else decide per page
+      OBR.upsertSiteRule(raw, host, mode, { auto: true });
+      chrome.storage.sync.set({ obr_settings: raw }, async () => {
+        void chrome.runtime.lastError;
+        await syncSentinelRegistration(); // storage.onChanged also fires, but be explicit + ordered
+        injectSentinelNow(tab && tab.id);
+      });
+    });
+  };
+  try {
+    chrome.permissions.contains({ origins }, (has) => {
+      void chrome.runtime.lastError;
+      if (has) return finish();
+      requestPerm({ origins, reason: 'auto-open', host }, (granted) => { if (granted) finish(); });
+    });
+  } catch (e) {
+    console.warn('[OpenBookReader] auto-open enable failed:', e && e.message ? e.message : e);
+  }
+}
+
+// Keep the registration honest across every input that feeds it: settings writes that
+// actually change siteRules (every font nudge writes obr_settings — don't wake a
+// re-diff for those), permission grants/revocations (a revoked origin deactivates that
+// site's sentinel; the rule keeps its flag and re-arms if the permission comes back),
+// and worker activations.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !changes.obr_settings) return;
+  const rulesOf = (v) => JSON.stringify((v && (v.siteRules || v.sites)) || []);
+  if (rulesOf(changes.obr_settings.oldValue) !== rulesOf(changes.obr_settings.newValue)) {
+    syncSentinelRegistration();
+    createMenus(); // the state-aware menu (Stop / Clear visibility) follows the rules
+  }
+});
+chrome.permissions.onAdded.addListener(() => { syncSentinelRegistration(); });
+chrome.permissions.onRemoved.addListener(() => { syncSentinelRegistration(); });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!tab) return;
   const id = info.menuItemId;
+  // "Settings…": open the options page, scoped to this site (same as the overlay ⚙).
+  if (id === 'obr-open-options') {
+    const src = info.pageUrl || tab.url || '';
+    let host = '';
+    try { new URL(src); host = OBR.normalizeHost(src); } catch (e) { /* not a real URL — open unscoped */ }
+    openOptionsForSite(host);
+    return;
+  }
+  // "Stop auto-opening on this site": clear the auto flag on whichever rule matches the
+  // page (path rules included), keeping its mode. Uses info.pageUrl so a path-scoped auto
+  // rule is turned off precisely; the storage write re-syncs registration + rebuilds the
+  // menu (Stop then disappears here). No open/close — just flips the flag.
+  if (id === 'obr-rule-auto-stop') {
+    const src = info.pageUrl || tab.url || '';
+    chrome.storage.sync.get('obr_settings', (data) => {
+      void chrome.runtime.lastError;
+      const raw = (data && data.obr_settings) || {};
+      OBR.migrateSiteRules(raw);
+      const rule = OBR.matchSiteRuleEx(src, raw.siteRules);
+      if (rule && rule.auto) {
+        raw.siteRules = OBR.setRuleAuto(raw.siteRules, rule.match, false);
+        chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; });
+      }
+    });
+    return;
+  }
   // Rule items: persist a whole-site rule, then open that mode now (clear just clears).
-  if (id === 'obr-rule-text' || id === 'obr-rule-images' || id === 'obr-rule-clear') {
+  if (id === 'obr-rule-text' || id === 'obr-rule-images' || id === 'obr-rule-clear' || id === 'obr-rule-auto') {
     // Gate on a parseable URL before normalizing: OBR.normalizeHost is lenient (it treats a
     // non-URL string as a bare host), so a falsy/garbage source would otherwise write a bogus
     // whole-site rule. A context-menu source is normally a real page URL; this just keeps the
@@ -143,7 +391,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     let host = '';
     try { new URL(src); host = OBR.normalizeHost(src); } catch (e) { /* not a real URL — no-op */ }
     if (id === 'obr-rule-clear') return setSiteRule(host, null);
+    if (id === 'obr-rule-auto') return host && enableAutoOpen(host, tab);
     const mode = id === 'obr-rule-images' ? 'images' : 'text';
+    // Preserving the auto flag here (no opts) means "Always open as…" on an
+    // auto-enabled site changes the mode without silently killing auto-open.
     setSiteRule(host, mode);
     return invokeReader(tab.id, tab.url, mode);
   }
@@ -165,6 +416,7 @@ const UNINSTALL_SURVEY_URL = 'https://kouxing2000.github.io/open-book-reader/uni
 
 chrome.runtime.onInstalled.addListener((details) => {
   createMenus();
+  syncSentinelRegistration(); // registration persists, but an update may change the rules/logic
   // Set on install AND update so a changed survey URL propagates with the next version.
   try { chrome.runtime.setUninstallURL(UNINSTALL_SURVEY_URL); } catch (e) { /* */ }
   // First install only: open a one-screen WELCOME page — pin the icon, the two shortcuts, a
@@ -179,7 +431,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 // createMenus serializes its builds so re-running (or racing onInstalled, which DOES fire
 // at startup when an update was applied while the browser was closed) is safe.
 // Belt-and-suspenders so the menu is always present whenever the worker is alive.
-chrome.runtime.onStartup.addListener(() => { createMenus(); });
+chrome.runtime.onStartup.addListener(() => { createMenus(); syncSentinelRegistration(); });
 
 /* ---------------------------------------------------------------- downloads
  * The gallery (a content script) can't call chrome.downloads or fetch cross-origin
@@ -263,10 +515,21 @@ function permsFor(type) {
 let permWindowId = null;
 const permWaiters = []; // { need, cb }; cb(granted) runs once the prompt resolves
 
+// A `need` may carry routing extras (reason/host — which explanation the popup shows).
+// chrome.permissions.* validates its schema strictly, so strip them before any API call.
+function permsOnly(need) {
+  const clean = {};
+  if (need.permissions) clean.permissions = need.permissions;
+  if (need.origins) clean.origins = need.origins;
+  return clean;
+}
+
 function openPermPopup(need) {
   const params = new URLSearchParams();
   if (need.permissions) params.set('perms', need.permissions.join(','));
   if (need.origins) params.set('origins', need.origins.join(','));
+  if (need.reason) params.set('reason', need.reason);
+  if (need.host) params.set('host', need.host);
   chrome.windows.create(
     {
       url: chrome.runtime.getURL('src/permission.html') + '?' + params.toString(),
@@ -298,7 +561,7 @@ function requestPerm(need, cb) {
 function resolveWaiters() {
   permWindowId = null;
   const waiters = permWaiters.splice(0);
-  waiters.forEach(({ need, cb }) => chrome.permissions.contains(need, (has) => cb(!!has)));
+  waiters.forEach(({ need, cb }) => chrome.permissions.contains(permsOnly(need), (has) => cb(!!has)));
 }
 
 // If the user closes the popup window without answering, treat it as a decline.
@@ -313,26 +576,36 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Respond so the page's close() is driven by a real reply, not a closed channel.
   if (msg.type === 'obr-perms-result') { resolveWaiters(); sendResponse({ ok: true }); return true; }
 
-  // The reader/gallery overlay (a content script) can't call openOptionsPage itself —
-  // that API exists only in the SW/extension pages. The ⚙ button relays here.
-  if (msg.type === 'obr-open-options') {
-    try {
-      const site = msg.site && String(msg.site).trim();
-      // Always route through openOptionsPage() so an already-open options tab is FOCUSED,
-      // not duplicated (clicking ⚙ N times must not spawn N tabs). We can't dedupe with
-      // tabs.query(url) without the `tabs` permission — chrome-extension:// pages aren't
-      // covered by <all_urls> — and adding `tabs` is a deliberate non-goal. So the site
-      // scope rides a one-shot key in chrome.storage.local instead of a ?site= URL:
-      // options.js reads + clears it on load, and a storage.onChanged listener re-scopes a
-      // tab already open. (storage.local, not session — session doesn't reliably survive the
-      // SW→page handoff; the key is consumed immediately so it never lingers.)
-      const openPage = () => { try { chrome.runtime.openOptionsPage(); } catch (e) { /* */ } };
-      if (site && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.set({ obr_options_site: site }, openPage); // stash, THEN open
-      } else {
-        openPage();
+  // The auto-open sentinel passed its ladder. Don't trust page-side state: re-run the
+  // rule match on the SENDER's URL against fresh settings and require the winning rule
+  // to actually carry auto:true (a page can't talk itself into an open the user never
+  // configured); the mode must be one of the two concrete engines and must agree with
+  // the rule (an 'auto' rule resolves page-side, so either engine is legitimate there).
+  if (msg.type === 'obr-auto-open') {
+    const tab = _sender && _sender.tab;
+    const url = (_sender && _sender.url) || (tab && tab.url) || '';
+    const mode = msg.mode === 'images' ? 'images' : msg.mode === 'text' ? 'text' : null;
+    if (!tab || !tab.id || !url || !mode) { sendResponse({ ok: false }); return true; }
+    chrome.storage.sync.get('obr_settings', (data) => {
+      void chrome.runtime.lastError;
+      const raw = (data && data.obr_settings) || {};
+      OBR.migrateSiteRules(raw);
+      const rule = OBR.matchSiteRuleEx(url, raw.siteRules);
+      if (!rule || rule.auto !== true || (rule.mode !== 'auto' && rule.mode !== mode)) {
+        sendResponse({ ok: false });
+        return;
       }
-    } catch (e) { /* */ }
+      invokeReader(tab.id, url, mode, { auto: true });
+      sendResponse({ ok: true });
+    });
+    return true; // async response
+  }
+
+  // The reader/gallery overlay (a content script) can't call openOptionsPage itself —
+  // that API exists only in the SW/extension pages. The ⚙ button relays here; the
+  // context-menu "Settings…" item calls the same helper directly (see below).
+  if (msg.type === 'obr-open-options') {
+    openOptionsForSite(msg.site);
     sendResponse({ ok: true });
     return true;
   }

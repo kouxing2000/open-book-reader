@@ -716,6 +716,10 @@ test.describe('matchSiteRule (glob, most-specific-wins)', () => {
         pathHit: m('https://example.com/blog/post', [{ match: 'example.com/blog/*', mode: 'text' }]),
         pathMiss: m('https://example.com/news/x', [{ match: 'example.com/blog/*', mode: 'text' }]),
         subdomain: m('https://news.example.com/x', [{ match: '*.example.com/*', mode: 'images' }]),
+        // A "*.host" wildcard ALSO matches the apex + www (Chrome's match-pattern semantics),
+        // so a subdomain-wildcard auto rule isn't silently dead on example.com itself.
+        subdomainApex: m('https://example.com/x', [{ match: '*.example.com/*', mode: 'images' }]),
+        subdomainWww: m('https://www.example.com/x', [{ match: '*.example.com/*', mode: 'images' }]),
         www: m('https://www.example.com/x', [{ match: 'example.com', mode: 'text' }]),
         otherHost: m('https://other.com/x', [{ match: 'example.com', mode: 'images' }]),
         mostSpecific: m('https://example.com/gallery/a', [
@@ -727,6 +731,7 @@ test.describe('matchSiteRule (glob, most-specific-wins)', () => {
     });
     expect(out).toEqual({
       wholeSite: 'images', pathHit: 'text', pathMiss: null, subdomain: 'images',
+      subdomainApex: 'images', subdomainWww: 'images',
       www: 'text', otherHost: null, mostSpecific: 'images', none: null,
     });
   });

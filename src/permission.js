@@ -15,16 +15,23 @@
 
   // Localize the static UI (title + buttons) from chrome.i18n; the hardcoded English in the
   // HTML is the fallback. This is an extension page, so chrome.i18n is available.
-  const msg = (k, fb) => { try { const m = chrome.i18n && chrome.i18n.getMessage(k); return m || fb; } catch (e) { return fb; } };
+  const msg = (k, fb, subs) => { try { const m = chrome.i18n && chrome.i18n.getMessage(k, subs); return m || fb; } catch (e) { return fb; } };
   document.querySelectorAll('[data-i18n]').forEach((el) => {
     const m = msg(el.getAttribute('data-i18n'), ''); if (m) el.textContent = m;
   });
   try { const lang = chrome.i18n.getUILanguage && chrome.i18n.getUILanguage(); if (lang) document.documentElement.lang = lang; } catch (e) { /* */ }
 
-  // Explain in plain language what's being asked and why.
-  document.getElementById('why').textContent = origins.length
-    ? msg('permWhyZip', 'To bundle a ZIP, Open Book Reader needs permission to fetch the selected images from the sites they live on. The files are saved only to your device — nothing is sent anywhere else.')
-    : msg('permWhyDownloads', 'Open Book Reader needs permission to save files to your Downloads folder.');
+  // Explain in plain language what's being asked and why. `reason=auto-open` marks the
+  // per-site auto-open flow (an origin request for just that site); a plain origins
+  // request is the ZIP download's cross-origin fetch.
+  const reason = params.get('reason') || '';
+  const host = params.get('host') || '';
+  document.getElementById('why').textContent =
+    reason === 'auto-open' && origins.length
+      ? msg('permWhyAutoOpen', 'To open reading mode automatically on ' + (host || 'this site') + ', Open Book Reader needs permission to check that site’s pages when they load. Everything stays on your device — nothing is collected or sent anywhere.', [host || 'this site'])
+      : origins.length
+        ? msg('permWhyZip', 'To bundle a ZIP, Open Book Reader needs permission to fetch the selected images from the sites they live on. The files are saved only to your device — nothing is sent anywhere else.')
+        : msg('permWhyDownloads', 'Open Book Reader needs permission to save files to your Downloads folder.');
 
   function finish(granted) {
     chrome.runtime.sendMessage({ type: 'obr-perms-result', granted: !!granted }, () => {

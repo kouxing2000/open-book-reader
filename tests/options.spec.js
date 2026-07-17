@@ -284,3 +284,58 @@ test('reset to defaults also clears saved content picks', async ({ page, extensi
     chrome.storage.sync.get('obr_picks', (d) => res(d.obr_picks || null))));
   expect(after === null || Object.keys(after).length === 0).toBe(true);
 });
+
+test('the Auto-open checkbox asks for the site permission — grant, uncheck, and deny paths', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  // Stub the permission prompt: a real permissions.request pops a native dialog headless
+  // can't answer. NOTE this assumes chrome.* stays monkey-patchable on extension pages
+  // (true today; if Chrome ever freezes it, this coverage moves to the manual checklist).
+  await page.evaluate(() => {
+    window.__permCalls = [];
+    window.__permGrant = true;
+    chrome.permissions = {
+      request: (need, cb) => { window.__permCalls.push(need); cb(window.__permGrant); },
+    };
+  });
+
+  await page.fill('#siteHost', 'example.com');
+  await page.click('#siteAddBtn');
+  const row = page.locator('.site-row', { hasText: 'example.com' });
+  await expect(row).toBeVisible();
+  const cb = row.locator('.site-auto input');
+  await expect(cb).not.toBeChecked();
+
+  const storedRule = () => page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || [])[0]))));
+
+  // GRANT: checking asks for exactly the rule's origins, then persists the flag.
+  await cb.click();
+  await expect.poll(storedRule).toEqual({ match: 'example.com', mode: 'auto', auto: true });
+  expect(await page.evaluate(() => window.__permCalls)).toEqual([
+    { origins: ['*://example.com/*', '*://www.example.com/*'] },
+  ]);
+
+  // UNCHECK: clears only the flag — no permission call, never an auto-revoke.
+  await cb.click();
+  await expect.poll(storedRule).toEqual({ match: 'example.com', mode: 'auto' });
+  expect(await page.evaluate(() => window.__permCalls.length)).toBe(1);
+
+  // DENY: the checkbox reverts and nothing persists.
+  await page.evaluate(() => { window.__permGrant = false; });
+  await cb.click();
+  await expect(cb).not.toBeChecked();
+  await expect.poll(storedRule).toEqual({ match: 'example.com', mode: 'auto' });
+});
+
+test('a rule whose host cannot form a match pattern gets a disabled Auto checkbox', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  // A mid-host wildcard is fine as a RULE glob but cannot become a Chrome origin
+  // pattern (originsForRule → []) — auto-open must be visibly unavailable, with the
+  // why in the tooltip, not silently broken.
+  await page.fill('#siteHost', 'ex*mple.com');
+  await page.click('#siteAddBtn');
+  const row = page.locator('.site-row', { hasText: 'ex*mple.com' });
+  await expect(row).toBeVisible();
+  await expect(row.locator('.site-auto input')).toBeDisabled();
+  await expect(row.locator('.site-auto')).toHaveAttribute('title', /can.t auto-open/);
+});

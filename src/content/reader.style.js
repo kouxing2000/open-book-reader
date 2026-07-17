@@ -30,7 +30,7 @@
     .obr-topbar {
       position: absolute; top: 0; left: 0; right: 0; z-index: 10;
       min-height: 52px; display: flex;
-      align-items: center; justify-content: space-between; padding: 6px 18px; gap: 12px;
+      align-items: center; justify-content: flex-start; padding: 6px 18px; gap: 12px;
       font-size: 13px;
       background: linear-gradient(to bottom, rgba(var(--obr-bg),.96) 38%, rgba(var(--obr-bg),0) 100%);
       transition: opacity .25s ease, transform .25s ease;
@@ -39,8 +39,11 @@
     .obr-chrome-hidden .obr-footer { opacity: 0; transform: translateY(100%); pointer-events: none; }
     /* The title is the only shrinkable item on the row, so it ellipsizes to make room for
        the controls (which stay full size on one line — flex:none + per-button nowrap). */
-    .obr-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; max-width: 55%; min-width: 0; }
-    .obr-controls { display: flex; gap: 6px; flex: none; justify-content: flex-end; }
+    /* The mode switch (.obr-seg) leads the bar; a thin divider sets it off, the title/meta
+       flow after it, and the tool buttons hug the right via margin-left:auto. */
+    .obr-topdiv { flex: none; width: 1px; align-self: center; height: 22px; background: currentColor; opacity: .2; }
+    .obr-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; max-width: 45%; min-width: 0; }
+    .obr-controls { display: flex; gap: 6px; flex: none; justify-content: flex-end; margin-left: auto; }
     /* Too narrow to hold the buttons beside the title (split / zoomed / small window):
        drop the whole controls block onto its own row and let the buttons wrap there, so the
        bar grows (min-height) and Settings/Close stay reachable instead of overflowing off
