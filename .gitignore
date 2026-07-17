@@ -20,8 +20,10 @@ TODO.md
 REFACTOR-PLAN.md
 /.deleted
 
-# Internal portfolio/marketing metadata + store metrics — kept locally, not published (RULE #1)
-.meta/
+# Internal portfolio/marketing metadata + store metrics — kept locally, not published (RULE #1).
+# `.meta` is a gitignored symlink to off-repo private storage; the entry has NO trailing slash
+# so it matches the symlink itself (a symlink is not a directory) and can never be committed.
+.meta
 metrics/
 
 # Claude Code: commit shared project skills/settings (version-controlled, travel with
