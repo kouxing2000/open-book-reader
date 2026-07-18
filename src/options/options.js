@@ -123,7 +123,7 @@
   // never auto-revoked (it may serve other features; revoking is the user's call in
   // chrome://extensions). Rules whose host part can't form a Chrome match pattern
   // (a mid-host `*`) can't auto-open: disabled box + a title explaining why.
-  function autoCheckbox(rule) {
+  function autoCheckbox(rule, onCommit) {
     const label = document.createElement('label');
     label.className = 'site-auto';
     const cb = document.createElement('input');
@@ -138,7 +138,11 @@
     } else {
       label.title = OBR.t('optAutoHint');
       cb.addEventListener('change', () => {
-        const commit = (on) => persistRules(OBR.setRuleAuto(cloneRules(), rule.match, on));
+        // Persist the flag, then let the caller refresh the row's plain-English gloss.
+        const commit = (on) => persistRules(
+          OBR.setRuleAuto(cloneRules(), rule.match, on),
+          onCommit ? () => onCommit(on) : undefined
+        );
         if (!cb.checked) return commit(false);
         requestOrigins(origins, (granted) => {
           if (!granted) { cb.checked = false; return; }
@@ -148,6 +152,29 @@
     }
     label.append(cb, text);
     return label;
+  }
+
+  // A plain-language gloss of what a rule does, derived from its pattern scope +
+  // mode + auto flag — nothing stored, so it always matches the live rule. Keeps
+  // each row self-describing instead of an opaque "site + on/off".
+  function ruleSummary(rule) {
+    const pat = String(rule.match || '');
+    const slash = pat.indexOf('/');
+    const host = slash === -1 ? pat : pat.slice(0, slash);
+    const path = slash === -1 ? '' : pat.slice(slash); // keeps the leading '/'
+    const isSub = /^\*\./.test(host); // subdomain-wildcard rule (also matches the apex)
+    const hasPath = path && path !== '/' && path !== '/*';
+    let scope;
+    if (hasPath) scope = OBR.t(isSub ? 'optRuleScopeSubsPath' : 'optRuleScopePath', [path]);
+    else if (isSub) scope = OBR.t('optRuleScopeSubs');
+    else scope = OBR.t('optRuleScopeSite');
+    const specificMode = rule.mode === 'text' || rule.mode === 'images';
+    const modeName = OBR.t(rule.mode === 'text' ? 'optModeReader'
+      : rule.mode === 'images' ? 'optModeGallery' : 'optModeAuto');
+    let act;
+    if (rule.auto === true) act = specificMode ? OBR.t('optRuleActAutoMode', [modeName]) : OBR.t('optRuleActAutoSmart');
+    else act = specificMode ? OBR.t('optRuleActManualMode', [modeName]) : OBR.t('optRuleActManualSmart');
+    return scope + ' · ' + act;
   }
 
   function removeRule(i) {
@@ -173,29 +200,105 @@
       empty.className = 'site-empty';
       empty.textContent = filterSite ? OBR.t('optNoRuleForSite', [filterSite]) : OBR.t('optNoRules');
       wrap.appendChild(empty);
+      renderFocus();
       return;
     }
     list.forEach(({ rule, i }) => {
       const row = document.createElement('div');
       row.className = 'site-row';
 
-      const name = document.createElement('span');
-      name.className = 'site-host'; name.textContent = rule.match;
+      // The muted gloss under the row; updated in place when mode / auto change
+      // (no full re-render, so an open <select> keeps focus).
+      const sub = document.createElement('div');
+      sub.className = 'site-sub';
+      sub.textContent = ruleSummary(rule);
+
+      // Editable URL pattern — mirrors the saved-pick selector editor (live ✓/✗, ↶ revert,
+      // Esc to cancel). Committing renames the rule's `match`, so you can refine a whole-site
+      // rule into a path one (e.g. host -> host/blog/*) without delete + re-add.
+      const original = String(rule.match || '');
+      const pat = document.createElement('input');
+      pat.type = 'text'; pat.className = 'site-pat-input'; pat.spellcheck = false;
+      pat.value = original;
+      pat.setAttribute('aria-label', OBR.t('optRulePatternAria'));
+      const mark = document.createElement('span');
+      mark.className = 'pick-valid';
+      const revert = document.createElement('button');
+      revert.className = 'ghost pick-revert'; revert.textContent = '↶'; revert.title = OBR.t('optRevertTitle');
+
+      // A pattern is invalid if it can't normalize OR it duplicates ANOTHER rule's `match`
+      // (editing A to equal B would shadow-collide — matchSiteRuleEx keeps only the first —
+      // and leave two identical, independently-editable rows). addRule dedups too.
+      const patCollides = (norm) => rules.some((r, j) => j !== i && String(r.match || '') === norm);
+      const patValidity = () => {
+        const v = pat.value.trim();
+        const norm = v ? OBR.normalizePattern(v) : '';
+        const ok = !!norm && !patCollides(norm);
+        mark.textContent = v ? (ok ? '✓' : '✗') : '';
+        mark.className = 'pick-valid ' + (v ? (ok ? 'ok' : 'bad') : '');
+        pat.classList.toggle('invalid', !!v && !ok);
+        return ok;
+      };
+      const patRefresh = () => { patValidity(); revert.style.display = pat.value.trim() === original ? 'none' : ''; };
+      const patCommit = () => {
+        const norm = OBR.normalizePattern(pat.value);
+        if (!norm || norm === original) { pat.value = norm || original; patRefresh(); return; } // empty/broken/unchanged
+        if (patCollides(norm)) { patRefresh(); return; } // duplicate of another rule — keep ✗ shown, don't persist
+        const next = cloneRules();
+        next[i] = Object.assign({}, next[i], { match: norm });
+        const finish = () => persistRules(next, renderSites); // structural change -> full re-render
+        // Origins are HOST-scoped, so a path-only edit keeps the same grant. Only a HOST
+        // change (or an un-grantable pattern) can leave an auto rule ungranted — turn auto
+        // OFF then, so re-checking the box runs the tested permission prompt in a click gesture.
+        if (next[i].auto === true) {
+          const origins = OBR.originsForRule(norm);
+          if (!origins.length) { delete next[i].auto; return finish(); }
+          if (chrome.permissions && chrome.permissions.contains) {
+            return chrome.permissions.contains({ origins }, (has) => {
+              void chrome.runtime.lastError;
+              if (!has) delete next[i].auto;
+              finish();
+            });
+          }
+        }
+        finish();
+      };
+      pat.addEventListener('input', patRefresh);
+      pat.addEventListener('change', patCommit); // blur / Enter when the value changed
+      pat.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); pat.blur(); }           // commit
+        else if (e.key === 'Escape') { e.preventDefault(); pat.value = original; patRefresh(); } // cancel
+      });
+      revert.addEventListener('click', () => { pat.value = original; patRefresh(); pat.focus(); });
+      patRefresh();
 
       const mode = modeSelect(rule.mode);
       mode.addEventListener('change', () => {
         const next = cloneRules();
         next[i] = Object.assign({}, next[i], { mode: mode.value });
         persistRules(next);
+        sub.textContent = ruleSummary(next[i]);
+      });
+
+      // persistRules sets rules = next before this runs, so rules[i] carries the latest MODE
+      // (from an in-place mode change this row) as well as the new auto flag — read it rather
+      // than rebuild from the stale render-time `rule`, which would repaint an old mode.
+      const auto = autoCheckbox(rule, () => {
+        sub.textContent = ruleSummary(rules[i]);
       });
 
       const remove = document.createElement('button');
       remove.className = 'ghost site-remove'; remove.textContent = '✕'; remove.title = OBR.t('optRemove');
       remove.addEventListener('click', () => removeRule(i));
 
-      row.append(name, mode, autoCheckbox(rule), remove);
+      const top = document.createElement('div');
+      top.className = 'site-top';
+      top.append(pat, mark, revert, mode, auto, remove);
+
+      row.append(top, sub);
       wrap.appendChild(row);
     });
+    renderFocus();
   }
 
   function addRule() {
@@ -236,6 +339,7 @@
   let picks = {}; // { host: { sel, t } }
 
   function renderPicks() {
+    renderFocus(); // keep the "focus on a site" list in sync with pick hosts
     const wrap = document.getElementById('picks');
     wrap.textContent = '';
     let hosts = Object.keys(picks).sort();
@@ -333,6 +437,7 @@
   let hiddenMap = {}; // { host: [pattern,...] }
 
   function renderHidden() {
+    renderFocus(); // keep the "focus on a site" list in sync with hidden-image hosts
     const wrap = document.getElementById('hidden');
     if (!wrap) return;
     wrap.textContent = '';
@@ -428,6 +533,43 @@
     renderPicks();
     renderHidden();
   }
+
+  // The distinct sites that have any rule / saved pick / hidden-image entry — the focus
+  // dropdown's options. A rule host drops a leading "*." (a subdomain-wildcard rule focuses
+  // under its base host) and is normalized to match the pick/hidden keys (bare hosts).
+  function focusHosts() {
+    const set = new Set();
+    (rules || []).forEach((r) => {
+      const h = OBR.normalizeHost(String(r.match || '').split('/')[0].replace(/^\*\./, ''));
+      if (h) set.add(h);
+    });
+    Object.keys(picks || {}).forEach((h) => { if (h) set.add(h); });
+    Object.keys(hiddenMap || {}).forEach((h) => { if ((hiddenMap[h] || []).length) set.add(h); });
+    return Array.from(set).sort();
+  }
+  // Populate + toggle the manual "focus on a site" control. The options page can't read the
+  // current tab (no `tabs` permission), so it can't auto-scope like the ⚙ deep-link does —
+  // this lets you pick a site by hand. Shown only when NOT already scoped and ≥1 site exists.
+  function renderFocus() {
+    const bar = document.getElementById('siteFocusBar');
+    const sel = document.getElementById('siteFocus');
+    if (!bar || !sel) return;
+    const hosts = focusHosts();
+    if (filterSite || !hosts.length) { bar.hidden = true; return; }
+    sel.textContent = '';
+    const all = document.createElement('option');
+    all.value = ''; all.textContent = OBR.t('optFocusAll');
+    sel.appendChild(all);
+    hosts.forEach((h) => {
+      const o = document.createElement('option');
+      o.value = h; o.textContent = h;
+      sel.appendChild(o);
+    });
+    sel.value = '';
+    bar.hidden = false;
+  }
+  document.getElementById('siteFocus').addEventListener('change', (e) => applySiteFilter(e.target.value));
+
   setFilterBar(); // initial ?site scope (the data renders below already respect filterSite)
 
   document.getElementById('siteFilterClear').addEventListener('click', () => {

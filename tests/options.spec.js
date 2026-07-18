@@ -191,14 +191,45 @@ test('?site= scopes the rules + picks lists to one site, and "Show all" clears i
 
   // example.com's pick shows; its whole-site AND path-scoped rules both show; other.test hidden.
   await expect(page.locator('#picks .pick-host')).toHaveText(['example.com']);
-  await expect(page.locator('#sites .site-host')).toHaveText(['example.com', 'example.com/blog/*']);
+  const scopedPats = page.locator('#sites .site-pat-input'); // the pattern is now an editable field
+  await expect(scopedPats).toHaveCount(2);
+  await expect(scopedPats.nth(0)).toHaveValue('example.com');
+  await expect(scopedPats.nth(1)).toHaveValue('example.com/blog/*');
 
   // "Show all" → everything visible again, banner gone, ?site dropped from the URL.
   await page.locator('#siteFilterClear').click();
   await expect(page.locator('#siteFilterBar')).toBeHidden();
   await expect(page.locator('#picks .pick-host')).toHaveCount(2);
-  await expect(page.locator('#sites .site-host')).toHaveCount(3);
+  await expect(page.locator('#sites .site-pat-input')).toHaveCount(3);
   expect(new URL(page.url()).search).toBe('');
+});
+
+test('each per-site rule shows a plain-English gloss of what it does (scope + mode + auto)', async ({ page, extensionId }, testInfo) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [
+      { match: 'example.com', mode: 'auto', auto: true },        // whole site, auto-open, smart pick
+      { match: 'example.com/forum/t/*', mode: 'text', auto: true }, // path-scoped, auto-open, forced Reader
+      { match: 'other.test/blog/*', mode: 'images' },            // path-scoped, click-only, forced Gallery
+      { match: '*.sub.test', mode: 'auto' },                     // all subdomains, click-only, smart pick
+    ] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+
+  // The gloss is derived (nothing stored), so it always matches the live rule.
+  await expect(page.locator('#sites .site-sub')).toHaveText([
+    'Whole site · opens by itself when the page looks like an article or gallery',
+    'Only /forum/t/* · opens by itself, always as Reader',
+    'Only /blog/* · sets the default mode to Gallery; opens on click',
+    'All subdomains · sets the default mode; opens on click',
+  ]);
+
+  // Flipping mode updates the gloss in place (no full re-render).
+  const forumRow = page.locator('.site-row', { hasText: '/forum/t/*' });
+  await forumRow.locator('.site-mode').selectOption('images');
+  await expect(forumRow.locator('.site-sub')).toHaveText('Only /forum/t/* · opens by itself, always as Gallery');
+
+  await testInfo.attach('per-site-rules', { body: await page.locator('#sites').screenshot(), contentType: 'image/png' });
 });
 
 test('a site stashed in storage.local scopes a freshly-opened options page, then is cleared (the ⚙ deep-link path)', async ({ page, context, serviceWorker, extensionId }) => {
@@ -300,8 +331,9 @@ test('the Auto-open checkbox asks for the site permission — grant, uncheck, an
 
   await page.fill('#siteHost', 'example.com');
   await page.click('#siteAddBtn');
-  const row = page.locator('.site-row', { hasText: 'example.com' });
+  const row = page.locator('.site-row'); // the only rule (fresh storage per test)
   await expect(row).toBeVisible();
+  await expect(row.locator('.site-pat-input')).toHaveValue('example.com');
   const cb = row.locator('.site-auto input');
   await expect(cb).not.toBeChecked();
 
@@ -334,8 +366,135 @@ test('a rule whose host cannot form a match pattern gets a disabled Auto checkbo
   // why in the tooltip, not silently broken.
   await page.fill('#siteHost', 'ex*mple.com');
   await page.click('#siteAddBtn');
-  const row = page.locator('.site-row', { hasText: 'ex*mple.com' });
+  const row = page.locator('.site-row'); // the only rule (fresh storage per test)
   await expect(row).toBeVisible();
+  await expect(row.locator('.site-pat-input')).toHaveValue('ex*mple.com');
   await expect(row.locator('.site-auto input')).toBeDisabled();
   await expect(row.locator('.site-auto')).toHaveAttribute('title', /can.t auto-open/);
+});
+
+const storedFirstRule = (page) => page.evaluate(() => new Promise((res) =>
+  chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || [])[0]))));
+
+test('a rule pattern is editable in place: refine a whole-site auto rule to a path (auto survives a same-host edit)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'example.com', mode: 'auto', auto: true }] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+  // Same-host edit → origins unchanged → already granted, so auto is kept.
+  await page.evaluate(() => { chrome.permissions = { contains: (n, cb) => cb(true), request: (n, cb) => cb(true) }; });
+
+  const pat = page.locator('.site-pat-input');
+  await expect(pat).toHaveValue('example.com');
+  await expect(page.locator('.site-row .site-auto input')).toBeChecked();
+
+  await pat.fill('example.com/blog/*');
+  await pat.press('Enter');
+
+  await expect.poll(() => storedFirstRule(page)).toEqual({ match: 'example.com/blog/*', mode: 'auto', auto: true });
+  await expect(page.locator('.site-sub')).toHaveText('Only /blog/* · opens by itself when the page looks like an article or gallery');
+});
+
+test('editing a rule pattern to a new, ungranted host turns Auto-open off (re-grant via the checkbox)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'example.com', mode: 'auto', auto: true }] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+  // New host is NOT granted → auto must drop (silently keeping it would be a dead flag).
+  await page.evaluate(() => { chrome.permissions = { contains: (n, cb) => cb(false), request: (n, cb) => cb(false) }; });
+
+  const pat = page.locator('.site-pat-input');
+  await pat.fill('other.test');
+  await pat.press('Enter');
+
+  await expect.poll(() => storedFirstRule(page)).toEqual({ match: 'other.test', mode: 'auto' });
+  await expect(page.locator('.site-row .site-auto input')).not.toBeChecked();
+});
+
+test('Escape cancels an in-progress pattern edit without persisting', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'example.com', mode: 'text' }] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+
+  const pat = page.locator('.site-pat-input');
+  await pat.fill('example.com/typo');
+  await pat.press('Escape');
+  await expect(pat).toHaveValue('example.com');
+  await expect.poll(() => storedFirstRule(page)).toEqual({ match: 'example.com', mode: 'text' });
+});
+
+test('the "focus on a site" dropdown scopes the lists (manual, since the current tab can\'t be auto-detected)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [
+      { match: 'example.com', mode: 'text' },
+      { match: 'other.test/blog/*', mode: 'images' },
+    ] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+
+  const focusBar = page.locator('#siteFocusBar');
+  const focus = page.locator('#siteFocus');
+  await expect(focusBar).toBeVisible();
+  await expect(focus.locator('option')).toHaveText(['All sites', 'example.com', 'other.test']);
+
+  // Focusing a site scopes the rules list, shows the scope banner, and hides the focus bar.
+  await focus.selectOption('other.test');
+  await expect(page.locator('#siteFilterBar')).toBeVisible();
+  await expect(page.locator('#siteFilterName')).toHaveText('other.test');
+  await expect(focusBar).toBeHidden();
+  await expect(page.locator('#sites .site-pat-input')).toHaveValue('other.test/blog/*'); // only other.test's rule
+
+  // "Show all" restores the global list + the focus bar.
+  await page.locator('#siteFilterClear').click();
+  await expect(focusBar).toBeVisible();
+  await expect(page.locator('#sites .site-pat-input')).toHaveCount(2);
+});
+
+test('toggling Auto-open after a mode change repaints the gloss with the CURRENT mode (not the stale one)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'example.com/forum/t/*', mode: 'text' }] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => { chrome.permissions = { contains: (n, cb) => cb(true), request: (n, cb) => cb(true) }; });
+
+  const row = page.locator('.site-row');
+  await row.locator('.site-mode').selectOption('images'); // Reader -> Gallery
+  await expect(row.locator('.site-sub')).toContainText('Gallery');
+  // Now toggle Auto-open: the gloss must still read Gallery, not repaint the stale Reader.
+  await row.locator('.site-auto input').check();
+  await expect(row.locator('.site-sub')).toHaveText('Only /forum/t/* · opens by itself, always as Gallery');
+});
+
+test('a subdomain-wildcard rule WITH a path shows both facets in the gloss', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: '*.example.com/blog/*', mode: 'text' }] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+  await expect(page.locator('.site-sub')).toHaveText('Only /blog/* (all subdomains) · sets the default mode to Reader; opens on click');
+});
+
+test('editing a rule pattern to duplicate another rule is rejected (marked invalid, not persisted)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [
+      { match: 'a.test', mode: 'text' },
+      { match: 'b.test', mode: 'images' },
+    ] },
+  }, res)));
+  await page.goto(optionsUrl(extensionId));
+
+  const firstPat = page.locator('#sites .site-pat-input').first();
+  await firstPat.fill('b.test'); // collide with the 2nd rule
+  await expect(firstPat).toHaveClass(/invalid/); // live ✗
+  await firstPat.press('Enter');
+  const matches = () => page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || []).map((r) => r.match)))));
+  await expect.poll(matches).toEqual(['a.test', 'b.test']); // unchanged — the collision was not written
 });
