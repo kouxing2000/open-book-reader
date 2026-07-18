@@ -260,6 +260,8 @@
   "optAutoGalleryHint": { "message": "当页面图片数量达到该数值时,点击工具栏图标会打开 🖼 图库而非 📖 阅读器。<b>关</b> = 始终打开阅读器。(Alt+B / Alt+Shift+B 始终遵循各自的模式。)" },
   "optKeepReader": { "message": "文章保持阅读器" },
   "optKeepReaderHint": { "message": "按图片数量自动打开时,如果页面文章正文的字数达到该数值,就保持在 📖 阅读器 — 这样长篇配图文章不会被送进图库。<b>关</b> = 仅按图片数量判断。" },
+  "optSecSites": { "message": "🌐 各网站数据" },
+  "optSecSitesSub": { "message": "针对特定网站" },
   "optRulesHead": { "message": "各网站规则" },
   "optRulesHint": { "message": "为特定网站强制固定模式,而不是使用智能选择。匹配模式针对 <code>主机 + 路径</code>,<code>*</code> 为通配符 — <code>example.com</code>(整个网站)、<code>example.com/blog/*</code>(某个板块)、<code>*.example.com/*</code>(所有子域名)。多条规则同时匹配时,最具体的生效。适用于工具栏图标和右键菜单;<b>Alt+B</b> / <b>Alt+Shift+B</b> 始终按各自模式打开。<b>自动打开</b>更进一步:匹配的页面若看起来是真实内容(文章正文、成组图片),将无需任何点击自动进入阅读模式 — 列表页和搜索页不受影响,按 <b>Esc</b> 随时关闭。仅需为该网站授权一次。" },
   "optRulePlaceholder": { "message": "example.com/blog/*" },

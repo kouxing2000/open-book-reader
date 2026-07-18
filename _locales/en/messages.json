@@ -262,6 +262,8 @@
   "optAutoGalleryHint": { "message": "Toolbar-icon click opens 🖼 gallery instead of 📖 reader when the page has at least this many images. <b>Off</b> = always open the reader. (Alt+B / Alt+Shift+B always honor their mode.)" },
   "optKeepReader": { "message": "Keep reader for articles" },
   "optKeepReaderHint": { "message": "When auto-opening by image count, stay in the 📖 reader if the page has at least this many words of article text - so a long illustrated read isn't sent to the gallery. <b>Off</b> = decide by image count only." },
+  "optSecSites": { "message": "🌐 Per-site data" },
+  "optSecSitesSub": { "message": "for specific sites" },
   "optRulesHead": { "message": "Per-site rules" },
   "optRulesHint": { "message": "Force a mode on specific sites instead of the smart auto-pick. The pattern matches <code>host + path</code> with <code>*</code> as a wildcard — <code>example.com</code> (whole site), <code>example.com/blog/*</code> (a section), <code>*.example.com/*</code> (all subdomains). When several match, the most specific wins. Applies to the toolbar icon and right-click menu; <b>Alt+B</b> / <b>Alt+Shift+B</b> always honor their own mode. <b>Auto-open</b> goes one step further: matching pages that look like real content (an article body, an image set) open in reading mode with no click at all — list and search pages stay untouched, and <b>Esc</b> always closes. It asks once for permission to run on that site." },
   "optRulePlaceholder": { "message": "example.com/blog/*" },

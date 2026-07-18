@@ -260,6 +260,8 @@
   "optAutoGalleryHint": { "message": "Le clic sur l’icône de la barre d’outils ouvre la galerie 🖼 au lieu du lecteur 📖 quand la page contient au moins ce nombre d’images. <b>Désactivé</b> = toujours ouvrir le lecteur. (Alt+B / Alt+Shift+B respectent toujours leur mode.)" },
   "optKeepReader": { "message": "Garder le lecteur pour les articles" },
   "optKeepReaderHint": { "message": "Lors de l’ouverture automatique selon le nombre d’images, reste dans le lecteur 📖 si la page contient au moins ce nombre de mots de texte d’article - ainsi une longue lecture illustrée n’est pas envoyée à la galerie. <b>Désactivé</b> = décider uniquement selon le nombre d’images." },
+  "optSecSites": { "message": "🌐 Données par site" },
+  "optSecSitesSub": { "message": "pour des sites spécifiques" },
   "optRulesHead": { "message": "Règles par site" },
   "optRulesHint": { "message": "Forcez un mode sur certains sites au lieu du choix intelligent. Le motif compare <code>hôte + chemin</code> avec <code>*</code> comme joker — <code>example.com</code> (tout le site), <code>example.com/blog/*</code> (une section), <code>*.example.com/*</code> (tous les sous-domaines). Si plusieurs correspondent, le plus spécifique gagne. S’applique à l’icône de la barre d’outils et au menu contextuel ; <b>Alt+B</b> / <b>Alt+Shift+B</b> suivent toujours leur propre mode. <b>Ouverture auto</b> va un cran plus loin : les pages correspondantes qui ressemblent à du vrai contenu (un article, une série d’images) s’ouvrent en mode lecture sans aucun clic — les pages de listes et de recherche restent intactes, et <b>Échap</b> ferme toujours. Une autorisation pour ce site est demandée une seule fois." },
   "optRulePlaceholder": { "message": "example.com/blog/*" },

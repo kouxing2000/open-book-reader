@@ -520,6 +520,10 @@
       bar.hidden = false;
       const hostInput = document.getElementById('siteHost');
       if (hostInput && !hostInput.value) hostInput.value = filterSite; // prime "add rule" for this site
+      // The scoped lists (rules/picks/hidden) live inside the collapsed "Per-site data"
+      // <details>; expand it so a ⚙ deep-link / stash / focus pick actually reveals them.
+      const section = document.getElementById('perSiteSection');
+      if (section) section.open = true;
     } else {
       bar.hidden = true;
     }
@@ -553,8 +557,13 @@
   function renderFocus() {
     const bar = document.getElementById('siteFocusBar');
     const sel = document.getElementById('siteFocus');
-    if (!bar || !sel) return;
     const hosts = focusHosts();
+    // Badge the (default-collapsed) "Per-site data" header with the distinct-site count, so a
+    // returning user sees there's saved data inside without having to expand it. Runs on every
+    // list render (renderSites/renderPicks/renderHidden all call renderFocus).
+    const countEl = document.getElementById('perSiteCount');
+    if (countEl) countEl.textContent = hosts.length ? '(' + hosts.length + ')' : '';
+    if (!bar || !sel) return;
     if (filterSite || !hosts.length) { bar.hidden = true; return; }
     sel.textContent = '';
     const all = document.createElement('option');
@@ -569,6 +578,26 @@
     bar.hidden = false;
   }
   document.getElementById('siteFocus').addEventListener('change', (e) => applySiteFilter(e.target.value));
+
+  // Remember which settings sections the user left open. This is per-device UI state, so it
+  // lives in localStorage — NOT chrome.storage.sync, whose 8KB is reserved for real settings.
+  // A stored value overrides the HTML default (Reader open, the rest collapsed); an active
+  // site-scope still force-opens Per-site data below via setFilterBar(). Sections are keyed by
+  // their summary's data-i18n so no extra ids are needed and the key survives reordering.
+  const OPEN_KEY = 'obr_options_open';
+  const sectionCards = Array.from(document.querySelectorAll('details.card'));
+  const cardKey = (d) => { const el = d.querySelector('summary [data-i18n]'); return el ? el.getAttribute('data-i18n') : ''; };
+  try {
+    const saved = JSON.parse(localStorage.getItem(OPEN_KEY) || '{}');
+    sectionCards.forEach((d) => { const k = cardKey(d); if (k && k in saved) d.open = !!saved[k]; });
+  } catch (e) { /* no/blocked localStorage — the HTML defaults stand */ }
+  sectionCards.forEach((d) => d.addEventListener('toggle', () => {
+    try {
+      const map = {};
+      sectionCards.forEach((c) => { const k = cardKey(c); if (k) map[k] = c.open; });
+      localStorage.setItem(OPEN_KEY, JSON.stringify(map));
+    } catch (e) { /* ignore write failures — persistence is best-effort */ }
+  }));
 
   setFilterBar(); // initial ?site scope (the data renders below already respect filterSite)
 

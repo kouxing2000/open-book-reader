@@ -260,6 +260,8 @@
   "optAutoGalleryHint": { "message": "ページにこの枚数以上の画像があるとき、ツールバーアイコンのクリックで 📖 リーダーではなく 🖼 ギャラリーを開きます。<b>オフ</b> = 常にリーダーを開きます。（Alt+B / Alt+Shift+B は常にそれぞれのモードに従います。）" },
   "optKeepReader": { "message": "記事ではリーダーを維持" },
   "optKeepReaderHint": { "message": "画像枚数で自動判定するとき、ページの記事本文がこの単語数以上あれば 📖 リーダーを維持します。長い図解入りの記事がギャラリーに送られないようにします。<b>オフ</b> = 画像枚数だけで判定します。" },
+  "optSecSites": { "message": "🌐 サイト別データ" },
+  "optSecSitesSub": { "message": "特定のサイト向け" },
   "optRulesHead": { "message": "サイト別ルール" },
   "optRulesHint": { "message": "スマート選択の代わりに、特定のサイトでモードを固定します。パターンは <code>ホスト + パス</code> に対して <code>*</code> をワイルドカードとして照合します — <code>example.com</code>(サイト全体)、<code>example.com/blog/*</code>(セクション)、<code>*.example.com/*</code>(全サブドメイン)。複数一致した場合は最も具体的なものが優先されます。ツールバーアイコンと右クリックメニューに適用され、<b>Alt+B</b> / <b>Alt+Shift+B</b> は常に自身のモードで開きます。<b>自動オープン</b>はさらに一歩進んだ機能です: 本文や画像セットなど実際のコンテンツに見える一致ページを、クリックなしでリーダーモードで開きます — 一覧・検索ページはそのまま、<b>Esc</b> でいつでも閉じられます。サイト権限を一度だけ求めます。" },
   "optRulePlaceholder": { "message": "example.com/blog/*" },

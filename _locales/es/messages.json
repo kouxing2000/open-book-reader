@@ -260,6 +260,8 @@
   "optAutoGalleryHint": { "message": "El clic en el icono de la barra abre la galería 🖼 en lugar del lector 📖 cuando la página tiene al menos esta cantidad de imágenes. <b>Desactivado</b> = abrir siempre el lector. (Alt+B / Alt+Shift+B siempre respetan su modo.)" },
   "optKeepReader": { "message": "Mantener el lector para artículos" },
   "optKeepReaderHint": { "message": "Al abrir automáticamente según el número de imágenes, permanece en el lector 📖 si la página tiene al menos esta cantidad de palabras de texto del artículo — para que una lectura larga con ilustraciones no se envíe a la galería. <b>Desactivado</b> = decidir solo por el número de imágenes." },
+  "optSecSites": { "message": "🌐 Datos por sitio" },
+  "optSecSitesSub": { "message": "para sitios específicos" },
   "optRulesHead": { "message": "Reglas por sitio" },
   "optRulesHint": { "message": "Fuerza un modo en sitios concretos en lugar de la elección inteligente. El patrón compara <code>host + ruta</code> con <code>*</code> como comodín — <code>example.com</code> (todo el sitio), <code>example.com/blog/*</code> (una sección), <code>*.example.com/*</code> (todos los subdominios). Si varios coinciden, gana el más específico. Se aplica al icono de la barra y al menú contextual; <b>Alt+B</b> / <b>Alt+Shift+B</b> siempre respetan su propio modo. <b>Apertura automática</b> va un paso más allá: las páginas coincidentes que parecen contenido real (un artículo, una serie de imágenes) se abren en modo lectura sin ningún clic — las páginas de listas y de búsqueda no se tocan, y <b>Esc</b> siempre cierra. Pide permiso para ese sitio una sola vez." },
   "optRulePlaceholder": { "message": "example.com/blog/*" },

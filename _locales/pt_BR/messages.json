@@ -260,6 +260,8 @@
   "optAutoGalleryHint": { "message": "O clique no ícone da barra de ferramentas abre a galeria 🖼 em vez do leitor 📖 quando a página tem pelo menos esta quantidade de imagens. <b>Desativado</b> = sempre abrir o leitor. (Alt+B / Alt+Shift+B sempre respeitam o seu modo.)" },
   "optKeepReader": { "message": "Manter o leitor para artigos" },
   "optKeepReaderHint": { "message": "Ao abrir automaticamente pela contagem de imagens, permanece no leitor 📖 se a página tiver pelo menos esta quantidade de palavras de texto do artigo - assim uma leitura longa e ilustrada não é enviada para a galeria. <b>Desativado</b> = decidir apenas pela contagem de imagens." },
+  "optSecSites": { "message": "🌐 Dados por site" },
+  "optSecSitesSub": { "message": "para sites específicos" },
   "optRulesHead": { "message": "Regras por site" },
   "optRulesHint": { "message": "Force um modo em sites específicos em vez da escolha inteligente. O padrão compara <code>host + caminho</code> com <code>*</code> como curinga — <code>example.com</code> (site inteiro), <code>example.com/blog/*</code> (uma seção), <code>*.example.com/*</code> (todos os subdomínios). Quando vários coincidem, o mais específico vence. Vale para o ícone da barra e o menu do botão direito; <b>Alt+B</b> / <b>Alt+Shift+B</b> sempre seguem seu próprio modo. <b>Abertura automática</b> vai um passo além: páginas correspondentes que parecem conteúdo de verdade (um artigo, uma série de imagens) abrem no modo leitura sem nenhum clique — páginas de listas e de busca ficam intactas, e <b>Esc</b> sempre fecha. Pede permissão para esse site uma única vez." },
   "optRulePlaceholder": { "message": "example.com/blog/*" },

@@ -228,7 +228,10 @@ async function main() {
   await page.evaluate(() => globalThis.OBR.closeGallery());
 
   // 5) Options page (runs in the real extension context with real chrome.storage).
+  // Settings groups are collapsible <details> now (Reader open, the rest collapsed); expand
+  // them all so the store shot shows the full feature set instead of three collapsed headers.
   await page.goto(`chrome-extension://${extId}/src/options/options.html`);
+  await page.evaluate(() => document.querySelectorAll('details.card, details.guide').forEach((d) => { d.open = true; }));
   await wait(page, 400);
   await snap('05-options.png');
 

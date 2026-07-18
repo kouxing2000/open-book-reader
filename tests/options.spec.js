@@ -5,6 +5,13 @@ import { test, expect } from './fixtures.js';
 
 const optionsUrl = (id) => `chrome-extension://${id}/src/options/options.html`;
 
+// Settings groups are collapsible <details class="card"> now: Reader is open by default, the
+// rest (Image gallery / Smart open / Per-site data) start collapsed to keep the page short.
+// Read-only assertions still work on collapsed content, but click/fill/selectOption need the
+// section expanded first — call this after a navigation before interacting with those controls.
+const openSections = (page) =>
+  page.evaluate(() => document.querySelectorAll('details.card').forEach((d) => { d.open = true; }));
+
 test('the options page shows the how-to-use guide with the trigger + shortcut docs', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
 
@@ -30,22 +37,59 @@ test('the guide is collapsed by default and expands on click (native <details>)'
   await expect(guide).toHaveJSProperty('open', true);
 });
 
-test('settings are grouped into Reader / Image gallery / Smart open cards', async ({ page, extensionId }) => {
+test('settings are grouped into collapsible Reader / Image gallery / Smart open / Per-site data cards', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
-  const cards = page.locator('section.card');
-  await expect(cards).toHaveCount(3);
-  await expect(cards.nth(0).locator('h2')).toContainText('Reader');
-  await expect(cards.nth(1).locator('h2')).toContainText('Image gallery');
-  await expect(cards.nth(2).locator('h2')).toContainText('Smart open');
-  // A representative control lives in each group (print under Reader, gallery
-  // column under Image gallery, per-site rules under Smart open).
+  const cards = page.locator('details.card');
+  await expect(cards).toHaveCount(4);
+  await expect(cards.nth(0).locator('summary')).toContainText('Reader');
+  await expect(cards.nth(1).locator('summary')).toContainText('Image gallery');
+  await expect(cards.nth(2).locator('summary')).toContainText('Smart open');
+  await expect(cards.nth(3).locator('summary')).toContainText('Per-site data');
+  // Reader is open by default; the rest collapse so the page stays short.
+  await expect(cards.nth(0)).toHaveJSProperty('open', true);
+  await expect(cards.nth(1)).toHaveJSProperty('open', false);
+  await expect(cards.nth(2)).toHaveJSProperty('open', false);
+  await expect(cards.nth(3)).toHaveJSProperty('open', false);
+  // A representative control lives in each group (print under Reader, gallery column under
+  // Image gallery, a threshold under Smart open, per-site rules under Per-site data). Only
+  // Reader is open, so the collapsed ones are asserted attached rather than visible.
   await expect(cards.nth(0).locator('#printSourceUrl')).toBeVisible();
-  await expect(cards.nth(1).locator('#galleryColumns')).toBeVisible();
-  await expect(cards.nth(2).locator('#siteHost')).toBeVisible();
+  await expect(cards.nth(1).locator('#galleryColumns')).toBeAttached();
+  await expect(cards.nth(2).locator('#autoGalleryMin')).toBeAttached();
+  await expect(cards.nth(3).locator('#siteHost')).toBeAttached();
+});
+
+test('the Per-site data header badges the count of sites with saved data (visible while collapsed)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await expect(page.locator('#perSiteCount')).toHaveText(''); // fresh profile → nothing saved → no badge
+
+  // A rule on one host + a saved pick on another = two distinct sites (the focus-host count).
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'a.test', mode: 'text' }] },
+    obr_picks: { 'b.test': { sel: '#x', t: 1 } },
+  }, res)));
+  await page.reload();
+
+  // The count shows on the still-COLLAPSED section (no openSections) — that's the whole point.
+  await expect(page.locator('details.card', { hasText: 'Per-site data' })).toHaveJSProperty('open', false);
+  await expect(page.locator('#perSiteCount')).toHaveText('(2)');
+});
+
+test('sections remember their open/closed state across reloads (per-device localStorage)', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  const gallery = page.locator('details.card').nth(1); // Image gallery, collapsed by default
+  await expect(gallery).toHaveJSProperty('open', false);
+
+  await gallery.locator('summary').click();
+  await expect(gallery).toHaveJSProperty('open', true);
+
+  await page.reload();
+  await expect(page.locator('details.card').nth(1)).toHaveJSProperty('open', true); // restored
 });
 
 test('the per-site rules editor renders (empty state) below the guide', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
+  await openSections(page); // Per-site data starts collapsed
   await expect(page.locator('#siteHost')).toBeVisible();
   await expect(page.locator('#sites')).toContainText('No per-site rules yet.');
 });
@@ -90,6 +134,7 @@ test('saved content picks render their host + selector and can be removed', asyn
     },
   }, res)));
   await page.reload();
+  await openSections(page);
 
   const picks = page.locator('#picks');
   await expect(picks.locator('.pick-host')).toHaveCount(2);
@@ -117,6 +162,7 @@ test('a saved pick selector is editable: valid edits persist, invalid ones are r
     obr_picks: { 'example.com': { sel: '#old-selector', t: 1 } },
   }, res)));
   await page.reload();
+  await openSections(page);
 
   const input = page.locator('#picks .pick-sel-input').first();
   await expect(input).toHaveValue('#old-selector');
@@ -145,6 +191,7 @@ test('a wrongly-edited selector can be cancelled with Escape or reverted with �
     obr_picks: { 'example.com': { sel: '#good', t: 1 } },
   }, res)));
   await page.reload();
+  await openSections(page);
 
   const row = page.locator('#picks .pick-row', { hasText: 'example.com' });
   const input = row.locator('.pick-sel-input');
@@ -188,6 +235,9 @@ test('?site= scopes the rules + picks lists to one site, and "Show all" clears i
   await page.goto(optionsUrl(extensionId) + '?site=example.com');
   await expect(page.locator('#siteFilterBar')).toBeVisible();
   await expect(page.locator('#siteFilterName')).toHaveText('example.com');
+  // Scoping auto-expands the (otherwise-collapsed) Per-site data section so the filtered
+  // rules/picks lists are actually visible — the ⚙ deep-link and focus dropdown rely on this.
+  await expect(page.locator('#perSiteSection')).toHaveJSProperty('open', true);
 
   // example.com's pick shows; its whole-site AND path-scoped rules both show; other.test hidden.
   await expect(page.locator('#picks .pick-host')).toHaveText(['example.com']);
@@ -215,6 +265,7 @@ test('each per-site rule shows a plain-English gloss of what it does (scope + mo
     ] },
   }, res)));
   await page.goto(optionsUrl(extensionId));
+  await openSections(page); // Per-site data starts collapsed; the mode <select> + screenshot need it open
 
   // The gloss is derived (nothing stored), so it always matches the live rule.
   await expect(page.locator('#sites .site-sub')).toHaveText([
@@ -329,6 +380,7 @@ test('the Auto-open checkbox asks for the site permission — grant, uncheck, an
     };
   });
 
+  await openSections(page); // Per-site data starts collapsed
   await page.fill('#siteHost', 'example.com');
   await page.click('#siteAddBtn');
   const row = page.locator('.site-row'); // the only rule (fresh storage per test)
@@ -364,6 +416,7 @@ test('a rule whose host cannot form a match pattern gets a disabled Auto checkbo
   // A mid-host wildcard is fine as a RULE glob but cannot become a Chrome origin
   // pattern (originsForRule → []) — auto-open must be visibly unavailable, with the
   // why in the tooltip, not silently broken.
+  await openSections(page); // Per-site data starts collapsed
   await page.fill('#siteHost', 'ex*mple.com');
   await page.click('#siteAddBtn');
   const row = page.locator('.site-row'); // the only rule (fresh storage per test)
@@ -385,6 +438,7 @@ test('a rule pattern is editable in place: refine a whole-site auto rule to a pa
   // Same-host edit → origins unchanged → already granted, so auto is kept.
   await page.evaluate(() => { chrome.permissions = { contains: (n, cb) => cb(true), request: (n, cb) => cb(true) }; });
 
+  await openSections(page); // Per-site data starts collapsed; the pattern field needs it open
   const pat = page.locator('.site-pat-input');
   await expect(pat).toHaveValue('example.com');
   await expect(page.locator('.site-row .site-auto input')).toBeChecked();
@@ -405,6 +459,7 @@ test('editing a rule pattern to a new, ungranted host turns Auto-open off (re-gr
   // New host is NOT granted → auto must drop (silently keeping it would be a dead flag).
   await page.evaluate(() => { chrome.permissions = { contains: (n, cb) => cb(false), request: (n, cb) => cb(false) }; });
 
+  await openSections(page); // Per-site data starts collapsed; the pattern field needs it open
   const pat = page.locator('.site-pat-input');
   await pat.fill('other.test');
   await pat.press('Enter');
@@ -420,6 +475,7 @@ test('Escape cancels an in-progress pattern edit without persisting', async ({ p
   }, res)));
   await page.goto(optionsUrl(extensionId));
 
+  await openSections(page); // Per-site data starts collapsed; the pattern field needs it open
   const pat = page.locator('.site-pat-input');
   await pat.fill('example.com/typo');
   await pat.press('Escape');
@@ -463,6 +519,7 @@ test('toggling Auto-open after a mode change repaints the gloss with the CURRENT
   await page.goto(optionsUrl(extensionId));
   await page.evaluate(() => { chrome.permissions = { contains: (n, cb) => cb(true), request: (n, cb) => cb(true) }; });
 
+  await openSections(page); // Per-site data starts collapsed; the mode <select> needs it open
   const row = page.locator('.site-row');
   await row.locator('.site-mode').selectOption('images'); // Reader -> Gallery
   await expect(row.locator('.site-sub')).toContainText('Gallery');
@@ -490,6 +547,7 @@ test('editing a rule pattern to duplicate another rule is rejected (marked inval
   }, res)));
   await page.goto(optionsUrl(extensionId));
 
+  await openSections(page); // Per-site data starts collapsed; the pattern field needs it open
   const firstPat = page.locator('#sites .site-pat-input').first();
   await firstPat.fill('b.test'); // collide with the 2nd rule
   await expect(firstPat).toHaveClass(/invalid/); // live ✗

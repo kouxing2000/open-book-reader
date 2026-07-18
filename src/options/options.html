@@ -28,12 +28,18 @@
     .saved.error { color: #c62828; }
     .note { font-size: 12.5px; opacity: .6; margin-top: 24px; line-height: 1.5; }
     a { color: inherit; }
-    /* Grouped settings — each section is its own card so related controls read together. */
-    section.card { border: 1px solid rgba(127,127,127,.2); border-radius: 14px; padding: 2px 18px 12px; margin: 16px 0; background: rgba(255,255,255,.5); }
-    @media (prefers-color-scheme: dark) { section.card { background: rgba(255,255,255,.04); border-color: rgba(127,127,127,.26); } }
-    section.card > h2 { font-size: 13px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; opacity: .75; margin: 14px 2px 4px; display: flex; align-items: center; gap: 7px; }
-    section.card > h2 .h2-sub { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .65; font-size: 11.5px; }
-    section.card .row:last-child, section.card .row:has(+ .subhead) { border-bottom: 0; } /* avoid doubling with the .subhead top border */
+    /* Grouped settings — each section is a collapsible <details> card (same pattern as the
+       guide below) so the page stays short: Reader is open by default, the rest collapse. */
+    details.card { border: 1px solid rgba(127,127,127,.2); border-radius: 14px; padding: 2px 18px 12px; margin: 16px 0; background: rgba(255,255,255,.5); }
+    @media (prefers-color-scheme: dark) { details.card { background: rgba(255,255,255,.04); border-color: rgba(127,127,127,.26); } }
+    details.card > summary { margin: 14px 2px 4px; display: flex; align-items: center; gap: 7px; cursor: pointer; list-style: none; }
+    details.card > summary::-webkit-details-marker { display: none; }
+    details.card > summary::before { content: '▸' / ''; width: 1em; opacity: .6; } /* '' = decorative (kept out of the a11y name) */
+    details.card[open] > summary::before { content: '▾' / ''; }
+    /* An <h2> inside the <summary> keeps the heading outline for screen-reader group navigation. */
+    details.card > summary h2 { font-size: 13px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; opacity: .75; margin: 0; display: flex; align-items: center; gap: 7px; }
+    details.card > summary h2 .h2-sub { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .65; font-size: 11.5px; }
+    details.card .row:last-child, details.card .row:has(+ .subhead) { border-bottom: 0; } /* avoid doubling with the .subhead top border */
     /* A subsection inside a card (e.g. Per-site rules under Smart open). */
     .subhead { font-size: 13.5px; font-weight: 600; padding: 16px 0 2px; margin-top: 6px; border-top: 1px solid rgba(127,127,127,.18); }
     .subhead .hint { display: block; font-size: 12px; opacity: .55; margin-top: 3px; font-weight: normal; line-height: 1.5; }
@@ -62,7 +68,7 @@
     .pick-valid.bad { color: #d9534f; }
     .pick-revert { padding: 4px 9px; line-height: 1; font-size: 14px; }
     /* Keep long lists from ballooning the page — scroll within a bounded box instead. */
-    #picks, #sites { max-height: 340px; overflow-y: auto; }
+    #picks, #sites, #hidden { max-height: 340px; overflow-y: auto; }
     .subhead-count { opacity: .5; font-weight: 400; font-size: 12px; }
     /* ?site= scope banner. */
     .site-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -145,8 +151,8 @@
     </div>
   </details>
 
-  <section class="card">
-    <h2><span data-i18n="optSecReader">📖 Reader</span></h2>
+  <details class="card" open>
+    <summary><h2><span data-i18n="optSecReader">📖 Reader</span></h2></summary>
 
     <div class="row">
       <label data-i18n="optTheme">Theme</label>
@@ -215,30 +221,10 @@
       <label><span data-i18n="optPrintUrl">Include source URL in print</span> <span class="hint" data-i18n="optPrintUrlHint">When you 🖨 Print / Save as PDF, add a footer with the page's full URL so the saved copy links back to the article. Off = omit it.</span></label>
       <span><input type="checkbox" id="printSourceUrl" /></span>
     </div>
+  </details>
 
-    <div class="subhead">
-      <span data-i18n="optPicksHead">Saved content picks</span> <span id="picksCount" class="subhead-count"></span>
-      <span class="hint" data-i18n-html="optPicksHint">When the reader grabs the wrong block, the <b>⌖ Pick</b> button lets you choose
-      the real content and <b>Save for this site</b>. Saved picks are listed here and reused
-      automatically on that site. You can <b>edit the CSS selector</b> to fine-tune it: a class like
-      <code>.article-body</code> is more robust than the auto-generated path, and a selector that
-      matches several blocks (e.g. <code>.intro, .post-body</code>) reads them all. The ✓/✗ marks
-      whether the selector is valid. Remove one to go back to automatic extraction.</span>
-    </div>
-    <div id="picks"></div>
-
-    <div class="subhead">
-      <span data-i18n="optHiddenHead">Hidden images</span> <span id="hiddenCount" class="subhead-count"></span>
-      <span class="hint" data-i18n-html="optHiddenHint">The per-site image filter. The <b>⊘ Hide</b> button in the gallery
-      drops an image (or its folder / host) from the wall — useful for avatars, badges and other repeated noise.
-      Hidden patterns are listed here as URL globs (<code>*</code> = wildcard). Entries starting with <code>css:</code>
-      match images by their place in the page instead of by URL. Remove one to bring those images back.</span>
-    </div>
-    <div id="hidden"></div>
-  </section>
-
-  <section class="card">
-    <h2><span data-i18n="optSecGallery">🖼 Image gallery</span></h2>
+  <details class="card">
+    <summary><h2><span data-i18n="optSecGallery">🖼 Image gallery</span></h2></summary>
 
     <div class="row">
       <label><span data-i18n="optGalColumns">Wall columns</span> <span class="hint" data-i18n-html="optGalColumnsHint">How many columns the <b>Wall</b> (masonry) layout uses — fewer = larger images. Clamped per screen, so the in-gallery <b>Size</b> slider always tops out at a 2-column view.</span></label>
@@ -274,10 +260,10 @@
       <label><span data-i18n="optGalSlideSpeed">Slideshow speed</span> <span class="hint" data-i18n-html="optGalSlideSpeedHint">Seconds each image is shown when you play the slideshow in the big-image view (lightbox <b>▶</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge). Plays once and stops on the last image.</span></label>
       <span><input type="range" id="gallerySlideSeconds" min="1" max="30" step="1" /><span class="val" id="gallerySlideSecondsVal"></span></span>
     </div>
-  </section>
+  </details>
 
-  <section class="card">
-    <h2><span data-i18n="optSecSmart">🎯 Smart open</span> <span class="h2-sub" data-i18n="optSecSmartSub">when you click the toolbar icon</span></h2>
+  <details class="card">
+    <summary><h2><span data-i18n="optSecSmart">🎯 Smart open</span> <span class="h2-sub" data-i18n="optSecSmartSub">when you click the toolbar icon</span></h2></summary>
 
     <div class="row">
       <label><span data-i18n="optAutoGallery">Auto-open gallery</span> <span class="hint" data-i18n-html="optAutoGalleryHint">Toolbar-icon click opens 🖼 gallery instead of 📖 reader when the page has at least this many images. <b>Off</b> = always open the reader. (Alt+B / Alt+Shift+B always honor their mode.)</span></label>
@@ -288,6 +274,13 @@
       <label><span data-i18n="optKeepReader">Keep reader for articles</span> <span class="hint" data-i18n-html="optKeepReaderHint">When auto-opening by image count, stay in the 📖 reader if the page has at least this many words of article text - so a long illustrated read isn't sent to the gallery. <b>Off</b> = decide by image count only.</span></label>
       <span><input type="range" id="autoTextMinWords" min="0" max="800" step="50" /><span class="val" id="autoTextMinWordsVal"></span></span>
     </div>
+  </details>
+
+  <!-- Everything scoped to a specific site lives here — per-site rules, saved content picks,
+       and hidden-image filters. The "Focus on a site" bar above filters all three together,
+       and the reader/gallery ⚙ deep-link auto-expands this section scoped to that host. -->
+  <details class="card" id="perSiteSection">
+    <summary><h2><span data-i18n="optSecSites">🌐 Per-site data</span> <span id="perSiteCount" class="subhead-count"></span> <span class="h2-sub" data-i18n="optSecSitesSub">for specific sites</span></h2></summary>
 
     <div class="subhead">
       <span data-i18n="optRulesHead">Per-site rules</span>
@@ -313,7 +306,27 @@
       <button class="ghost" id="siteAddBtn" data-i18n="optAddRule">Add</button>
     </div>
     <div id="sites"></div>
-  </section>
+
+    <div class="subhead">
+      <span data-i18n="optPicksHead">Saved content picks</span> <span id="picksCount" class="subhead-count"></span>
+      <span class="hint" data-i18n-html="optPicksHint">When the reader grabs the wrong block, the <b>⌖ Pick</b> button lets you choose
+      the real content and <b>Save for this site</b>. Saved picks are listed here and reused
+      automatically on that site. You can <b>edit the CSS selector</b> to fine-tune it: a class like
+      <code>.article-body</code> is more robust than the auto-generated path, and a selector that
+      matches several blocks (e.g. <code>.intro, .post-body</code>) reads them all. The ✓/✗ marks
+      whether the selector is valid. Remove one to go back to automatic extraction.</span>
+    </div>
+    <div id="picks"></div>
+
+    <div class="subhead">
+      <span data-i18n="optHiddenHead">Hidden images</span> <span id="hiddenCount" class="subhead-count"></span>
+      <span class="hint" data-i18n-html="optHiddenHint">The per-site image filter. The <b>⊘ Hide</b> button in the gallery
+      drops an image (or its folder / host) from the wall — useful for avatars, badges and other repeated noise.
+      Hidden patterns are listed here as URL globs (<code>*</code> = wildcard). Entries starting with <code>css:</code>
+      match images by their place in the page instead of by URL. Remove one to bring those images back.</span>
+    </div>
+    <div id="hidden"></div>
+  </details>
 
   <div class="actions">
     <button class="ghost" id="reset" data-i18n="optReset">Reset to defaults</button>

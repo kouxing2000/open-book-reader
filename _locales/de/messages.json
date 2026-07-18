@@ -260,6 +260,8 @@
   "optAutoGalleryHint": { "message": "Ein Klick auf das Symbolleisten-Symbol öffnet die 🖼 Galerie statt des 📖 Lesers, wenn die Seite mindestens so viele Bilder hat. <b>Aus</b> = immer den Leser öffnen. (Alt+B / Alt+Shift+B verwenden stets ihren eigenen Modus.)" },
   "optKeepReader": { "message": "Leser für Artikel beibehalten" },
   "optKeepReaderHint": { "message": "Beim automatischen Öffnen nach Bilderanzahl im 📖 Leser bleiben, wenn die Seite mindestens so viele Wörter Artikeltext hat — damit ein langer, bebilderter Text nicht in der Galerie landet. <b>Aus</b> = allein nach Bilderanzahl entscheiden." },
+  "optSecSites": { "message": "🌐 Website-Daten" },
+  "optSecSitesSub": { "message": "für bestimmte Websites" },
   "optRulesHead": { "message": "Website-Regeln" },
   "optRulesHint": { "message": "Erzwingen Sie einen Modus für bestimmte Websites statt der smarten Auswahl. Das Muster vergleicht <code>Host + Pfad</code> mit <code>*</code> als Platzhalter — <code>example.com</code> (ganze Website), <code>example.com/blog/*</code> (ein Bereich), <code>*.example.com/*</code> (alle Subdomains). Bei mehreren Treffern gewinnt das spezifischste. Gilt für das Symbolleisten-Symbol und das Rechtsklick-Menü; <b>Alt+B</b> / <b>Alt+Shift+B</b> folgen immer ihrem eigenen Modus. <b>Auto-Öffnen</b> geht einen Schritt weiter: passende Seiten, die nach echtem Inhalt aussehen (ein Artikel, eine Bildserie), öffnen sich ganz ohne Klick im Lesemodus — Listen- und Suchseiten bleiben unberührt, und <b>Esc</b> schließt immer. Fragt einmalig nach der Berechtigung für diese Website." },
   "optRulePlaceholder": { "message": "example.com/blog/*" },
