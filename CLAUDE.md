@@ -452,10 +452,11 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
 - `reader.js` injects `article.content` via `innerHTML` into the Shadow DOM (and the print iframe).
   Vendored Readability is NOT a sanitizer (it keeps e.g. `<img onerror>`), so EVERY content path —
   the Readability pass in `parseBaseDoc` and the `rawFallback` for picked/selected subtrees — runs its
-  HTML through `sanitizeContentHTML` (drops `<script>`/`<style>`/`<noscript>`, all inline `on*`
-  handlers, `<iframe srcdoc>` — inline HTML that runs in the page's own origin — and `javascript:`
-  URLs on `href`/`src`/`xlink:href`/`action`/`formaction`; `<iframe src>` embeds are kept) before it
-  becomes `article.content`. `escapeHTML` covers title/byline only.
+  HTML through `sanitizeContentHTML` (drops `<script>`/`<style>`/`<noscript>`/`<iframe>`/`<form>`
+  wholesale — `<iframe>`/`<form>` guard against clickjacking/phishing inside the trusted reader
+  overlay — plus all inline `on*` handlers, `srcdoc`, and `javascript:` URLs on
+  `href`/`src`/`xlink:href`/`action`/`formaction`) before it becomes `article.content`.
+  `escapeHTML` covers title/byline only.
 - Listeners (`keydown` capture, `resize`) attach once at injection and persist for the tab's lifetime;
   `close()` only hides the host (inert when `!active`). Don't add re-attach logic without also handling
   the double-injection guard.

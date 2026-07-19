@@ -11,6 +11,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-19
+
+### Added
+- **Auto-open — reading mode with zero clicks, per site.** Turn it on for a site (right-click →
+  **Auto-open on this site**) and its content pages open in the reader or gallery by themselves,
+  while list, search, and index pages stay untouched — and **Esc** always closes. It's strictly
+  opt-in and asks once for permission to run on that site. An **Auto-open on pages like this…**
+  option scopes it to just one section (a single forum, a manga series) instead of the whole site.
+- **A QR / branding footer on printed pages.** When you 🖨 Print / Save as PDF, the saved copy can
+  carry a small "Open Book Reader" footer with a QR code back to the extension — so a shared PDF
+  can lead readers to it. Fully local (nothing is sent); turn it off under Settings.
+
+### Changed
+- **Redesigned settings page.** Groups are now collapsible sections instead of one long scroll, and
+  everything specific to a site — per-site rules, saved content picks, and hidden-image filters —
+  lives together under one **Per-site data** section (with a count of how many sites you've
+  customized). It remembers which sections you left open.
+- **Clearer right-click menu.** Immediate actions are now prefixed **Open now:**, a site's default
+  view lives in a **Configure Default** submenu that also shows the current selection, and the
+  smart auto-pick is now labelled **Smart pick** (it was "Auto", which clashed with Auto-open).
+- **Editable per-site rules.** Each rule now describes in plain language what it does, its URL
+  pattern is editable in place with live validation, and a **Focus on a site** filter scopes the
+  lists to one site.
+- All of the new menu, settings, and print options are translated in every supported language.
+
+### Fixed
+- Your reading position is now saved when you switch tabs or navigate away — not only when you
+  close the reader — so you resume in the right spot more reliably.
+
+### Security
+- Hardened the reader's content sanitization (strips `<iframe>` / `<form>` and other injection
+  vectors from extracted page content) and the gallery's image-download fetch (guards against
+  server-side request forgery).
+
 ## [1.5.0] - 2026-07-16
 
 ### Added
@@ -167,7 +201,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.6.0
 [1.5.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.5.0
 [1.4.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.4.0
 [1.3.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.3.1
