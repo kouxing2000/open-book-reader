@@ -15,6 +15,7 @@ const FILES = [
   'src/content/settings.js',     // defines globalThis.OBR.DEFAULTS
   'src/content/readability.js',  // bundled Mozilla Readability (Apache-2.0)
   'src/content/reader.style.js', // reader stylesheet (OBR._readerCSS); loads before reader.js
+  'src/content/qrcode.js',       // vendored qrcode-generator (MIT); the print branding QR
   'src/content/reader.js',       // text engine; exposes OBR.toggle()
   'src/content/zip.js',          // OBR._buildZip (used by gallery's ZIP download)
   'src/content/gallery.js'       // image-gallery mode; exposes OBR.toggleGallery()
@@ -115,6 +116,22 @@ function openOptionsForSite(site) {
   } catch (e) { openPage(); }
 }
 
+// "Auto-open on pages like this…": stash a best-guess URL PATTERN (not the whole host) plus the
+// auto flag, then open Options — which pre-fills the add-rule form with the pattern (editable),
+// checks Auto-open, expands the Per-site data section, and scrolls to it, so the user reviews
+// and adjusts the scope before saving. Same one-shot chrome.storage.local relay as the ⚙ scope.
+function openOptionsPrefill(pattern) {
+  const openPage = () => { try { chrome.runtime.openOptionsPage(); } catch (e) { /* */ } };
+  const p = pattern && String(pattern).trim();
+  try {
+    if (p && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ obr_options_prefill: { pattern: p, auto: true } }, openPage);
+    } else {
+      openPage();
+    }
+  } catch (e) { openPage(); }
+}
+
 // The migrated siteRules from storage (a fresh array; [] on any failure). Used by
 // createMenus() to tailor the menu to the current site's saved state.
 function getSiteRules() {
@@ -165,22 +182,49 @@ function createMenus() {
     const autoPatterns = uniq(rules
       .filter((r) => r && r.auto === true && r.match && r.mode)
       .flatMap((r) => OBR.originsForRule(r.match)));
+    // The site's CURRENT whole-site default view, shown as a disabled info line (Chrome can't
+    // radio-check a per-site item declaratively — no negation, no onShown — so we ADD the one
+    // matching mode's line via documentUrlPatterns, exactly like Stop/Clear). Whole-site rules
+    // only; path rules resolve to the host origin and would mislabel every page (they live in
+    // Options, which shows them with a plain-English gloss).
+    const modePatterns = (m) => uniq(rules
+      .filter((r) => r && r.match && r.mode === m && r.match.indexOf('/') === -1)
+      .flatMap((r) => OBR.originsForRule(r.match)));
+    const currText = modePatterns('text');
+    const currImages = modePatterns('images');
+    const currAuto = modePatterns('auto');
 
     await removeAll();
     await add({ id: 'obr-open', title: OBR.t('ctxOpenTitle'), contexts: ctx });
-    // Band 1 — open once (one-shot, this visit only).
+    // Band 1 — "Open now:" — a one-shot open for THIS visit (the prefix flags the immediate action).
     await add({ id: 'obr-open-auto', parentId: 'obr-open', title: OBR.t('ctxAuto'), contexts: ctx });
     await add({ id: 'obr-open-text', parentId: 'obr-open', title: OBR.t('ctxReader'), contexts: ctx });
     await add({ id: 'obr-open-images', parentId: 'obr-open', title: OBR.t('ctxGallery'), contexts: ctx });
     // Band 2 — the site's DEFAULT VIEW (a persistent whole-site rule; path rules are
     // typed in Options). This is the "which view" axis.
+    // Band 2 — Configure Default: the site's persistent default VIEW, in a submenu. Unlike the
+    // old flat "Always open as…", choosing here does NOT open anything now (that's Band 1's job)
+    // — it just writes the whole-site rule. The disabled "Current selection: …" line names the
+    // active default, scoped per mode like Stop/Clear (Chrome can't radio-check declaratively —
+    // no onShown, no negation — so it's simply omitted on a rule-less site).
     await add({ id: 'obr-sep', parentId: 'obr-open', type: 'separator', contexts: ctx });
-    await add({ id: 'obr-rule-text', parentId: 'obr-open', title: OBR.t('ctxAlwaysReader'), contexts: ctx });
-    await add({ id: 'obr-rule-images', parentId: 'obr-open', title: OBR.t('ctxAlwaysGallery'), contexts: ctx });
+    await add({ id: 'obr-configure-default', parentId: 'obr-open', title: OBR.t('ctxConfigureDefault'), contexts: ctx });
+    if (currText.length) await add({ id: 'obr-def-current-text', parentId: 'obr-configure-default', title: OBR.t('ctxCurrentReader'), contexts: ctx, enabled: false, documentUrlPatterns: currText });
+    if (currImages.length) await add({ id: 'obr-def-current-images', parentId: 'obr-configure-default', title: OBR.t('ctxCurrentGallery'), contexts: ctx, enabled: false, documentUrlPatterns: currImages });
+    if (currAuto.length) await add({ id: 'obr-def-current-auto', parentId: 'obr-configure-default', title: OBR.t('ctxCurrentAuto'), contexts: ctx, enabled: false, documentUrlPatterns: currAuto });
+    const anyCurr = uniq([...currText, ...currImages, ...currAuto]); // scope the divider too, so a rule-less site shows neither
+    if (anyCurr.length) await add({ id: 'obr-def-sep', parentId: 'obr-configure-default', type: 'separator', contexts: ctx, documentUrlPatterns: anyCurr });
+    await add({ id: 'obr-def-auto', parentId: 'obr-configure-default', title: OBR.t('optModeAuto'), contexts: ctx });   // Smart pick
+    await add({ id: 'obr-def-text', parentId: 'obr-configure-default', title: OBR.t('optModeReader'), contexts: ctx });  // Reader
+    await add({ id: 'obr-def-images', parentId: 'obr-configure-default', title: OBR.t('optModeGallery'), contexts: ctx }); // Gallery
     // Band 3 — AUTO-OPEN, a separate axis (whether the view opens with no click). Kept
     // apart from Band 2 by its own divider — the user asked not to conflate the two.
     await add({ id: 'obr-sep2', parentId: 'obr-open', type: 'separator', contexts: ctx });
     await add({ id: 'obr-rule-auto', parentId: 'obr-open', title: OBR.t('ctxAutoOpen'), contexts: ctx });
+    // A path/URL-scoped variant: opens Options with a best-guess pattern pre-filled + editable
+    // (the menu can't show the pattern in its label — it's built before the right-click, with no
+    // way to read the URL — so it hands off to Options, where the user reviews it before saving).
+    await add({ id: 'obr-rule-auto-url', parentId: 'obr-open', title: OBR.t('ctxAutoOpenUrl'), contexts: ctx });
     if (autoPatterns.length) {
       await add({ id: 'obr-rule-auto-stop', parentId: 'obr-open', title: OBR.t('ctxStopAutoOpen'), contexts: ctx, documentUrlPatterns: autoPatterns });
     }
@@ -352,58 +396,61 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.permissions.onAdded.addListener(() => { syncSentinelRegistration(); });
 chrome.permissions.onRemoved.addListener(() => { syncSentinelRegistration(); });
 
+// "Stop auto-opening on this site": clear the auto flag on whichever rule matches the page
+// (path rules included), keeping its mode. Uses the page URL so a path-scoped auto rule is
+// turned off precisely; the storage write re-syncs registration + rebuilds the menu.
+function stopAutoOpen(src) {
+  chrome.storage.sync.get('obr_settings', (data) => {
+    void chrome.runtime.lastError;
+    const raw = (data && data.obr_settings) || {};
+    OBR.migrateSiteRules(raw);
+    const rule = OBR.matchSiteRuleEx(src, raw.siteRules);
+    if (rule && rule.auto) {
+      raw.siteRules = OBR.setRuleAuto(raw.siteRules, rule.match, false);
+      chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; });
+    }
+  });
+}
+
+// Configure Default → set the site's default VIEW and STOP — it does NOT open now (Band 1's
+// "Open now:" is the trigger). Reader/Gallery preserve any auto flag (no opts). "Smart pick"
+// routes through _configureDefaultAction: clear the rule when auto-open is off (don't leave a
+// no-op {mode:'auto'}), keep it at mode 'auto' when auto-open is on.
+function configureDefault(host, mode) {
+  if (!host) return;
+  if (mode !== 'auto') return setSiteRule(host, mode);
+  chrome.storage.sync.get('obr_settings', (data) => {
+    void chrome.runtime.lastError;
+    const raw = (data && data.obr_settings) || {};
+    OBR.migrateSiteRules(raw);
+    const prev = (raw.siteRules || []).find((r) => r && r.match === host);
+    const act = OBR._configureDefaultAction(prev, 'auto');
+    setSiteRule(host, act.clear ? null : act.mode);
+  });
+}
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!tab) return;
-  const id = info.menuItemId;
-  // "Settings…": open the options page, scoped to this site (same as the overlay ⚙).
-  if (id === 'obr-open-options') {
-    const src = info.pageUrl || tab.url || '';
+  const act = OBR._menuAction(info.menuItemId); // pure id → descriptor; null = ignore (separators/parent)
+  if (!act) return;
+  const src = info.pageUrl || tab.url || '';
+  // The gesture-only actions don't need a rule host.
+  if (act.do === 'open') return void invokeReader(tab.id, tab.url, act.mode);
+  if (act.do === 'stop-auto') return stopAutoOpen(src);
+  if (act.do === 'auto-url') return void openOptionsPrefill(OBR._pathPatternForUrl(src));
+  // Host-scoped actions. Gate on a parseable URL before normalizing: OBR.normalizeHost is lenient
+  // (treats a non-URL as a bare host), so a garbage source would otherwise write a bogus rule.
+  // (options is intentionally OUTSIDE this guard — it opens unscoped on a junk URL.)
+  if (act.do === 'options') {
     let host = '';
-    try { new URL(src); host = OBR.normalizeHost(src); } catch (e) { /* not a real URL — open unscoped */ }
-    openOptionsForSite(host);
-    return;
+    try { new URL(src); host = OBR.normalizeHost(src); } catch (e) { /* open unscoped */ }
+    return openOptionsForSite(host);
   }
-  // "Stop auto-opening on this site": clear the auto flag on whichever rule matches the
-  // page (path rules included), keeping its mode. Uses info.pageUrl so a path-scoped auto
-  // rule is turned off precisely; the storage write re-syncs registration + rebuilds the
-  // menu (Stop then disappears here). No open/close — just flips the flag.
-  if (id === 'obr-rule-auto-stop') {
-    const src = info.pageUrl || tab.url || '';
-    chrome.storage.sync.get('obr_settings', (data) => {
-      void chrome.runtime.lastError;
-      const raw = (data && data.obr_settings) || {};
-      OBR.migrateSiteRules(raw);
-      const rule = OBR.matchSiteRuleEx(src, raw.siteRules);
-      if (rule && rule.auto) {
-        raw.siteRules = OBR.setRuleAuto(raw.siteRules, rule.match, false);
-        chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; });
-      }
-    });
-    return;
-  }
-  // Rule items: persist a whole-site rule, then open that mode now (clear just clears).
-  if (id === 'obr-rule-text' || id === 'obr-rule-images' || id === 'obr-rule-clear' || id === 'obr-rule-auto') {
-    // Gate on a parseable URL before normalizing: OBR.normalizeHost is lenient (it treats a
-    // non-URL string as a bare host), so a falsy/garbage source would otherwise write a bogus
-    // whole-site rule. A context-menu source is normally a real page URL; this just keeps the
-    // no-op-on-junk guard the deleted hostOf provided (setSiteRule bails on an empty host).
-    const src = info.pageUrl || tab.url || '';
-    let host = '';
-    try { new URL(src); host = OBR.normalizeHost(src); } catch (e) { /* not a real URL — no-op */ }
-    if (id === 'obr-rule-clear') return setSiteRule(host, null);
-    if (id === 'obr-rule-auto') return host && enableAutoOpen(host, tab);
-    const mode = id === 'obr-rule-images' ? 'images' : 'text';
-    // Preserving the auto flag here (no opts) means "Always open as…" on an
-    // auto-enabled site changes the mode without silently killing auto-open.
-    setSiteRule(host, mode);
-    return invokeReader(tab.id, tab.url, mode);
-  }
-  // Open-once items.
-  const mode = id === 'obr-open-text' ? 'text'
-    : id === 'obr-open-images' ? 'images'
-    : (id === 'obr-open-auto' || id === 'obr-open') ? 'auto'
-    : null;
-  if (mode) invokeReader(tab.id, tab.url, mode);
+  let host = '';
+  try { new URL(src); host = OBR.normalizeHost(src); } catch (e) { return; /* not a real URL — no-op */ }
+  if (act.do === 'clear') return setSiteRule(host, null);
+  if (act.do === 'enable-auto') return void (host && enableAutoOpen(host, tab));
+  if (act.do === 'configure') return configureDefault(host, act.mode);
 });
 
 // The uninstall survey (a static GitHub Pages form) is our only window into WHY people

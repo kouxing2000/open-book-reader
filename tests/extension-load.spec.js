@@ -78,14 +78,14 @@ test('racing createMenus() calls rebuild the menu without duplicate-id errors', 
     return { created, errs };
   });
 
-  // Positive landmark FIRST: both racing builds ran to completion, each creating all 11
+  // Positive landmark FIRST: both racing builds ran to completion, each creating all 14
   // ALWAYS-present items. (The fresh test profile has no rules, so the state-scoped
-  // "Stop"/"Clear" rows aren't created here — that's the whole point of the redesign, and
-  // it's covered by the state-aware test below.) Without this, a build that silently
-  // created nothing would satisfy the no-errors assertion.
+  // "Current selection"/"Stop"/"Clear" rows aren't created here — that's the whole point of the
+  // redesign, and it's covered by the state-aware test below.) Without this, a build that
+  // silently created nothing would satisfy the no-errors assertion.
   const ids = ['obr-open', 'obr-open-auto', 'obr-open-text', 'obr-open-images',
-    'obr-sep', 'obr-rule-text', 'obr-rule-images', 'obr-sep2', 'obr-rule-auto',
-    'obr-sep-opts', 'obr-open-options'];
+    'obr-sep', 'obr-configure-default', 'obr-def-auto', 'obr-def-text', 'obr-def-images',
+    'obr-sep2', 'obr-rule-auto', 'obr-rule-auto-url', 'obr-sep-opts', 'obr-open-options'];
   for (const id of ids) {
     expect(created.filter((c) => c === id), `creates of ${id}`).toHaveLength(2);
   }

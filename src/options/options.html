@@ -116,10 +116,10 @@
       <p data-i18n-html="optGuideOpenTitle"><b>Open it on any page — three ways:</b></p>
       <ul>
         <li data-i18n-html="optGuideOpenToolbar"><b>Toolbar icon</b> — smart pick: the 📖 reader for articles, the 🖼 gallery for image-heavy pages.</li>
-        <li data-i18n-html="optGuideOpenRightClick"><b>Right-click</b> a page or image → <b>Open in Book Reader</b> → Auto / Reader / Gallery.</li>
+        <li data-i18n-html="optGuideOpenRightClick"><b>Right-click</b> a page or image → <b>Open in Book Reader</b> → Smart pick / Reader / Gallery.</li>
         <li data-i18n-html="optGuideOpenKeyboard"><b>Keyboard:</b> <kbd>Alt</kbd>+<kbd>B</kbd> reader · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> gallery.</li>
       </ul>
-      <p class="why" data-i18n-html="optGuideOpenWhy">Want a site to always open one way? Right-click → <b>Always open this site as Reader / Gallery</b>, or add a path/wildcard pattern under <b>Per-site rules</b> below. Want zero clicks? Right-click → <b>Auto-open on this site</b> — content pages there open by themselves, list pages never do, and <b>Esc</b> always closes.</p>
+      <p class="why" data-i18n-html="optGuideOpenWhy">Want a site to always open one way? Right-click → <b>Configure Default</b>, or add a path/wildcard pattern under <b>Per-site rules</b> below. Want zero clicks? Right-click → <b>Auto-open on this site</b> — content pages there open by themselves, list pages never do, and <b>Esc</b> always closes.</p>
 
       <p data-i18n-html="optGuideReadTitle"><b>While reading (📖 reader)</b></p>
       <ul>
@@ -221,6 +221,11 @@
       <label><span data-i18n="optPrintUrl">Include source URL in print</span> <span class="hint" data-i18n="optPrintUrlHint">When you 🖨 Print / Save as PDF, add a footer with the page's full URL so the saved copy links back to the article. Off = omit it.</span></label>
       <span><input type="checkbox" id="printSourceUrl" /></span>
     </div>
+
+    <div class="row">
+      <label><span data-i18n="optPrintBranding">Add a QR / branding footer to print</span> <span class="hint" data-i18n="optPrintBrandingHint">When you 🖨 Print / Save as PDF, add a small “Open Book Reader” footer with a QR code to the project page, so a shared PDF can lead readers back to the extension. Fully local — nothing is sent. Off = no branding.</span></label>
+      <span><input type="checkbox" id="printBranding" /></span>
+    </div>
   </details>
 
   <details class="card">
@@ -284,7 +289,7 @@
 
     <div class="subhead">
       <span data-i18n="optRulesHead">Per-site rules</span>
-      <span class="hint" data-i18n-html="optRulesHint">Force a mode on specific sites instead of the smart auto-pick. The
+      <span class="hint" data-i18n-html="optRulesHint">Force a mode on specific sites instead of the smart pick. The
       pattern matches <code>host + path</code> with <code>*</code> as a wildcard —
       <code>example.com</code> (whole site), <code>example.com/blog/*</code> (a section),
       <code>*.example.com/*</code> (all subdomains). When several match, the most specific
@@ -298,7 +303,7 @@
     <div class="site-add">
       <input type="text" id="siteHost" data-i18n-placeholder="optRulePlaceholder" placeholder="example.com/blog/*" />
       <select id="siteMode">
-        <option value="auto" data-i18n="optModeAuto">Auto-pick</option>
+        <option value="auto" data-i18n="optModeAuto">Smart pick</option>
         <option value="images" data-i18n="optModeGallery">Gallery</option>
         <option value="text" data-i18n="optModeReader">Reader</option>
       </select>

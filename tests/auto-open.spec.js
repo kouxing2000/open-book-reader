@@ -346,6 +346,75 @@ test('originsForRule maps rule globs to host-scoped origin patterns', async ({ p
   expect(r.bad).toEqual([]);
 });
 
+test('_pathPatternForUrl best-guesses a path-scoped rule pattern from the current URL', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await injectSentinel(page);
+  const r = await page.evaluate(() => ({
+    nested: OBR._pathPatternForUrl('https://example.com/forum/topic/123'),      // drop the page-specific last segment
+    section: OBR._pathPatternForUrl('https://www.example.com/blog/my-post'),    // host is www-stripped
+    script: OBR._pathPatternForUrl('https://forum.example.com/viewtopic.php?t=9'), // keep the file, wildcard the query
+    single: OBR._pathPatternForUrl('https://example.com/some-slug'),            // no section to scope to -> whole host
+    root: OBR._pathPatternForUrl('https://example.com/'),                       // root -> whole host
+    bad: OBR._pathPatternForUrl('not a url'),
+  }));
+  expect(r.nested).toBe('example.com/forum/topic/*');
+  expect(r.section).toBe('example.com/blog/*');
+  expect(r.script).toBe('forum.example.com/viewtopic.php*');
+  expect(r.single).toBe('example.com');
+  expect(r.root).toBe('example.com');
+  expect(r.bad).toBe('');
+});
+
+test('_menuAction maps every context-menu id to the right action (a mode-mapping guard)', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await injectSentinel(page);
+  const r = await page.evaluate(() => ({
+    openText: OBR._menuAction('obr-open-text'),
+    openImages: OBR._menuAction('obr-open-images'),
+    openAuto: OBR._menuAction('obr-open-auto'),
+    defText: OBR._menuAction('obr-def-text'),
+    defImages: OBR._menuAction('obr-def-images'),
+    defAuto: OBR._menuAction('obr-def-auto'),
+    clear: OBR._menuAction('obr-rule-clear'),
+    enable: OBR._menuAction('obr-rule-auto'),
+    url: OBR._menuAction('obr-rule-auto-url'),
+    stop: OBR._menuAction('obr-rule-auto-stop'),
+    options: OBR._menuAction('obr-open-options'),
+    sep: OBR._menuAction('obr-sep'),   // separators / unknown ids -> null (ignored by the dispatch)
+    unknown: OBR._menuAction('nope'),
+  }));
+  expect(r.openText).toEqual({ do: 'open', mode: 'text' });
+  expect(r.openImages).toEqual({ do: 'open', mode: 'images' });
+  expect(r.openAuto).toEqual({ do: 'open', mode: 'auto' });
+  expect(r.defText).toEqual({ do: 'configure', mode: 'text' });
+  expect(r.defImages).toEqual({ do: 'configure', mode: 'images' });
+  expect(r.defAuto).toEqual({ do: 'configure', mode: 'auto' });
+  expect(r.clear).toEqual({ do: 'clear' });
+  expect(r.enable).toEqual({ do: 'enable-auto' });
+  expect(r.url).toEqual({ do: 'auto-url' });
+  expect(r.stop).toEqual({ do: 'stop-auto' });
+  expect(r.options).toEqual({ do: 'options' });
+  expect(r.sep).toBe(null);
+  expect(r.unknown).toBe(null);
+});
+
+test('_configureDefaultAction: Smart pick clears a plain rule but keeps an auto-open one', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await injectSentinel(page);
+  const r = await page.evaluate(() => ({
+    reader: OBR._configureDefaultAction({ match: 'x', mode: 'auto' }, 'text'),      // Reader -> just set mode
+    gallery: OBR._configureDefaultAction(null, 'images'),                          // Gallery -> just set mode
+    smartNoRule: OBR._configureDefaultAction(null, 'auto'),                        // Smart pick, no rule -> clear
+    smartPlain: OBR._configureDefaultAction({ match: 'x', mode: 'text' }, 'auto'), // Smart pick, no auto-open -> clear
+    smartAuto: OBR._configureDefaultAction({ match: 'x', mode: 'text', auto: true }, 'auto'), // keep the auto-open rule
+  }));
+  expect(r.reader).toEqual({ mode: 'text' });
+  expect(r.gallery).toEqual({ mode: 'images' });
+  expect(r.smartNoRule).toEqual({ clear: true });
+  expect(r.smartPlain).toEqual({ clear: true });
+  expect(r.smartAuto).toEqual({ mode: 'auto' });
+});
+
 test('matchSiteRuleEx returns the winning rule object; matchSiteRule stays its mode wrapper', async ({ page }) => {
   await gotoFixture(page, 'article.html');
   await injectSentinel(page);

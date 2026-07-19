@@ -213,6 +213,10 @@
   // Always a white paper theme (printing the dark/sepia screen theme wastes ink);
   // honors the reader's font family + line-height, but sizes in paper points since
   // screen px don't map to paper. Exposed for unit testing, like _buildReportMailto.
+  // The print-branding QR links to the Chrome Web Store listing (the same public URL as the
+  // README / landing "Add to Chrome" button), so a shared PDF sends readers straight to install.
+  const STORE_URL = 'https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca';
+
   function printCSS({ fontFamily, lineHeight }) {
     const fam = FONT_STACKS[fontFamily] || FONT_STACKS.serif;
     const lh = lineHeight || 1.6;
@@ -234,16 +238,59 @@
       code { font-family: ui-monospace, Menlo, Consolas, monospace; }
       hr { border: 0; border-top: 1px solid #ddd; }
       .obr-print-byline { color: #555; font-style: italic; margin: 0 0 1.4em; }
-      .obr-print-source { margin-top: 2em; padding-top: .8em; border-top: 1px solid #ddd; font-size: .8em; color: #777; word-break: break-all; }`;
+      .obr-print-source { margin-top: 2em; padding-top: .8em; border-top: 1px solid #ddd; font-size: .8em; color: #777; word-break: break-all; }
+      .obr-print-brand { margin-top: 1.4em; padding-top: .8em; border-top: 1px solid #ddd; display: flex; align-items: center; gap: 12px; break-inside: avoid; }
+      .obr-print-brand .obr-qr { width: 72px; height: 72px; flex: 0 0 auto; }
+      .obr-print-brand .obr-qr svg { width: 100%; height: 100%; display: block; }
+      .obr-print-brand .obr-brand-name { font-weight: 700; font-size: .9em; color: #333; }
+      .obr-print-brand .obr-brand-tagline { font-size: .8em; color: #555; margin-top: .15em; }
+      .obr-print-brand .obr-brand-url { font-size: .75em; color: #888; margin-top: .15em; word-break: break-all; }`;
   }
-  function buildPrintDoc({ title, byline, content, fontFamily, lineHeight, url }) {
+
+  // Render a QR code for `text` as a self-contained SVG string (a white quiet-zone square + one
+  // <path> of the dark modules). Pure + CSP-safe: the vendored qrcode-generator (qrcode.js, loaded
+  // before this file) is array math only — no DOM, no eval — and SVG (not canvas) prints crisp with
+  // no data-URL. Returns '' if the encoder is unavailable or the text won't fit any QR version.
+  function qrSvg(text, opts) {
+    opts = opts || {};
+    const border = opts.border == null ? 2 : opts.border; // quiet-zone modules
+    const dark = opts.dark || '#000', light = opts.light || '#fff';
+    try {
+      if (typeof qrcode !== 'function') return '';
+      const qr = qrcode(0, opts.ecl || 'M'); // typeNumber 0 = auto-size to the shortest fit
+      qr.addData(String(text));
+      qr.make();
+      const n = qr.getModuleCount(), dim = n + border * 2;
+      let d = '';
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+        if (qr.isDark(r, c)) d += 'M' + (c + border) + ',' + (r + border) + 'h1v1h-1z';
+      }
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim + '" '
+        + 'shape-rendering="crispEdges" role="img" aria-label="QR code">'
+        + '<rect width="' + dim + '" height="' + dim + '" fill="' + light + '"/>'
+        + '<path d="' + d + '" fill="' + dark + '"/></svg>';
+    } catch (e) { return ''; }
+  }
+  OBR._qrSvg = qrSvg;
+  function buildPrintDoc({ title, byline, content, fontFamily, lineHeight, url, brand }) {
     const t = escapeHTML(title || '');
+    // `brand.qrSvg` is our own generated markup (a fixed project URL, no user input), so it's
+    // injected raw; the name/url text is escaped.
+    let brandHtml = '';
+    if (brand && brand.qrSvg) {
+      brandHtml = '<div class="obr-print-brand"><div class="obr-qr">' + brand.qrSvg + '</div>'
+        + '<div class="obr-brand-text"><div class="obr-brand-name">' + escapeHTML(brand.name || '') + '</div>'
+        + (brand.tagline ? '<div class="obr-brand-tagline">' + escapeHTML(brand.tagline) + '</div>' : '')
+        + (brand.url ? '<div class="obr-brand-url">' + escapeHTML(brand.url) + '</div>' : '')
+        + '</div></div>';
+    }
     return '<!doctype html><html><head><meta charset="utf-8">'
       + `<title>${t || OBR.t('readerPrintDefaultTitle')}</title><style>${printCSS({ fontFamily, lineHeight })}</style></head>`
       + `<body><h1>${t}</h1>`
       + (byline ? `<div class="obr-print-byline">${escapeHTML(byline)}</div>` : '')
       + (content || `<p>${OBR.t('readerPrintNoArticle')}</p>`)
       + (url ? `<div class="obr-print-source">${escapeHTML(url)}</div>` : '')
+      + brandHtml
       + '</body></html>';
   }
   OBR._buildPrintDoc = buildPrintDoc;
@@ -264,10 +311,20 @@
     if (settings.printSourceUrl !== false) {
       try { url = location.href; } catch (e) { /* opaque origin */ }
     }
+    // Optional "Open Book Reader" footer + QR to the project page, so a shared PDF can lead a
+    // reader back to the extension. Local + no new permission — the QR is drawn from a fixed URL.
+    // A short wordmark reads cleaner in a footer than the full ASO store name (manifest name =
+    // "Open Book — Reader View"); the brand is "Open Book Reader". The QR links to the store
+    // listing; the visible line shows the store DOMAIN, not the long opaque item URL.
+    let brand = null;
+    if (settings.printBranding !== false) {
+      brand = { name: 'Open Book Reader', tagline: OBR.t('readerPrintBrandTagline'),
+        url: 'chromewebstore.google.com', qrSvg: qrSvg(STORE_URL) };
+    }
 
     const docHtml = buildPrintDoc({
       title, byline, content,
-      fontFamily: settings.fontFamily, lineHeight: settings.lineHeight, url,
+      fontFamily: settings.fontFamily, lineHeight: settings.lineHeight, url, brand,
     });
 
     // Render into an OFF-SCREEN (not 0x0 / visibility:hidden) iframe so the print

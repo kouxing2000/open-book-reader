@@ -44,7 +44,8 @@ Non-goals (explicitly rejected or deferred)
 
 ### 3.1 Enabling
 - **Context menu** (primary): a new `Auto-open on this site` item in the existing
-  `obr-open` submenu, after the "Always open as..." rule items. Click →
+  `obr-open` submenu, after the `Configure Default` submenu (which holds the per-site
+  default-view rule items — formerly the flat "Always open as..." rows). Click →
   1. if the origin permission is missing, run the existing permission-popup flow
      (`src/permission.html`) requesting just this site's origins;
   2. on grant, upsert the site rule with `auto: true` (mode = the rule's existing mode, else
@@ -411,6 +412,17 @@ On a real forum (e.g. any Discourse instance):
    §4 step 3).
 7. chrome://extensions Errors badge stays clean through install/update/startup (registration
    sync serialization).
+8. **Menu bands** — Band 1 `Open now: …` opens immediately for this visit; `Configure Default ▸
+   Smart pick / Reader / Gallery` SETS the site's default view and does NOT open. On a site that
+   already has a whole-site rule, the submenu shows a disabled `Current selection: …` line for
+   the active mode; on a rule-less site that line (and its divider) is absent.
+9. **`Configure Default ▸ Smart pick`** clears an existing plain (non-auto) rule — back to the
+   global default, leaving no no-op `{mode:'auto'}` behind — but KEEPS an auto-open rule at mode
+   `auto` (logic in `OBR._configureDefaultAction`; id→action map in `OBR._menuAction`).
+10. **`Auto-open on pages like this…`** on a topic page → opens the options page scoped to the
+   site, with the add-rule field pre-filled with a best-guess path pattern (editable), Auto-open
+   ticked, and the Per-site data section expanded + scrolled to + focused. On a phpBB-style
+   `viewtopic.php?t=N` page the pattern keeps the script (`…/viewtopic.php*`).
 
 ## 11. Risks
 

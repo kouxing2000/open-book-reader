@@ -50,6 +50,9 @@
     printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
                            // so the saved copy links back to the article. Off = omit it
                            // (e.g. when sharing a PDF and you'd rather not expose the URL).
+    printBranding: true,   // print / Save as PDF: append a small "Open Book Reader" footer with
+                           // a QR code to the project page, so a shared PDF can lead readers back
+                           // to the extension. Off = no branding block.
     galleryColumns: 4,     // image-gallery WALL layout: masonry column COUNT (fewer = larger images;
                            // clamped per screen so "biggest" is a 2-up grid everywhere)
     galleryOrderedCols: 2, // image-gallery ORDERED layout: columns per row (1 = single-page reading
@@ -275,6 +278,61 @@
     const slash = p.indexOf('/');
     const host = (slash === -1 ? p : p.slice(0, slash)).toLowerCase().replace(/^www\./, '');
     return host + (slash === -1 ? '' : p.slice(slash));
+  };
+
+  // Best-guess a PATH-scoped rule pattern from a full page URL — for the context menu's
+  // "Auto-open on pages like this…" (the user reviews/edits it in Options before it saves, so
+  // an imperfect guess is fine). Rules of thumb, in order:
+  //  - a script/file endpoint (…/viewtopic.php?t=1) keeps the file so every topic matches but
+  //    the index (…/viewforum.php) doesn't — path-less sites like phpBB route through one path;
+  //  - a clean nested path (/forum/topic/123) drops the last, page-specific segment → /forum/topic/*
+  //    so sibling pages match;
+  //  - a root or single-segment path has no section to scope to → fall back to the whole host.
+  OBR._pathPatternForUrl = function (url) {
+    try {
+      const u = new URL(url);
+      const host = OBR.normalizeHost(u.hostname);
+      const segs = (u.pathname || '/').split('/').filter(Boolean);
+      if (!segs.length) return host;
+      if (/\.[a-z0-9]{1,8}$/i.test(segs[segs.length - 1])) return host + u.pathname + '*';
+      if (segs.length >= 2) return host + '/' + segs.slice(0, -1).join('/') + '/*';
+      return host;
+    } catch (e) { return ''; }
+  };
+
+  // The context-menu id → action mapping, as a PURE descriptor, so the dispatch in background.js
+  // is a thin switch and the mapping itself is unit-testable — a wrong mode (e.g. obr-def-images
+  // → 'text') surfaces in a test instead of only under a manual right-click. 'open' = one-shot
+  // open now (Band 1); 'configure' = set the site's default view (Band 2); the rest name their
+  // side effect. Returns null for ids we don't handle (separators, the parent item).
+  OBR._menuAction = function (id) {
+    switch (id) {
+      case 'obr-open-text': return { do: 'open', mode: 'text' };
+      case 'obr-open-images': return { do: 'open', mode: 'images' };
+      case 'obr-open-auto':
+      case 'obr-open': return { do: 'open', mode: 'auto' };
+      case 'obr-def-text': return { do: 'configure', mode: 'text' };
+      case 'obr-def-images': return { do: 'configure', mode: 'images' };
+      case 'obr-def-auto': return { do: 'configure', mode: 'auto' };
+      case 'obr-rule-clear': return { do: 'clear' };
+      case 'obr-rule-auto': return { do: 'enable-auto' };
+      case 'obr-rule-auto-url': return { do: 'auto-url' };
+      case 'obr-rule-auto-stop': return { do: 'stop-auto' };
+      case 'obr-open-options': return { do: 'options' };
+      default: return null;
+    }
+  };
+
+  // What "Configure Default → <mode>" should WRITE for a site, given its current rule (or null).
+  // Reader/Gallery just set the mode. "Smart pick" (mode 'auto') with auto-open OFF CLEARS the
+  // rule — smart pick IS the global default, so leaving a no-op {mode:'auto'} would only add
+  // menu noise ("Clear rule"/"Current selection") for a site with no real preference. With
+  // auto-open ON we keep the rule at mode 'auto' (auto-open + smart-pick view). Returns
+  // { mode } to upsert, or { clear: true } to remove the whole-site rule.
+  OBR._configureDefaultAction = function (prevRule, mode) {
+    if (mode !== 'auto') return { mode: mode };
+    if (prevRule && prevRule.auto === true) return { mode: 'auto' };
+    return { clear: true };
   };
 
   // Compile a glob (`*` = any run of chars) into an anchored, case-insensitive RegExp over

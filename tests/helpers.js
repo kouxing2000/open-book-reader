@@ -19,6 +19,7 @@ export const CONTENT_FILES = [
   path.join(CONTENT, 'settings.js'),
   path.join(CONTENT, 'readability.js'),
   path.join(CONTENT, 'reader.style.js'),
+  path.join(CONTENT, 'qrcode.js'),   // vendored QR encoder (print branding); loads before reader.js
   path.join(CONTENT, 'reader.js'),
 ];
 

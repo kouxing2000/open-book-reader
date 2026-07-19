@@ -651,6 +651,7 @@ test('the 🖨 Print button builds a standalone, flat print document (no screen-
   // and the body still renders. Isolates "no url" from the empty-content fallback below.
   expect(r.noUrl).toContain('Body.');
   expect(r.noUrl).not.toContain('<div class="obr-print-source">');
+  expect(r.html).not.toContain('<div class="obr-print-brand">'); // no brand passed -> no branding footer (the CSS class always exists)
   // The chosen font family + line height actually reach the stylesheet
   expect(r.html).toContain('12pt/1.7');
   expect(r.html).toContain('Georgia'); // serif stack
@@ -661,6 +662,35 @@ test('the 🖨 Print button builds a standalone, flat print document (no screen-
   expect(r.html).not.toMatch(/column-/);
   expect(r.html).not.toContain('translateX');
   expect(r.html).not.toMatch(/overflow:\s*hidden/);
+});
+
+test('_qrSvg encodes a URL to a self-contained SVG, and the print doc appends the branding footer when asked', async ({ page }) => {
+  await openReader(page);
+  const r = await page.evaluate(() => {
+    const storeUrl = 'https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca';
+    const svg = globalThis.OBR._qrSvg('https://example.com/x');
+    const same = globalThis.OBR._qrSvg('https://example.com/x'); // deterministic for the same input
+    const branded = globalThis.OBR._buildPrintDoc({
+      title: 'T', content: '<p>Body.</p>', fontFamily: 'serif', lineHeight: 1.6,
+      brand: { name: 'Open Book Reader', tagline: 'Printed with the free, distraction-free reader',
+        url: 'chromewebstore.google.com', qrSvg: globalThis.OBR._qrSvg(storeUrl) },
+    });
+    const plain = globalThis.OBR._buildPrintDoc({ title: 'T', content: '<p>Body.</p>' });
+    return { svg, deterministic: svg === same, branded, plain, emptyType: typeof globalThis.OBR._qrSvg('') };
+  });
+  // A real, self-contained vector QR: quiet-zone <rect> + a dark-module <path>, stable per input.
+  expect(r.svg).toContain('<svg');
+  expect(r.svg).toContain('viewBox="0 0');
+  expect(r.svg).toContain('<path d="M');
+  expect(r.deterministic).toBe(true);
+  expect(r.emptyType).toBe('string'); // empty text never throws (guarded), returns a string
+  // Branding footer appears ONLY when a brand is passed (printReader gates it on printBranding).
+  expect(r.branded).toContain('<div class="obr-print-brand">');
+  expect(r.branded).toContain('Open Book Reader');
+  expect(r.branded).toContain('Printed with the free, distraction-free reader'); // the attribution tagline
+  expect(r.branded).toContain('chromewebstore.google.com');
+  expect(r.branded).toContain('<svg'); // the QR is embedded in the footer
+  expect(r.plain).not.toContain('<div class="obr-print-brand">'); // absent by default (the CSS class always exists)
 });
 
 test('saveSettings persists only changed keys (default changes still apply)', async ({ page }) => {

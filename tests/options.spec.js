@@ -82,6 +82,10 @@ test('sections remember their open/closed state across reloads (per-device local
 
   await gallery.locator('summary').click();
   await expect(gallery).toHaveJSProperty('open', true);
+  // The <details> `toggle` event is async, so wait for the write to land before reloading.
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('obr_options_open') || '{}').optSecGallery))
+    .toBe(true);
 
   await page.reload();
   await expect(page.locator('details.card').nth(1)).toHaveJSProperty('open', true); // restored
@@ -306,6 +310,31 @@ test('a site stashed in storage.local scopes a freshly-opened options page, then
   await expect
     .poll(() => page.evaluate(() => new Promise((res) =>
       chrome.storage.local.get('obr_options_site', (d) => res(d.obr_options_site || null)))))
+    .toBe(null);
+});
+
+test('the "auto-open on pages like this" prefill fills + focuses the add-rule form (the menu URL deep-link)', async ({ page, context, serviceWorker, extensionId }) => {
+  // Mirror the REAL flow (like the stash test): the SW writes the one-shot prefill key with NO
+  // options page open (so no live onChanged listener consumes it early), then openOptionsPage()
+  // loads a fresh page that must come up pre-filled. Park off any options URL + close stragglers.
+  await page.goto('about:blank');
+  for (const p of context.pages()) { if (p.url().includes('/options.html')) await p.close(); }
+
+  await serviceWorker.evaluate(() => new Promise((res) => chrome.storage.local.set({
+    obr_options_prefill: { pattern: 'example.com/forum/*', auto: true },
+  }, res)));
+  await page.goto(optionsUrl(extensionId)); // fresh load consumes it
+
+  // Per-site data is expanded (scoped), the add-rule field carries the full pattern (not just the
+  // host), Auto-open is ticked, and focus lands on the field — the "scroll to the edit area" intent.
+  await expect(page.locator('#perSiteSection')).toHaveJSProperty('open', true);
+  await expect(page.locator('#siteHost')).toHaveValue('example.com/forum/*');
+  await expect(page.locator('#siteAuto')).toBeChecked();
+  await expect(page.locator('#siteHost')).toBeFocused();
+  // The stash is consumed so a later plain open doesn't re-fill the form.
+  await expect
+    .poll(() => page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.get('obr_options_prefill', (d) => res(d.obr_options_prefill || null)))))
     .toBe(null);
 });
 

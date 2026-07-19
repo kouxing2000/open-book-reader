@@ -18,7 +18,7 @@
 
   const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
-  const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl'];
+  const CHECKBOXES = ['readSelection', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding'];
   const savedEl = document.getElementById('saved');
   let saveTimer;
 
@@ -635,10 +635,44 @@
       });
     } catch (e) { /* local storage unavailable — ?site still works */ }
   }
+
+  // The context menu's "Auto-open on pages like this…" stashes a best-guess URL PATTERN + the
+  // auto flag here. Scope to the pattern's host (which opens the Per-site data section), then
+  // pre-fill the add-rule form with the full pattern, tick Auto-open, and scroll + focus it so
+  // the user lands right on the editable field to review/adjust the scope before adding.
+  const PREFILL_STASH = 'obr_options_prefill';
+  function applyPrefill(pf) {
+    const pattern = OBR.normalizePattern((pf && pf.pattern) || '');
+    if (!pattern) return;
+    const host = OBR.normalizeHost(String(pattern).split('/')[0].replace(/^\*\./, ''));
+    applySiteFilter(host); // scope the lists + auto-open the section + prime #siteHost with the host
+    const hostInput = document.getElementById('siteHost');
+    const autoCb = document.getElementById('siteAuto');
+    if (hostInput) hostInput.value = pattern; // override the host-priming with the full URL pattern
+    if (autoCb) autoCb.checked = pf.auto !== false;
+    requestAnimationFrame(() => {
+      if (!hostInput) return;
+      hostInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      hostInput.focus();
+      try { hostInput.select(); } catch (e) { /* */ }
+    });
+  }
+  function consumePrefill() {
+    if (!local) return;
+    try {
+      local.get(PREFILL_STASH, (d) => {
+        const pf = d && d[PREFILL_STASH];
+        if (pf && pf.pattern) { local.remove(PREFILL_STASH); applyPrefill(pf); }
+      });
+    } catch (e) { /* local storage unavailable */ }
+  }
+
   if (!filterSite) consumeStashedSite();
+  consumePrefill();
   if (chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes[SITE_STASH] && changes[SITE_STASH].newValue) consumeStashedSite();
+      if (area === 'local' && changes[PREFILL_STASH] && changes[PREFILL_STASH].newValue) consumePrefill();
       // Site rules can change under an open Options tab — a context-menu "Always open as…" on
       // another tab, or a sync from another device. Without this refresh, a later edit here would
       // write back a STALE rules array and silently drop those. Reload + re-render only when they

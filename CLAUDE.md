@@ -39,6 +39,7 @@ src/content/
   settings.js        shared globalThis.OBR namespace + DEFAULTS + load/saveSettings (storage.sync)
   readability.js     VENDORED Mozilla Readability (Apache-2.0) — do not edit; see READABILITY-LICENSE.md
   reader.style.js    reader stylesheet as a JS string (OBR._readerCSS) — injected before reader.js
+  qrcode.js          VENDORED qrcode-generator (MIT) — do not edit; the print-branding QR; see QRCODE-LICENSE.md
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
   zip.js             minimal ZIP writer (OBR._buildZip) — used by the gallery's "Download as ZIP"
   gallery.js         IMAGE mode: collect images → Wall masonry / Ordered rows + lightbox (Shadow DOM)
@@ -145,7 +146,14 @@ machinery so the browser paginates onto paper instead of printing one clipped sp
 is `frame-src`-blocked on strict-CSP sites (GitHub, many news sites) → blank print; the CSS is also
 applied via `adoptedStyleSheets` to dodge strict `style-src`. Fully local, **no new permission**; the
 `<title>` becomes the default PDF filename; a footer shows the full source URL unless the
-`printSourceUrl` setting is turned off (Options page).
+`printSourceUrl` setting is turned off (Options page). A second, optional **branding footer**
+(`printBranding`, default on) appends a small "Open Book Reader" line + a **QR code to the Chrome
+Web Store listing** (`STORE_URL` — the same public URL as the README / landing "Add to Chrome"
+button, so no new exposure) so a shared PDF sends readers to install — a growth hook, still fully
+local (no new permission). The QR is rendered by `OBR._qrSvg(text)` (pure → an inline SVG of dark
+modules, no canvas/data-URL, prints crisp) using the **vendored** `qrcode.js` (qrcode-generator,
+MIT — injected before `reader.js`; pure array math, CSP-safe). `_buildPrintDoc` stays pure:
+`printReader` passes it a `brand` object (name + a display domain + pre-rendered `qrSvg`).
 
 **Reading progress is a FRACTION, never a spread index** (`reader.js` + `settings.js`). Re-pagination
 (font / columns / width) changes how many columns an article splits into, so position is stored as
@@ -390,8 +398,9 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   Confirm ownership with `GET /chromewebstore/v1.1/items/<id>?projection=DRAFT` (200 = owns it). The
   full publish runbook is kept in the maintainer's private `~/.claude` config, not this repo.
 - **Packaging is allowlist-based** (`SHIP_FILES`/`SHIP_DIRS` in `package-extension.js`): only
-  `manifest.json`, `icons/`, `src/` ship — dev files can't leak. `READABILITY-LICENSE.md` ships too
-  (Apache-2.0 requires it beside the vendored code).
+  `manifest.json`, `icons/`, `src/` ship — dev files can't leak. `READABILITY-LICENSE.md` and
+  `QRCODE-LICENSE.md` ship too (both live under `src/content/`, and the licenses require the notice
+  beside the vendored code).
 - **Privacy-practices gate**: adding a new permission blocks `publish` until you write its
   justification in the Developer Dashboard (the API can't set it) — the API fails with
   `400 "publish condition not met ... Privacy practices tab"`. Fill it BEFORE pushing a tag that adds
@@ -421,7 +430,12 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   `syncSentinelRegistration`), plus `onInstalled`/`onStartup`. Chrome has no `onShown` event and we hold
   no `tabs` permission, so this declarative per-site scoping is the ONLY way to reflect state — and
   patterns can only ADD a row, never HIDE the always-present generic one (no negative match patterns),
-  so "Stop" sits BESIDE "Auto-open on this site" (a pair), it doesn't replace it.
+  so "Stop" sits BESIDE "Auto-open on this site" (a pair), it doesn't replace it. The same scoped-add
+  trick shows the disabled "Current selection: …" line inside the **Configure Default** submenu (the
+  per-site default view — Smart pick / Reader / Gallery — which SETS the rule and does NOT open;
+  Band 1's "Open now:" items are the immediate triggers). Click dispatch is a thin switch over the
+  pure, unit-tested `OBR._menuAction(id)` → descriptor (plus `OBR._configureDefaultAction` for the
+  Smart-pick clear-vs-keep decision) — keep the id→action mapping there, not inlined in the listener.
 - **`syncSentinelRegistration()` must stay SERIALIZED on its promise chain** — the exact
   `onInstalled`+`onStartup` double-fire that broke the context menu applies, and two overlapping
   syncs would race the register/update/unregister diff. Registration mechanics that are easy to
@@ -434,7 +448,7 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   the gallery's `_autoToggle`, AND the sentinel — one implementation so the verdicts agree. It
   touches the DOM at call time only: settings.js is `importScripts`'d into the SW, where a
   top-level DOM access would kill worker registration.
-- `readability.js` is third-party vendored code — keep it pristine; fixes go upstream.
+- `readability.js` and `qrcode.js` are third-party vendored code — keep them pristine; fixes go upstream.
 - `reader.js` injects `article.content` via `innerHTML` into the Shadow DOM (and the print iframe).
   Vendored Readability is NOT a sanitizer (it keeps e.g. `<img onerror>`), so EVERY content path —
   the Readability pass in `parseBaseDoc` and the `rawFallback` for picked/selected subtrees — runs its
