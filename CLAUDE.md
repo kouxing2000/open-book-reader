@@ -413,6 +413,27 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
 
 ## Gotchas
 
+- **Host grants: two scopes, one of them broad — and NEVER trust `permissions.remove`.** Auto-open
+  requests a per-site PAIR (`originsForRule` → `*://host/*` + `*://www.host/*`); the gallery's ZIP
+  download requests the literal **`<all_urls>`** (`permsFor('obr-fetch-bytes')`). The broad grant
+  COVERS every pair, so after one ZIP download `permissions.contains(anyPair)` is true for every
+  site — which is why the options **Site access** card is driven by `permissions.getAll()` (ground
+  truth, one honest broad row) rather than by testing each rule (N falsely-granted rows). Two
+  consequences that have already bitten: (1) `remove()` resolves `true` even for origins that were
+  NEVER granted, and cannot carve a per-site hole out of `<all_urls>` — so **always re-check
+  `contains()` afterwards** and report only that (`background.js`: "contains is authoritative
+  here"); (2) origins are HOST-scoped, so `host/blog/*` and `host/forum/*` share ONE grant —
+  releasing on behalf of one silently pauses the other while its checkbox still reads "on"
+  (`releaseRuleOrigins`' `stillNeeded` guard; covered by a red/green test in `options.spec.js`).
+  A revoked auto rule KEEPS its `auto` flag on purpose — the sentinel re-arms if the grant returns,
+  so the UI shows a paused line and never silently unchecks the box.
+- **Never tell users to uninstall + reinstall to clear the chrome://extensions site list.** It's the
+  only thing that clears it, and it is not worth it: uninstalling wipes `chrome.storage.local` (every
+  saved reading position, `obr_positions` — sync data may return, progress does not) and fires
+  `setUninstallURL`, dropping the user into the uninstall survey and polluting the feedback pipeline
+  with fake churn. The listed row grants no access — a toggle-off entry is Chrome's history, not a
+  permission. The Site access hint says exactly that so nobody reaches for the nuke; keep it. (Fine
+  to explain the mechanic to someone who explicitly asks in a support reply — never ship it as UI advice.)
 - **Do NOT add the `tabs` permission.** The restricted-page guard reads `tab.url` and works without it:
   executing a keyboard shortcut grants `activeTab`, which makes `tab.url` available via
   `chrome.tabs.query`. Adding `tabs` broadens permissions for nothing and is a Web Store review flag.
