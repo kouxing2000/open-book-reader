@@ -305,5 +305,19 @@
   "optRemovePick": { "message": "Удалить этот сохранённый выбор" },
   "optSelectorAria": { "message": "CSS-селектор для $HOST$", "placeholders": { "host": { "content": "$1" } } },
   "optSelectorPlaceholder": { "message": "напр. .article-body  или  main article" },
-  "optRevertTitle": { "message": "Вернуть селектор, который был при открытии этой страницы" }
+  "optRevertTitle": { "message": "Вернуть селектор, который был при открытии этой страницы" },
+
+  "optAccessHead": { "message": "Доступ к сайтам" },
+  "optAccessHint": { "message": "Сайты, которые это расширение может читать, — так их хранит Chrome. Вы разрешили доступ, когда включили <b>автооткрытие</b> или впервые скачали изображения из галереи. Доступ <b>общий для обеих функций</b>, а не отдельный для каждой: скачивание изображений запрашивает <b>все сайты</b>, и это одно разрешение затем покрывает каждый сайт из списка. Отзыв действует сразу и безопасен — в следующий раз расширение просто запросит доступ снова. Этот же список можно изменить в Chrome по адресу <code>chrome://extensions</code>." },
+  "optAccessNone": { "message": "Доступ к сайтам не предоставлен. Автооткрытие и скачивание изображений запросят его при использовании." },
+  "optAccessNoneForSite": { "message": "Для $SITE$ доступ не предоставлен.", "placeholders": { "site": { "content": "$1" } } },
+  "optAccessAllSites": { "message": "Все сайты" },
+  "optAccessWhyAll": { "message": "Предоставлен для скачивания изображений. Покрывает каждый сайт из списка." },
+  "optAccessWhySite": { "message": "Предоставлен для автооткрытия." },
+  "optAccessRemove": { "message": "Удалить" },
+  "optAccessRevoke": { "message": "Отозвать" },
+  "optAccessRevoked": { "message": "Доступ к сайту удалён" },
+  "optAccessStillGranted": { "message": "Всё ещё предоставлен — покрыт доступом ко всем сайтам" },
+  "optAutoPaused": { "message": "⚠ Нет доступа к сайту — автооткрытие приостановлено." },
+  "optAutoRegrant": { "message": "Разрешить" }
 }

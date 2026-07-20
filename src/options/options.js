@@ -29,15 +29,155 @@
     catch (e) { return ''; }
   })();
 
+  // The shared status toast. `failed` styles it red and holds it longer.
+  function flashNote(text, failed) {
+    savedEl.textContent = text;
+    savedEl.classList.toggle('error', !!failed);
+    savedEl.classList.add('show');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => savedEl.classList.remove('show'), failed ? 2600 : 1200);
+  }
+
   // `ok` is saveSettings' success boolean (undefined from legacy callers = assume ok). On a
   // failed write, say so instead of the dishonest "Saved ✓", and hold it a bit longer.
   function flashSaved(ok) {
     const failed = ok === false;
-    savedEl.textContent = failed ? OBR.t('optSaveFailed') : OBR.t('optSaved');
-    savedEl.classList.toggle('error', failed);
-    savedEl.classList.add('show');
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => savedEl.classList.remove('show'), failed ? 2600 : 1200);
+    flashNote(failed ? OBR.t('optSaveFailed') : OBR.t('optSaved'), failed);
+  }
+
+  /* ---- Site access (host permissions) --------------------------------------------------
+   * Grant state lives in CHROME, not in our settings, so it changes behind this page's back
+   * (chrome://extensions, or the list below). Two different SCOPES reach us:
+   *   auto-open      -> OBR.originsForRule(match)  e.g. *://site.com/* + *://www.site.com/*
+   *   ZIP download   -> '<all_urls>'               (background.js permsFor('obr-fetch-bytes'))
+   * <all_urls> COVERS every per-site pair, so once a user has downloaded a ZIP, a per-rule
+   * contains() reports "granted" for EVERY site. That's why the Site access card lists what
+   * permissions.getAll() actually returns instead of testing each rule: the broad grant shows
+   * up as ONE honest row rather than N false ones. */
+  const ALL_URLS = '<all_urls>';
+
+  function permsGetAll() {
+    return new Promise((res) => {
+      try {
+        if (!chrome.permissions || !chrome.permissions.getAll) return res({ origins: [] });
+        chrome.permissions.getAll((p) => { void chrome.runtime.lastError; res(p || { origins: [] }); });
+      } catch (e) { res({ origins: [] }); }
+    });
+  }
+
+  function permsContains(origins) {
+    return new Promise((res) => {
+      try {
+        if (!chrome.permissions || !chrome.permissions.contains || !origins.length) return res(false);
+        chrome.permissions.contains({ origins }, (h) => { void chrome.runtime.lastError; res(!!h); });
+      } catch (e) { res(false); }
+    });
+  }
+
+  // Revoke, then VERIFY — resolves true only if the origins are genuinely gone.
+  // permissions.remove resolves `true` even for origins that were never granted, and it
+  // cannot carve a per-site hole out of a broader <all_urls> grant, so its own result proves
+  // nothing. contains() afterwards is the only honest signal (the service worker reasons the
+  // same way — see background.js "contains is authoritative here"). Never report a revoke
+  // from remove()'s callback alone.
+  function revokeOrigins(origins) {
+    return new Promise((res) => {
+      try {
+        if (!chrome.permissions || !chrome.permissions.remove || !origins.length) return res(false);
+        chrome.permissions.remove({ origins }, () => {
+          void chrome.runtime.lastError;
+          permsContains(origins).then((still) => res(!still));
+        });
+      } catch (e) { res(false); }
+    });
+  }
+
+  // A grant that covers every site. background.js requests the literal '<all_urls>', but don't
+  // assume getAll() echoes that exact string back — treat any all-host pattern the same, or the
+  // card would label it a per-site grant and offer a Revoke that cannot work.
+  function isBroadOrigin(o) {
+    return o === ALL_URLS || /^(\*|https?):\/\/\*\/\*$/.test(String(o));
+  }
+
+  // The host a per-site origin pattern covers ('' for broad / unexpected shapes), used both as
+  // the card's row label and its grouping key. A `*.` wildcard grant is KEPT as `*.example.com`
+  // rather than collapsed to the apex: it covers strictly more, and merging it into a bare
+  // `example.com` row would understate its reach on a card whose whole job is honest scope.
+  function originHost(origin) {
+    const m = /^\*:\/\/([^/]+)\/\*$/.exec(String(origin));
+    if (!m) return '';
+    const host = m[1].toLowerCase();
+    return host.startsWith('*.') ? host : host.replace(/^www\./, '');
+  }
+
+  function renderSiteAccess() {
+    const wrap = document.getElementById('siteAccess');
+    if (!wrap) return;
+    permsGetAll().then((p) => {
+      let origins = ((p && p.origins) || []).slice();
+      // Scope to the focused site like the lists above, but ALWAYS keep the broad grant: it's
+      // what explains why a scoped site still counts as granted. A `*.host` wildcard grant
+      // covers the focused host too, so it belongs in that site's view.
+      if (filterSite) origins = origins.filter((o) => isBroadOrigin(o)
+        || originHost(o) === filterSite || originHost(o) === '*.' + filterSite);
+      // One row per SITE, not per origin: auto-open grants a host as a PAIR
+      // (`*://site.com/*` + `*://www.site.com/*`) and getAll reports each half separately, so
+      // rendering raw origins would list the same site twice. Group by host — that also makes
+      // each row's revoke target the whole pair, which is what actually frees the site.
+      const groups = [];
+      const byHost = new Map();
+      origins.forEach((o) => {
+        if (isBroadOrigin(o)) { groups.push({ broad: true, label: '', targets: [o] }); return; }
+        const host = originHost(o) || o;
+        let g = byHost.get(host);
+        if (!g) { g = { broad: false, label: host, targets: [] }; byHost.set(host, g); groups.push(g); }
+        g.targets.push(o);
+      });
+      // Broad grants first — they subsume every row under them, so their explanation reads
+      // first. Two-key comparator (not a bare -1/1) so it stays consistent if Chrome ever
+      // reports more than one all-host pattern.
+      groups.sort((a, b) => (a.broad ? 0 : 1) - (b.broad ? 0 : 1) || a.label.localeCompare(b.label));
+
+      wrap.textContent = '';
+      const countEl = document.getElementById('accessCount');
+      if (countEl) countEl.textContent = groups.length ? '(' + groups.length + ')' : '';
+      if (!groups.length) {
+        const empty = document.createElement('div');
+        empty.className = 'site-empty';
+        empty.textContent = filterSite ? OBR.t('optAccessNoneForSite', [filterSite]) : OBR.t('optAccessNone');
+        wrap.appendChild(empty);
+        return;
+      }
+
+      groups.forEach((g) => {
+        const row = document.createElement('div');
+        row.className = 'acc-row';
+
+        const org = document.createElement('span');
+        org.className = 'acc-org' + (g.broad ? ' broad' : '');
+        org.textContent = g.broad ? OBR.t('optAccessAllSites') : g.label;
+        const why = document.createElement('span');
+        why.className = 'acc-why';
+        why.textContent = OBR.t(g.broad ? 'optAccessWhyAll' : 'optAccessWhySite');
+        org.appendChild(why);
+
+        const btn = document.createElement('button');
+        btn.className = 'ghost acc-revoke';
+        btn.textContent = OBR.t(g.broad ? 'optAccessRemove' : 'optAccessRevoke');
+        btn.addEventListener('click', () => {
+          btn.disabled = true;
+          revokeOrigins(g.targets).then((gone) => {
+            btn.disabled = false;
+            flashNote(OBR.t(gone ? 'optAccessRevoked' : 'optAccessStillGranted'), !gone);
+            renderSiteAccess();
+            refreshPausedLines(); // a revoked site may now have paused auto-open rules
+          });
+        });
+
+        row.append(org, btn);
+        wrap.appendChild(row);
+      });
+    });
   }
 
   // maxBookWidth uses 0 = "Full" (fill window); the slider's top position represents it.
@@ -89,9 +229,12 @@
   let rules = [];
   const cloneRules = () => JSON.parse(JSON.stringify(rules || []));
 
+  // `then` receives saveSettings' success boolean, so a caller that follows up with a second
+  // user-visible action (the auto-open revoke) can stay silent when the write itself failed
+  // instead of overwriting "Save failed" with its own cheerier message.
   function persistRules(next, then) {
     rules = next;
-    OBR.saveSettings({ siteRules: next }).then((ok) => { flashSaved(ok); if (then) then(); });
+    OBR.saveSettings({ siteRules: next }).then((ok) => { flashSaved(ok); if (then) then(ok !== false); });
   }
 
   function modeSelect(value) {
@@ -119,10 +262,12 @@
   }
 
   // The per-row Auto-open checkbox. Checking asks for the site permission first (a
-  // denied prompt reverts the box); unchecking only clears the flag — the permission is
-  // never auto-revoked (it may serve other features; revoking is the user's call in
-  // chrome://extensions). Rules whose host part can't form a Chrome match pattern
-  // (a mid-host `*`) can't auto-open: disabled box + a title explaining why.
+  // denied prompt reverts the box); unchecking clears the flag AND hands the site permission
+  // back, because that per-site grant has no other consumer — the gallery's ZIP download asks
+  // for <all_urls> separately. The revoke is VERIFIED before it's reported: under a broad
+  // <all_urls> grant the per-site removal is a no-op, and claiming "removed" then would lie.
+  // Rules whose host part can't form a Chrome match pattern (a mid-host `*`) can't auto-open:
+  // disabled box + a title explaining why.
   function autoCheckbox(rule, onCommit) {
     const label = document.createElement('label');
     label.className = 'site-auto';
@@ -139,14 +284,26 @@
       label.title = OBR.t('optAutoHint');
       cb.addEventListener('change', () => {
         // Persist the flag, then let the caller refresh the row's plain-English gloss.
-        const commit = (on) => persistRules(
+        // `after` receives the save's success boolean (see persistRules).
+        const commit = (on, after) => persistRules(
           OBR.setRuleAuto(cloneRules(), rule.match, on),
-          onCommit ? () => onCommit(on) : undefined
+          (saved) => { if (onCommit) onCommit(on); if (after) after(saved); }
         );
-        if (!cb.checked) return commit(false);
+        if (!cb.checked) {
+          // Only release AFTER the write is known to have landed. Running them concurrently
+          // let the revoke's green toast overwrite a red "Save failed" — reporting success for
+          // a write that didn't persist, leaving the rule still auto:true in storage with its
+          // permission gone. That dishonest-toast case is exactly why flashSaved takes `ok`.
+          commit(false, (saved) => {
+            if (!saved) return; // leave "Save failed" on screen; keep the grant
+            releaseRuleOrigins(rule, rules).then(reportRelease);
+          });
+          return;
+        }
         requestOrigins(origins, (granted) => {
           if (!granted) { cb.checked = false; return; }
           commit(true);
+          renderSiteAccess();
         });
       });
     }
@@ -177,10 +334,91 @@
     return scope + ' · ' + act;
   }
 
+  // Deleting a rule releases its site permission too, on the same terms as unchecking
+  // Auto-open — otherwise the grant outlives the only thing that asked for it, and the two
+  // ways of switching auto-open off would behave differently.
   function removeRule(i) {
+    const gone = rules[i];
     const next = cloneRules();
     next.splice(i, 1);
-    persistRules(next, renderSites);
+    persistRules(next, (saved) => {
+      renderSites();
+      if (saved && gone && gone.auto === true) releaseRuleOrigins(gone, rules).then(reportRelease);
+    });
+  }
+
+  // Hand a rule's site permission back — but ONLY when no other auto rule still needs it.
+  // Origins are HOST-scoped (settings.js: a rule's path part is enforced by the sentinel, not
+  // by the grant), so `example.com/blog/*` and `example.com/forum/*` map to the SAME origin
+  // pair and share one grant. Revoking on behalf of one would silently pause the other while
+  // its checkbox still read "on" — and refining a whole-site rule into path rules is a
+  // documented workflow, so sibling rules per host are expected, not exotic.
+  // `nextRules` is the rule list AFTER the change. Resolves null when the revoke was skipped,
+  // otherwise revokeOrigins' verified boolean.
+  function releaseRuleOrigins(rule, nextRules) {
+    const origins = OBR.originsForRule(rule && rule.match);
+    if (!origins.length) return Promise.resolve(null); // not grantable -> nothing to release
+    const stillNeeded = (nextRules || []).some((r) => r && r.auto === true
+      && OBR.originsForRule(r.match).some((o) => origins.indexOf(o) !== -1));
+    if (stillNeeded) return Promise.resolve(null);
+    return revokeOrigins(origins);
+  }
+
+  // Report a release + refresh the card. `null` = we deliberately kept the grant for a sibling
+  // rule, which is not a failure and gets no toast at all.
+  function reportRelease(gone) {
+    if (gone !== null) flashNote(OBR.t(gone ? 'optAccessRevoked' : 'optAccessStillGranted'), !gone);
+    renderSiteAccess();
+  }
+
+  // Add the "auto-open is on but has no site permission" line to a rule row, with an inline
+  // re-grant. It's a SIBLING of the gloss, not a rewrite of it: the gloss says what the rule
+  // does and stays true either way, while this line says whether it can currently run. The
+  // click runs in a real user gesture, so it goes straight to the same requestOrigins path
+  // the checkbox uses.
+  function markPaused(row, origins) {
+    // Guards a double-probe of the SAME row (render + a permission event landing together).
+    // It does NOT catch a full re-render — that builds brand-new row nodes, so a probe still
+    // in flight resolves onto a detached row and its warning is simply dropped. That's benign:
+    // the new render fires its own probe. Don't "fix" it by holding a stale row reference.
+    if (row.querySelector('.site-warn')) return;
+    const warn = document.createElement('div');
+    warn.className = 'site-warn';
+    warn.textContent = OBR.t('optAutoPaused') + ' ';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = OBR.t('optAutoRegrant');
+    btn.addEventListener('click', () => {
+      requestOrigins(origins, (granted) => {
+        if (!granted) return;
+        warn.remove();
+        renderSiteAccess();
+      });
+    });
+    warn.appendChild(btn);
+    row.appendChild(warn);
+  }
+
+  // Re-probe every rendered auto rule and add/remove its paused line IN PLACE. Used when
+  // permissions change under an open page: a full renderSites() rebuilds every row from
+  // storage, which would wipe an in-progress pattern edit and close an open <select> — and
+  // permissions.onAdded fires for unrelated activity in other tabs (the gallery asking for
+  // `downloads`), so that would be data loss triggered by something the user isn't even
+  // looking at. Rows carry their rule's `match` in a data attribute to survive this lookup.
+  function refreshPausedLines() {
+    const wrap = document.getElementById('sites');
+    if (!wrap) return;
+    Array.from(wrap.querySelectorAll('.site-row')).forEach((row) => {
+      const rule = (rules || []).find((r) => r && String(r.match || '') === (row.dataset.ruleMatch || ''));
+      const drop = () => { const w = row.querySelector('.site-warn'); if (w) w.remove(); };
+      if (!rule || rule.auto !== true) return drop();
+      const origins = OBR.originsForRule(rule.match);
+      if (!origins.length) return drop();
+      permsContains(origins).then((has) => {
+        if (has) drop();
+        else markPaused(row, origins); // no-ops when the line is already there
+      });
+    });
   }
 
   function renderSites() {
@@ -206,12 +444,24 @@
     list.forEach(({ rule, i }) => {
       const row = document.createElement('div');
       row.className = 'site-row';
+      row.dataset.ruleMatch = String(rule.match || ''); // lets refreshPausedLines find its rule
 
       // The muted gloss under the row; updated in place when mode / auto change
       // (no full re-render, so an open <select> keeps focus).
       const sub = document.createElement('div');
       sub.className = 'site-sub';
       sub.textContent = ruleSummary(rule);
+
+      // Auto-open needs a site permission that lives outside our settings and can be revoked
+      // without us (chrome://extensions, the Site access card). Checking it is async, so patch
+      // the row when it resolves rather than blocking this synchronous render — same shape as
+      // patCommit's check. The stored `auto` flag is deliberately KEPT (background.js re-arms
+      // the sentinel if the permission comes back), so the box stays checked and only the
+      // gloss tells the truth: on, but paused.
+      if (rule.auto === true) {
+        const gOrigins = OBR.originsForRule(rule.match);
+        if (gOrigins.length) permsContains(gOrigins).then((has) => { if (!has) markPaused(row, gOrigins); });
+      }
 
       // Editable URL pattern — mirrors the saved-pick selector editor (live ✓/✗, ↶ revert,
       // Esc to cancel). Committing renames the rule's `match`, so you can refine a whole-site
@@ -536,6 +786,7 @@
     renderSites();
     renderPicks();
     renderHidden();
+    renderSiteAccess();
   }
 
   // The distinct sites that have any rule / saved pick / hidden-image entry — the focus
@@ -608,6 +859,7 @@
     renderSites();
     renderPicks();
     renderHidden();
+    renderSiteAccess();
   });
 
   OBR.loadSettings().then((s) => {
@@ -618,6 +870,18 @@
 
   OBR.loadPicks().then((p) => { picks = p || {}; renderPicks(); });
   OBR.loadHiddenMap().then((m) => { hiddenMap = m || {}; renderHidden(); });
+  renderSiteAccess();
+
+  // Grants can change while this page sits open — from chrome://extensions, or from a
+  // permission prompt in another tab. Re-render both the access list and the rule rows so the
+  // page never keeps claiming access it no longer has (or paused rows it no longer has).
+  // Guard BOTH events: a partial shim carrying one but not the other would throw here at IIFE
+  // top level and kill everything below it (the stashed-site consumption, storage.onChanged).
+  if (chrome.permissions && chrome.permissions.onAdded && chrome.permissions.onRemoved) {
+    const refreshAccess = () => { renderSiteAccess(); refreshPausedLines(); };
+    chrome.permissions.onAdded.addListener(refreshAccess);
+    chrome.permissions.onRemoved.addListener(refreshAccess);
+  }
 
   // The reader/gallery ⚙ routes through openOptionsPage() (so an open options tab is focused,
   // not duplicated) and hands the site to scope via a one-shot chrome.storage.local key, not a

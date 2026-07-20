@@ -305,5 +305,19 @@
   "optRemovePick": { "message": "Remover esta seleção salva" },
   "optSelectorAria": { "message": "Seletor CSS para $HOST$", "placeholders": { "host": { "content": "$1" } } },
   "optSelectorPlaceholder": { "message": "ex.: .article-body  ou  main article" },
-  "optRevertTitle": { "message": "Reverter para o seletor de quando esta página foi aberta" }
+  "optRevertTitle": { "message": "Reverter para o seletor de quando esta página foi aberta" },
+
+  "optAccessHead": { "message": "Acesso a sites" },
+  "optAccessHint": { "message": "Os sites que esta extensão pode ler, conforme o Chrome registra — concedidos por você ao ativar a <b>abertura automática</b> ou ao baixar imagens da galeria pela primeira vez. O acesso é <b>compartilhado entre os dois recursos</b>, não é mantido por recurso: baixar imagens pede <b>todos os sites</b>, e essa única permissão passa a cobrir todos os sites listados aqui. Revogar é imediato e seguro — a extensão simplesmente pedirá de novo na próxima vez que você usar o recurso. Você também pode gerenciar esta mesma lista no Chrome, em <code>chrome://extensions</code>." },
+  "optAccessNone": { "message": "Nenhum acesso concedido. A abertura automática e o download de imagens pedem acesso ao serem usados." },
+  "optAccessNoneForSite": { "message": "Nenhum acesso concedido para $SITE$.", "placeholders": { "site": { "content": "$1" } } },
+  "optAccessAllSites": { "message": "Todos os sites" },
+  "optAccessWhyAll": { "message": "Concedido para download de imagens. Cobre todos os sites listados aqui." },
+  "optAccessWhySite": { "message": "Concedido para a abertura automática." },
+  "optAccessRemove": { "message": "Remover" },
+  "optAccessRevoke": { "message": "Revogar" },
+  "optAccessRevoked": { "message": "Acesso ao site removido" },
+  "optAccessStillGranted": { "message": "Ainda concedido — coberto pelo acesso a todos os sites" },
+  "optAutoPaused": { "message": "⚠ Sem acesso ao site — a abertura automática está pausada." },
+  "optAutoRegrant": { "message": "Conceder" }
 }

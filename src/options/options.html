@@ -55,6 +55,24 @@
     .site-auto input:disabled { cursor: not-allowed; }
     .site-auto input:disabled + span { opacity: .45; }
     .site-empty { font-size: 12.5px; opacity: .5; padding: 8px 0; }
+    /* An auto-open rule whose site permission is no longer granted. Its own line BELOW the
+       gloss (the gloss still says what the rule does): the checkbox stays checked, because the
+       flag is kept deliberately so the sentinel re-arms if the permission comes back. */
+    .site-warn { margin-top: 4px; font-size: 12px; line-height: 1.4; color: #a8690a; }
+    @media (prefers-color-scheme: dark) { .site-warn { color: #e8b04b; } }
+    .site-warn button { font: inherit; font-weight: 600; color: inherit; background: none;
+      border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+    /* Site access list — what permissions.getAll() actually returns, not per-rule guesses. */
+    .acc-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(127,127,127,.12); }
+    .acc-row:last-child { border-bottom: 0; }
+    .acc-org { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px; word-break: break-all; }
+    .acc-org.broad { color: #a8690a; font-weight: 700; }
+    @media (prefers-color-scheme: dark) { .acc-org.broad { color: #e8b04b; } }
+    .acc-why { display: block; font-family: -apple-system, system-ui, sans-serif; font-size: 11px;
+      font-weight: 400; opacity: .55; margin-top: 2px; }
+    .acc-revoke { background: rgba(198,40,40,.12); color: #c62828; font-size: 12px; padding: 5px 11px; }
+    @media (prefers-color-scheme: dark) { .acc-revoke { color: #ef7d7d; background: rgba(239,125,125,.14); } }
     .pick-row { padding: 9px 0; border-bottom: 1px solid rgba(127,127,127,.12); }
     .pick-head { display: flex; align-items: center; gap: 10px; }
     .pick-head .pick-host { flex: 1; font-size: 13px; word-break: break-all; }
@@ -311,6 +329,17 @@
       <button class="ghost" id="siteAddBtn" data-i18n="optAddRule">Add</button>
     </div>
     <div id="sites"></div>
+
+    <div class="subhead">
+      <span data-i18n="optAccessHead">Site access</span> <span id="accessCount" class="subhead-count"></span>
+      <span class="hint" data-i18n-html="optAccessHint">The sites this extension may read, as Chrome records them —
+      granted by you when you turned on <b>auto-open</b> or first downloaded gallery images. Access is
+      <b>shared between both features</b>, not held per feature: downloading images asks for
+      <b>all sites</b>, and that one grant then covers every site listed here. Revoking is instant and
+      safe — the extension simply asks again next time you use the feature. You can also manage the
+      same list in Chrome at <code>chrome://extensions</code>.</span>
+    </div>
+    <div id="siteAccess"></div>
 
     <div class="subhead">
       <span data-i18n="optPicksHead">Saved content picks</span> <span id="picksCount" class="subhead-count"></span>

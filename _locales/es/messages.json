@@ -305,5 +305,19 @@
   "optRemovePick": { "message": "Eliminar esta selección guardada" },
   "optSelectorAria": { "message": "Selector CSS para $HOST$", "placeholders": { "host": { "content": "$1" } } },
   "optSelectorPlaceholder": { "message": "p. ej. .article-body  o  main article" },
-  "optRevertTitle": { "message": "Revertir al selector de cuando se abrió esta página" }
+  "optRevertTitle": { "message": "Revertir al selector de cuando se abrió esta página" },
+
+  "optAccessHead": { "message": "Acceso a sitios" },
+  "optAccessHint": { "message": "Los sitios que esta extensión puede leer, tal como los registra Chrome: los concediste al activar la <b>apertura automática</b> o al descargar imágenes de la galería por primera vez. El acceso se <b>comparte entre ambas funciones</b>, no se guarda por función: descargar imágenes pide <b>todos los sitios</b>, y ese único permiso cubre entonces todos los sitios que aparecen aquí. Revocarlo es inmediato y seguro: la extensión simplemente volverá a pedirlo la próxima vez que uses la función. También puedes gestionar esta misma lista en Chrome, en <code>chrome://extensions</code>." },
+  "optAccessNone": { "message": "No has concedido acceso a ningún sitio. La apertura automática y las descargas de imágenes lo piden al usarlas." },
+  "optAccessNoneForSite": { "message": "No hay acceso concedido para $SITE$.", "placeholders": { "site": { "content": "$1" } } },
+  "optAccessAllSites": { "message": "Todos los sitios" },
+  "optAccessWhyAll": { "message": "Concedido para descargar imágenes. Cubre todos los sitios de esta lista." },
+  "optAccessWhySite": { "message": "Concedido para la apertura automática." },
+  "optAccessRemove": { "message": "Eliminar" },
+  "optAccessRevoke": { "message": "Revocar" },
+  "optAccessRevoked": { "message": "Acceso al sitio eliminado" },
+  "optAccessStillGranted": { "message": "Sigue concedido: cubierto por el acceso a todos los sitios" },
+  "optAutoPaused": { "message": "⚠ Sin acceso al sitio: la apertura automática está pausada." },
+  "optAutoRegrant": { "message": "Conceder" }
 }

@@ -401,11 +401,27 @@ test('the Auto-open checkbox asks for the site permission — grant, uncheck, an
   // Stub the permission prompt: a real permissions.request pops a native dialog headless
   // can't answer. NOTE this assumes chrome.* stays monkey-patchable on extension pages
   // (true today; if Chrome ever freezes it, this coverage moves to the manual checklist).
+  // The shim models a real GRANTED SET so contains/getAll/remove stay coherent with each
+  // other — a request-only stub made the uncheck path pass vacuously (no `remove` meant the
+  // revoke silently no-opped) while asserting the opposite of the shipped behaviour.
   await page.evaluate(() => {
     window.__permCalls = [];
+    window.__permRemoved = [];
     window.__permGrant = true;
+    window.__granted = [];
     chrome.permissions = {
-      request: (need, cb) => { window.__permCalls.push(need); cb(window.__permGrant); },
+      request: (need, cb) => {
+        window.__permCalls.push(need);
+        if (window.__permGrant) (need.origins || []).forEach((o) => window.__granted.push(o));
+        cb(window.__permGrant);
+      },
+      remove: (need, cb) => {
+        window.__permRemoved.push(need);
+        window.__granted = window.__granted.filter((o) => (need.origins || []).indexOf(o) === -1);
+        cb(true);
+      },
+      contains: (need, cb) => cb((need.origins || []).every((o) => window.__granted.indexOf(o) !== -1)),
+      getAll: (cb) => cb({ origins: window.__granted.slice() }),
     };
   });
 
@@ -428,10 +444,15 @@ test('the Auto-open checkbox asks for the site permission — grant, uncheck, an
     { origins: ['*://example.com/*', '*://www.example.com/*'] },
   ]);
 
-  // UNCHECK: clears only the flag — no permission call, never an auto-revoke.
+  // UNCHECK: clears the flag AND hands the site permission back (nothing else needs it),
+  // verified against contains() rather than trusting remove()'s own callback.
   await cb.click();
   await expect.poll(storedRule).toEqual({ match: 'example.com', mode: 'auto' });
-  expect(await page.evaluate(() => window.__permCalls.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__permRemoved)).toEqual([
+    { origins: ['*://example.com/*', '*://www.example.com/*'] },
+  ]);
+  await expect.poll(() => page.evaluate(() => window.__granted)).toEqual([]);
+  expect(await page.evaluate(() => window.__permCalls.length)).toBe(1); // no re-request
 
   // DENY: the checkbox reverts and nothing persists.
   await page.evaluate(() => { window.__permGrant = false; });
@@ -584,4 +605,43 @@ test('editing a rule pattern to duplicate another rule is rejected (marked inval
   const matches = () => page.evaluate(() => new Promise((res) =>
     chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || []).map((r) => r.match)))));
   await expect.poll(matches).toEqual(['a.test', 'b.test']); // unchanged — the collision was not written
+});
+
+// Origins are HOST-scoped, so two PATH rules on one host share ONE grant. Releasing it on
+// behalf of one would silently pause the other while its checkbox still read "on".
+// Proven: this fails (the grant is revoked out from under the sibling) without the
+// stillNeeded guard in releaseRuleOrigins.
+test('unchecking one rule does NOT revoke a host grant a sibling auto rule still needs', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => {
+    window.__permRemoved = []; window.__granted = [];
+    chrome.permissions = {
+      request: (need, cb) => { (need.origins||[]).forEach(o => { if (window.__granted.indexOf(o) === -1) window.__granted.push(o); }); cb(true); },
+      remove: (need, cb) => { window.__permRemoved.push(need);
+        window.__granted = window.__granted.filter(o => (need.origins||[]).indexOf(o) === -1); cb(true); },
+      contains: (need, cb) => cb((need.origins||[]).every(o => window.__granted.indexOf(o) !== -1)),
+      getAll: (cb) => cb({ origins: window.__granted.slice() }),
+    };
+  });
+  await openSections(page);
+  // Two PATH rules on the SAME host -> one shared host-scoped grant.
+  for (const p of ['example.com/blog/*', 'example.com/forum/*']) {
+    await page.fill('#siteHost', p); await page.click('#siteAddBtn');
+  }
+  const rows = page.locator('.site-row');
+  await expect(rows).toHaveCount(2);
+  await rows.nth(0).locator('.site-auto input').click();
+  await rows.nth(1).locator('.site-auto input').click();
+  await expect.poll(() => page.evaluate(() => window.__granted.length)).toBe(2);
+
+  // Uncheck ONE. The other still needs the shared grant -> must NOT revoke.
+  await rows.nth(0).locator('.site-auto input').click();
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => window.__permRemoved)).toEqual([]);
+  expect(await page.evaluate(() => window.__granted.length)).toBe(2);
+
+  // Uncheck the LAST one -> now nothing needs it -> revoke fires.
+  await rows.nth(1).locator('.site-auto input').click();
+  await expect.poll(() => page.evaluate(() => window.__granted)).toEqual([]);
+  expect(await page.evaluate(() => window.__permRemoved.length)).toBe(1);
 });

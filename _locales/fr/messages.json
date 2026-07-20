@@ -305,5 +305,19 @@
   "optRemovePick": { "message": "Supprimer cette sélection enregistrée" },
   "optSelectorAria": { "message": "Sélecteur CSS pour $HOST$", "placeholders": { "host": { "content": "$1" } } },
   "optSelectorPlaceholder": { "message": "p. ex. .article-body  ou  main article" },
-  "optRevertTitle": { "message": "Revenir au sélecteur présent à l’ouverture de cette page" }
+  "optRevertTitle": { "message": "Revenir au sélecteur présent à l’ouverture de cette page" },
+
+  "optAccessHead": { "message": "Accès aux sites" },
+  "optAccessHint": { "message": "Les sites que cette extension peut lire, tels que Chrome les enregistre — vous les avez autorisés en activant l’<b>ouverture auto</b> ou en téléchargeant des images de la galerie pour la première fois. L’accès est <b>partagé entre les deux fonctions</b>, il n’est pas conservé par fonction : le téléchargement d’images demande <b>tous les sites</b>, et cette seule autorisation couvre alors chaque site listé ici. Le retrait est immédiat et sans risque — l’extension redemandera simplement la prochaine fois que vous utiliserez la fonction. Vous pouvez aussi gérer cette même liste dans Chrome, à l’adresse <code>chrome://extensions</code>." },
+  "optAccessNone": { "message": "Aucun accès accordé. L’ouverture auto et le téléchargement d’images le demandent à l’usage." },
+  "optAccessNoneForSite": { "message": "Aucun accès accordé pour $SITE$.", "placeholders": { "site": { "content": "$1" } } },
+  "optAccessAllSites": { "message": "Tous les sites" },
+  "optAccessWhyAll": { "message": "Accordé pour le téléchargement d’images. Couvre chaque site listé ici." },
+  "optAccessWhySite": { "message": "Accordé pour l’ouverture auto." },
+  "optAccessRemove": { "message": "Supprimer" },
+  "optAccessRevoke": { "message": "Retirer" },
+  "optAccessRevoked": { "message": "Accès au site supprimé" },
+  "optAccessStillGranted": { "message": "Toujours accordé — couvert par l’accès à tous les sites" },
+  "optAutoPaused": { "message": "⚠ Aucun accès au site — ouverture auto en pause." },
+  "optAutoRegrant": { "message": "Autoriser" }
 }

@@ -305,5 +305,19 @@
   "optRemovePick": { "message": "この保存済み選択を削除" },
   "optSelectorAria": { "message": "$HOST$ の CSS セレクタ", "placeholders": { "host": { "content": "$1" } } },
   "optSelectorPlaceholder": { "message": "例: .article-body  または  main article" },
-  "optRevertTitle": { "message": "このページを開いたときのセレクタに戻す" }
+  "optRevertTitle": { "message": "このページを開いたときのセレクタに戻す" },
+
+  "optAccessHead": { "message": "サイトへのアクセス" },
+  "optAccessHint": { "message": "この拡張機能が読み取れるサイトの一覧です（Chrome が記録している内容）。<b>自動オープン</b>を有効にしたとき、またはギャラリー画像を初めてダウンロードしたときに許可したものです。アクセス権は<b>両方の機能で共有</b>されており、機能ごとには保持されません。画像のダウンロードは<b>すべてのサイト</b>を要求するため、その 1 つの許可がここに並ぶすべてのサイトを含みます。取り消しは即座に反映され、安全です。次にその機能を使うときに、拡張機能が改めて許可を求めるだけです。同じ一覧は Chrome の <code>chrome://extensions</code> でも管理できます。" },
+  "optAccessNone": { "message": "許可されたサイトはありません。自動オープンと画像ダウンロードは、使用時に許可を求めます。" },
+  "optAccessNoneForSite": { "message": "$SITE$ に許可されたアクセスはありません。", "placeholders": { "site": { "content": "$1" } } },
+  "optAccessAllSites": { "message": "すべてのサイト" },
+  "optAccessWhyAll": { "message": "画像ダウンロードのために許可。ここに並ぶすべてのサイトを含みます。" },
+  "optAccessWhySite": { "message": "自動オープンのために許可。" },
+  "optAccessRemove": { "message": "削除" },
+  "optAccessRevoke": { "message": "取り消す" },
+  "optAccessRevoked": { "message": "サイトへのアクセスを削除しました" },
+  "optAccessStillGranted": { "message": "まだ許可されています — すべてのサイトへのアクセスに含まれます" },
+  "optAutoPaused": { "message": "⚠ サイトへのアクセスがありません — 自動オープンは一時停止中です。" },
+  "optAutoRegrant": { "message": "許可する" }
 }

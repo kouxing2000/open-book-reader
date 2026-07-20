@@ -305,5 +305,19 @@
   "optRemovePick": { "message": "移除此已保存的选取" },
   "optSelectorAria": { "message": "$HOST$ 的 CSS 选择器", "placeholders": { "host": { "content": "$1" } } },
   "optSelectorPlaceholder": { "message": "例如 .article-body  或  main article" },
-  "optRevertTitle": { "message": "恢复为打开此页时的选择器" }
+  "optRevertTitle": { "message": "恢复为打开此页时的选择器" },
+
+  "optAccessHead": { "message": "网站访问权限" },
+  "optAccessHint": { "message": "此扩展可以读取的网站,以 Chrome 记录的为准 —— 由你在开启<b>自动打开</b>或首次下载图库图片时授予。访问权限由<b>两个功能共用</b>,并非各自独立持有:下载图片申请的是<b>所有网站</b>,而这一项授权随后就覆盖了这里列出的每个网站。撤销会立即生效且不会有副作用 —— 下次使用该功能时,扩展会重新申请。你也可以在 Chrome 的 <code>chrome://extensions</code> 中管理同一份列表。" },
+  "optAccessNone": { "message": "尚未授予任何网站访问权限。自动打开和图片下载会在使用时申请。" },
+  "optAccessNoneForSite": { "message": "尚未为 $SITE$ 授予访问权限。", "placeholders": { "site": { "content": "$1" } } },
+  "optAccessAllSites": { "message": "所有网站" },
+  "optAccessWhyAll": { "message": "为图片下载授予,覆盖这里列出的每个网站。" },
+  "optAccessWhySite": { "message": "为自动打开授予。" },
+  "optAccessRemove": { "message": "移除" },
+  "optAccessRevoke": { "message": "撤销" },
+  "optAccessRevoked": { "message": "已移除该网站的访问权限" },
+  "optAccessStillGranted": { "message": "仍处于已授权状态 —— 被「所有网站」权限覆盖" },
+  "optAutoPaused": { "message": "⚠ 没有网站访问权限 —— 自动打开已暂停。" },
+  "optAutoRegrant": { "message": "授予" }
 }

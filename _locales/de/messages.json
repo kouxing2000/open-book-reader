@@ -305,5 +305,19 @@
   "optRemovePick": { "message": "Diese gespeicherte Auswahl entfernen" },
   "optSelectorAria": { "message": "CSS-Selektor für $HOST$", "placeholders": { "host": { "content": "$1" } } },
   "optSelectorPlaceholder": { "message": "z. B. .article-body  oder  main article" },
-  "optRevertTitle": { "message": "Auf den Selektor zurücksetzen, der beim Öffnen dieser Seite galt" }
+  "optRevertTitle": { "message": "Auf den Selektor zurücksetzen, der beim Öffnen dieser Seite galt" },
+
+  "optAccessHead": { "message": "Website-Zugriff" },
+  "optAccessHint": { "message": "Die Websites, die diese Erweiterung lesen darf, so wie Chrome sie speichert — von dir erteilt, als du <b>Auto-Öffnen</b> aktiviert oder zum ersten Mal Galeriebilder heruntergeladen hast. Der Zugriff wird <b>von beiden Funktionen gemeinsam genutzt</b>, nicht pro Funktion gehalten: Das Herunterladen von Bildern fragt nach <b>allen Websites</b>, und diese eine Berechtigung deckt dann jede hier aufgeführte Website ab. Das Entziehen wirkt sofort und ist unbedenklich — die Erweiterung fragt beim nächsten Mal einfach erneut. Dieselbe Liste kannst du auch in Chrome unter <code>chrome://extensions</code> verwalten." },
+  "optAccessNone": { "message": "Kein Website-Zugriff erteilt. Auto-Öffnen und Bild-Downloads fragen bei der Nutzung danach." },
+  "optAccessNoneForSite": { "message": "Kein Website-Zugriff für $SITE$ erteilt.", "placeholders": { "site": { "content": "$1" } } },
+  "optAccessAllSites": { "message": "Alle Websites" },
+  "optAccessWhyAll": { "message": "Für Bild-Downloads erteilt. Deckt jede hier aufgeführte Website ab." },
+  "optAccessWhySite": { "message": "Für Auto-Öffnen erteilt." },
+  "optAccessRemove": { "message": "Entfernen" },
+  "optAccessRevoke": { "message": "Entziehen" },
+  "optAccessRevoked": { "message": "Website-Zugriff entfernt" },
+  "optAccessStillGranted": { "message": "Weiterhin erteilt — durch Zugriff auf alle Websites abgedeckt" },
+  "optAutoPaused": { "message": "⚠ Kein Website-Zugriff — Auto-Öffnen pausiert." },
+  "optAutoRegrant": { "message": "Erteilen" }
 }
