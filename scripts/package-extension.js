@@ -48,10 +48,15 @@ const REQUIRED_FILES = [
   'src/content/settings.js',
   'src/content/readability.js',
   'src/content/reader.style.js',
+  'src/content/qrcode.js',   // vendored QR encoder; missing = the print-branding QR silently vanishes
   'src/content/reader.js',
   'src/content/zip.js',
   'src/content/gallery.js',
   'src/content/sentinel.js', // auto-open: registered by the SW; missing = silent dead feature
+  // Vendored third-party licenses must ship BESIDE their code (Apache-2.0 / MIT both require
+  // the notice); missing = a license-compliance break that packaging would otherwise wave through.
+  'src/content/READABILITY-LICENSE.md',
+  'src/content/QRCODE-LICENSE.md',
   'src/permission.html',
   'src/permission.js',
   'src/options/options.html',
