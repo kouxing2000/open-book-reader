@@ -618,12 +618,17 @@ function openPermPopup(need) {
   if (need.origins) params.set('origins', need.origins.join(','));
   if (need.reason) params.set('reason', need.reason);
   if (need.host) params.set('host', need.host);
+  // A ZIP prompt carries an origins list + the "Allow all sites" escape link, so it needs more
+  // room than a plain permission ask. Start close to the right size (permission.js fine-tunes to
+  // the exact content height after load) so there's no visible jump — and so the escape link is
+  // visible even if that resize ever no-ops.
+  const isZip = need.origins && need.reason !== 'auto-open';
   chrome.windows.create(
     {
       url: chrome.runtime.getURL('src/permission.html') + '?' + params.toString(),
       type: 'popup',
       width: 460,
-      height: 340,
+      height: isZip ? 460 : 340,
     },
     (win) => {
       void chrome.runtime.lastError;

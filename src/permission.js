@@ -77,4 +77,24 @@
   }
 
   document.getElementById('cancel').addEventListener('click', () => finish(false));
+
+  // Size the popup to its content. The SW opens a FIXED-height window (it can't know the
+  // content height before load), so a multi-origin ZIP prompt overflowed it and clipped the
+  // "Allow all sites instead" link right off the bottom — the escape hatch existed but was
+  // invisible. The origins list self-caps at 132px (scrolls beyond), so the needed height is
+  // bounded even for a gallery spanning many CDNs. Best-effort: never block the prompt if the
+  // windows API is unavailable. `windows` needs no permission (we already use windows.create).
+  function fitWindowToContent() {
+    try {
+      if (!(chrome.windows && chrome.windows.getCurrent && chrome.windows.update)) return;
+      const frame = Math.max(0, window.outerHeight - window.innerHeight); // titlebar etc.
+      const needed = document.documentElement.scrollHeight + frame + 8;   // +8 breathing room
+      chrome.windows.getCurrent((w) => {
+        void chrome.runtime.lastError;
+        if (!w || typeof w.id !== 'number') return;
+        if (needed > window.outerHeight) chrome.windows.update(w.id, { height: needed }, () => { void chrome.runtime.lastError; });
+      });
+    } catch (e) { /* leave the window at its default size */ }
+  }
+  requestAnimationFrame(fitWindowToContent); // after layout settles
 })();
