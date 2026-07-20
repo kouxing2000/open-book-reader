@@ -314,6 +314,7 @@
   "optAccessAllSites": { "message": "Все сайты" },
   "optAccessWhyAll": { "message": "Предоставлен для скачивания изображений. Покрывает каждый сайт из списка." },
   "optAccessWhySite": { "message": "Предоставлен для автооткрытия." },
+  "optAccessWhyUnused": { "message": "Не используется ни одним правилом автооткрытия." },
   "optAccessRemove": { "message": "Удалить" },
   "optAccessRevoke": { "message": "Отозвать" },
   "optAccessRevoked": { "message": "Доступ к сайту удалён" },

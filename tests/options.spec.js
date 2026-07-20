@@ -12,6 +12,33 @@ const optionsUrl = (id) => `chrome-extension://${id}/src/options/options.html`;
 const openSections = (page) =>
   page.evaluate(() => document.querySelectorAll('details.card').forEach((d) => { d.open = true; }));
 
+// Seed chrome.permissions with a real granted SET, so getAll/contains/remove stay coherent
+// with each other (a request-only stub lets revoke paths pass vacuously). A headless profile
+// cannot answer the native grant prompt, so the card's data has to be stubbed. Installed via
+// addInitScript — call it, then reload, so the shim is in place before options.js first renders.
+async function stubGrants(page, granted) {
+  await page.addInitScript((seed) => {
+    const iv = setInterval(() => {
+      if (!globalThis.chrome || !chrome.permissions) return;
+      clearInterval(iv);
+      window.__granted = seed.slice();
+      const has = (o) => window.__granted.indexOf(o) !== -1;
+      chrome.permissions = {
+        request: (need, cb) => {
+          (need.origins || []).forEach((o) => { if (!has(o)) window.__granted.push(o); });
+          cb(true);
+        },
+        remove: (need, cb) => {
+          window.__granted = window.__granted.filter((o) => (need.origins || []).indexOf(o) === -1);
+          cb(true);
+        },
+        contains: (need, cb) => cb((need.origins || []).every(has)),
+        getAll: (cb) => cb({ origins: window.__granted.slice() }),
+      };
+    }, 0);
+  }, granted);
+}
+
 test('the options page shows the how-to-use guide with the trigger + shortcut docs', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
 
@@ -644,4 +671,76 @@ test('unchecking one rule does NOT revoke a host grant a sibling auto rule still
   await rows.nth(1).locator('.site-auto input').click();
   await expect.poll(() => page.evaluate(() => window.__granted)).toEqual([]);
   expect(await page.evaluate(() => window.__permRemoved.length)).toBe(1);
+});
+
+
+/* ---- Site access card ----------------------------------------------------------------
+ * The card is driven by chrome.permissions.getAll() (ground truth) rather than by testing
+ * each rule, because a broad <all_urls> grant COVERS every per-site pair — a per-rule check
+ * would mark every site "granted" once a ZIP has been downloaded. These pin the parts that
+ * are easy to get subtly wrong; the pair-grouping one is a real regression guard (the card
+ * shipped rendering the same host twice, and every test passed — a screenshot caught it). */
+
+// getAll reports each half of a granted pair separately. They are ONE grant, so they must
+// render as ONE row, and revoking it must free BOTH halves or the site stays granted.
+test('Site access groups a granted origin pair into one row and revokes both halves', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await stubGrants(page, ['*://forum.test/*', '*://www.forum.test/*']);
+  await page.reload();
+  await openSections(page);
+
+  await expect(page.locator('.acc-row')).toHaveCount(1);          // not two
+  await expect(page.locator('.acc-org').first()).toContainText('forum.test');
+  await expect(page.locator('#accessCount')).toHaveText('(1)');
+
+  await page.locator('.acc-revoke').first().click();
+  await expect.poll(() => page.evaluate(() => window.__granted)).toEqual([]);  // both halves
+  await expect(page.locator('#siteAccess')).toContainText('No site access granted');
+});
+
+// The broad grant subsumes every row under it, so its explanation has to read first.
+test('Site access lists the broad grant first, labelled as covering everything', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await stubGrants(page, ['*://zzz.test/*', '<all_urls>', '*://aaa.test/*']);
+  await page.reload();
+  await openSections(page);
+
+  const rows = page.locator('.acc-row');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0).locator('.acc-org')).toContainText('All sites');
+  await expect(rows.nth(0).locator('.acc-why')).toContainText('Covers every site');
+  await expect(rows.nth(1).locator('.acc-org')).toContainText('aaa.test'); // then alphabetical
+  await expect(rows.nth(2).locator('.acc-org')).toContainText('zzz.test');
+});
+
+// A per-site origin normally comes from an auto-open rule — but Chrome lets the user add
+// sites by hand in its own Site access box, and those have no rule behind them. Asserting
+// "Granted for auto-open" there would be a lie on the card built to avoid exactly that.
+test('Site access only claims "for auto-open" when a rule actually uses the grant', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'ruled.test', mode: 'auto', auto: true }] },
+  }, res)));
+  await stubGrants(page, ['*://ruled.test/*', '*://www.ruled.test/*', '*://handadded.test/*']);
+  await page.reload();
+  await openSections(page);
+
+  const rowFor = (host) => page.locator('.acc-row', { hasText: host }).locator('.acc-why');
+  await expect(rowFor('ruled.test')).toHaveText('Granted for auto-open.');
+  await expect(rowFor('handadded.test')).toHaveText('Not used by any auto-open rule.');
+});
+
+// Scoping follows the rule/pick lists, with one deliberate exception: the broad grant stays
+// visible, because it is what explains why the focused site still counts as granted.
+test('Site access scopes to ?site= but always keeps the broad grant', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId) + '?site=kept.test');
+  await stubGrants(page, ['<all_urls>', '*://kept.test/*', '*://other.test/*']);
+  await page.reload();
+  await openSections(page);
+
+  const rows = page.locator('.acc-row');
+  await expect(rows).toHaveCount(2);
+  await expect(page.locator('#siteAccess')).toContainText('All sites');
+  await expect(page.locator('#siteAccess')).toContainText('kept.test');
+  await expect(page.locator('#siteAccess')).not.toContainText('other.test');
 });

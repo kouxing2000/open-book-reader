@@ -314,6 +314,7 @@
   "optAccessAllSites": { "message": "所有网站" },
   "optAccessWhyAll": { "message": "为图片下载授予,覆盖这里列出的每个网站。" },
   "optAccessWhySite": { "message": "为自动打开授予。" },
+  "optAccessWhyUnused": { "message": "没有任何自动打开规则在使用。" },
   "optAccessRemove": { "message": "移除" },
   "optAccessRevoke": { "message": "撤销" },
   "optAccessRevoked": { "message": "已移除该网站的访问权限" },

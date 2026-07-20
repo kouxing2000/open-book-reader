@@ -314,6 +314,7 @@
   "optAccessAllSites": { "message": "Tous les sites" },
   "optAccessWhyAll": { "message": "Accordé pour le téléchargement d’images. Couvre chaque site listé ici." },
   "optAccessWhySite": { "message": "Accordé pour l’ouverture auto." },
+  "optAccessWhyUnused": { "message": "Utilisé par aucune règle d’ouverture auto." },
   "optAccessRemove": { "message": "Supprimer" },
   "optAccessRevoke": { "message": "Retirer" },
   "optAccessRevoked": { "message": "Accès au site supprimé" },

@@ -314,6 +314,7 @@
   "optAccessAllSites": { "message": "すべてのサイト" },
   "optAccessWhyAll": { "message": "画像ダウンロードのために許可。ここに並ぶすべてのサイトを含みます。" },
   "optAccessWhySite": { "message": "自動オープンのために許可。" },
+  "optAccessWhyUnused": { "message": "どの自動オープンのルールでも使われていません。" },
   "optAccessRemove": { "message": "削除" },
   "optAccessRevoke": { "message": "取り消す" },
   "optAccessRevoked": { "message": "サイトへのアクセスを削除しました" },

@@ -56,16 +56,29 @@ test('Chrome loads the shipped manifest (name + minimal install permissions)', a
 // so the second batch collided on every id ("Cannot create item with duplicate id obr-open",
 // ... — 8 unchecked lastErrors on the extension's error page).
 test('racing createMenus() calls rebuild the menu without duplicate-id errors', async ({ serviceWorker }) => {
-  const { created, errs } = await serviceWorker.evaluate(async () => {
+  const { builds, errs } = await serviceWorker.evaluate(async () => {
     // Drain the extension's own onInstalled build first, so the counts below are ours alone.
     await createMenus();
 
-    const created = [], errs = [];
+    // Segment creates into BUILDS instead of counting them globally. Each build starts with
+    // removeAll and awaits every create (background.js `createMenus`), and the menuBuild chain
+    // serializes builds — so a create can never be attributed to the wrong segment.
+    // Counting globally was FLAKY: the drain above only settles builds queued so far, so under
+    // parallel load the extension's OWN onStartup build lands inside this window and every
+    // total reads 3 instead of 2. That extra build is just another racer, which is precisely
+    // what the test is about — so measure the invariant that actually matters: every build
+    // that completes creates the full set, and nothing collides, however many race.
+    const builds = [], errs = [];
     const realCreate = chrome.contextMenus.create;
+    const realRemoveAll = chrome.contextMenus.removeAll;
+    chrome.contextMenus.removeAll = function (cb) {
+      builds.push([]);                       // a build begins
+      return realRemoveAll.call(chrome.contextMenus, cb);
+    };
     chrome.contextMenus.create = function (props, cb) {
       return realCreate.call(chrome.contextMenus, props, () => {
         if (chrome.runtime.lastError) errs.push(chrome.runtime.lastError.message);
-        else created.push(props.id);
+        else if (builds.length) builds[builds.length - 1].push(props.id);
         if (cb) cb();
       });
     };
@@ -74,8 +87,9 @@ test('racing createMenus() calls rebuild the menu without duplicate-id errors', 
       await createMenus();  // … and onStartup, same task. The chain settles both.
     } finally {
       chrome.contextMenus.create = realCreate;
+      chrome.contextMenus.removeAll = realRemoveAll;
     }
-    return { created, errs };
+    return { builds, errs };
   });
 
   // Positive landmark FIRST: both racing builds ran to completion, each creating all 14
@@ -86,10 +100,22 @@ test('racing createMenus() calls rebuild the menu without duplicate-id errors', 
   const ids = ['obr-open', 'obr-open-auto', 'obr-open-text', 'obr-open-images',
     'obr-sep', 'obr-configure-default', 'obr-def-auto', 'obr-def-text', 'obr-def-images',
     'obr-sep2', 'obr-rule-auto', 'obr-rule-auto-url', 'obr-sep-opts', 'obr-open-options'];
-  for (const id of ids) {
-    expect(created.filter((c) => c === id), `creates of ${id}`).toHaveLength(2);
-  }
-  // …and the second build's creates collided with nothing (the bug: 8 duplicate-id errors).
+  const sorted = (a) => a.slice().sort();
+  const want = JSON.stringify(sorted(ids));
+  const complete = builds.filter((b) => JSON.stringify(sorted(b)) === want);
+  // Our two racing builds both ran to completion. A THIRD build may also appear (the
+  // extension's own onStartup under load) and the LAST one may be truncated by un-patching
+  // mid-flight — neither is a defect, so require at least two complete ones rather than an
+  // exact count. Without this landmark, a build that silently created nothing would still
+  // satisfy the no-errors assertion below.
+  expect(complete.length,
+    `complete builds (saw ${builds.length}, sizes ${JSON.stringify(builds.map((b) => b.length))})`)
+    .toBeGreaterThanOrEqual(2);
+  // No build invented an id outside the known set (a partial trailing build is a subset).
+  builds.forEach((b, i) => b.forEach((id) => {
+    expect(ids, `build ${i + 1} created unexpected id ${id}`).toContain(id);
+  }));
+  // …and the racing builds' creates collided with nothing (the bug: 8 duplicate-id errors).
   expect(errs).toEqual([]);
 });
 

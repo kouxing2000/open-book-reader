@@ -149,6 +149,13 @@
         return;
       }
 
+      // Only claim a reason we can actually attribute. A per-site origin normally comes from an
+      // auto-open rule — but Chrome lets the user type any site into its OWN Site access box,
+      // and those arrive here with no rule behind them. Asserting "Granted for auto-open" for
+      // one of those would be a plain lie on the card whose entire job is not misleading people.
+      // Saying so also surfaces something useful: a grant nothing is using any more.
+      const usedByRules = OBR.autoRuleOrigins(rules);
+
       groups.forEach((g) => {
         const row = document.createElement('div');
         row.className = 'acc-row';
@@ -158,7 +165,9 @@
         org.textContent = g.broad ? OBR.t('optAccessAllSites') : g.label;
         const why = document.createElement('span');
         why.className = 'acc-why';
-        why.textContent = OBR.t(g.broad ? 'optAccessWhyAll' : 'optAccessWhySite');
+        why.textContent = g.broad ? OBR.t('optAccessWhyAll')
+          : OBR.t(g.targets.some((o) => usedByRules.indexOf(o) !== -1)
+            ? 'optAccessWhySite' : 'optAccessWhyUnused');
         org.appendChild(why);
 
         const btn = document.createElement('button');
@@ -869,6 +878,10 @@
     bind(s);
     rules = s.siteRules || [];
     renderSites();
+    // Re-render the access card now that `rules` exists: its per-row "why" attributes each
+    // grant to a rule, and the first render below runs before this resolves — so without
+    // this a legitimately-used grant briefly reads "Not used by any auto-open rule".
+    renderSiteAccess();
   });
 
   OBR.loadPicks().then((p) => { picks = p || {}; renderPicks(); });
@@ -947,7 +960,9 @@
       if (area === 'sync' && changes[OBR.STORAGE_KEY]) {
         OBR.loadSettings().then((s) => {
           const next = s.siteRules || [];
-          if (JSON.stringify(next) !== JSON.stringify(rules)) { rules = next; renderSites(); }
+          // renderSiteAccess too: the card attributes each grant to a rule, so a rule change
+          // from another tab/device can flip a row between "for auto-open" and "unused".
+          if (JSON.stringify(next) !== JSON.stringify(rules)) { rules = next; renderSites(); renderSiteAccess(); }
         });
       }
       // The hidden-images map can change from the gallery (another tab) or a device sync.

@@ -316,6 +316,7 @@
   "optAccessAllSites": { "message": "All sites" },
   "optAccessWhyAll": { "message": "Granted for image downloads. Covers every site listed here." },
   "optAccessWhySite": { "message": "Granted for auto-open." },
+  "optAccessWhyUnused": { "message": "Not used by any auto-open rule." },
   "optAccessRemove": { "message": "Remove" },
   "optAccessRevoke": { "message": "Revoke" },
   "optAccessRevoked": { "message": "Site access removed" },

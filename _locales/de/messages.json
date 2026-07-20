@@ -314,6 +314,7 @@
   "optAccessAllSites": { "message": "Alle Websites" },
   "optAccessWhyAll": { "message": "Für Bild-Downloads erteilt. Deckt jede hier aufgeführte Website ab." },
   "optAccessWhySite": { "message": "Für Auto-Öffnen erteilt." },
+  "optAccessWhyUnused": { "message": "Von keiner Auto-Öffnen-Regel verwendet." },
   "optAccessRemove": { "message": "Entfernen" },
   "optAccessRevoke": { "message": "Entziehen" },
   "optAccessRevoked": { "message": "Website-Zugriff entfernt" },
