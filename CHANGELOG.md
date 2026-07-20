@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-20
+
+### Added
+- **See and manage which sites the extension can access.** Settings now has a **Site access**
+  section listing every site you've granted — for auto-open or for image downloads — each with a
+  one-tap **Revoke** (and **Grant** to restore one). It says plainly what each grant is for, and
+  flags any that are redundant or no longer used, so nothing lingers without your knowing.
+
+### Changed
+- **Downloading images now asks only for the sites those images come from** — no longer for access
+  to every site you visit. The prompt lists exactly which sites it needs. If you download from many
+  sites and would rather not be asked each time, an **Allow all sites instead** option sits right
+  there and explains the trade-off — broad access stays a deliberate choice, never the default.
+- **Turning auto-open off now hands the site's permission back.** Whether you uncheck it in
+  Settings, delete the rule, choose **Stop auto-opening**, or **Reset to defaults**, the extension
+  no longer keeps access to a site it has stopped using — and a shared grant is kept only while
+  another rule on the same site still needs it.
+
+### Fixed
+- **Auto-open now shows when it's paused.** If you revoke a site's access from Chrome's own
+  extensions page, that site's rule stays listed but is clearly marked paused, with a one-click way
+  to re-grant — instead of the checkbox looking on while auto-open quietly does nothing.
+
 ## [1.6.0] - 2026-07-19
 
 ### Added
@@ -201,7 +224,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.0
 [1.6.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.6.0
 [1.5.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.5.0
 [1.4.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.4.0
