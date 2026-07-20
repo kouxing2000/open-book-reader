@@ -471,8 +471,10 @@ test('the Auto-open checkbox asks for the site permission — grant, uncheck, an
     { origins: ['*://example.com/*', '*://www.example.com/*'] },
   ]);
 
-  // UNCHECK: clears the flag AND hands the site permission back (nothing else needs it),
-  // verified against contains() rather than trusting remove()'s own callback.
+  // UNCHECK: clears the flag AND hands the site permission back (nothing else needs it).
+  // NOTE the stub's contains() is exact-string membership with no pattern subsumption, so it
+  // cannot exercise the case the verify-after-remove exists for (removing under a COVERING
+  // grant, where remove succeeds but access remains). That path is manual — spec §10 5c.
   await cb.click();
   await expect.poll(storedRule).toEqual({ match: 'example.com', mode: 'auto' });
   await expect.poll(() => page.evaluate(() => window.__permRemoved)).toEqual([
@@ -793,4 +795,27 @@ test('the permission prompt lists the ZIP origins and offers all-sites only for 
   await expect(page.locator('#origins')).toBeHidden();
   await expect(page.locator('#allowAll')).toBeHidden();
   await expect(page.locator('#why')).toContainText('example.com');
+});
+
+// The ZIP flow mints host patterns, and Chrome's own Site access box (plus older installs) can
+// produce SCHEME-SPECIFIC ones. originHost must parse those too: an unparsed grant loses its
+// label, is dropped by ?site= scoping (the scoped view would claim no access while access
+// exists), and reads as unused. Every other card test seeds only `*://` shapes, so this is the
+// one that would have caught it.
+test('Site access parses scheme-specific grants, not just the *:// shape', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await stubGrants(page, ['https://i.cdn.test/*', 'http://legacy.test/*', '*://plain.test/*']);
+  await page.reload();
+  await openSections(page);
+
+  const labels = () => page.locator('.acc-org').allInnerTexts();
+  await expect(page.locator('.acc-row')).toHaveCount(3);
+  const shown = (await labels()).map((t) => t.split('\n')[0]);
+  expect(shown).toEqual(['i.cdn.test', 'legacy.test', 'plain.test']); // hosts, not raw patterns
+
+  // …and site scoping finds a scheme-specific grant for the focused host.
+  await page.goto(optionsUrl(extensionId) + '?site=i.cdn.test');
+  await openSections(page);
+  await expect(page.locator('.acc-row')).toHaveCount(1);
+  await expect(page.locator('.acc-org').first()).toContainText('i.cdn.test');
 });

@@ -414,8 +414,9 @@
   // the sentinel registration + context-menu scoping (background.js) and the options page's
   // revoke guard — they MUST agree. If the registration thinks a rule needs an origin but the
   // revoke guard doesn't, the grant is handed back while the sentinel still expects it: a
-  // silently dead auto rule. The reverse orphans a grant nothing uses. (These three had
-  // already drifted — two copies required `mode`, one didn't.)
+  // silently dead auto rule. The reverse orphans a grant nothing uses. (Consolidated from two
+  // identical unions in background.js plus per-rule computations in options.js that omitted the
+  // `mode` filter — so the union and the release test could disagree on a modeless rule.)
   // A rule is live only with BOTH `match` and `mode` (matchSiteRuleEx ignores modeless rules);
   // originsForRule yields [] for globs that can't form a match pattern. PURE + testable.
   OBR.autoRuleOrigins = function (rules) {
@@ -870,12 +871,27 @@
   // Clear the auto flag on whichever rule matched the current URL (possibly a path
   // rule), KEEPING its mode — "stop automating" must not also forget "this site is a
   // gallery site". Resolves true on a confirmed write, false when nothing matched.
+  // Relay to the service worker rather than clearing the flag here. A content script cannot
+  // call permissions.remove, so doing it in-page would clear `auto` while KEEPING the site
+  // grant — the chip and the context menu share the verb "Stop auto-opening", and they must
+  // not differ in what happens to the permission. The SW's stopAutoOpen owns both halves.
+  // Falls back to the local write when messaging is unavailable (the test harness), which is
+  // the old behaviour: flag cleared, grant kept.
   OBR._stopAutoHere = function () {
-    return OBR.loadSettings().then((s) => {
+    const local = () => OBR.loadSettings().then((s) => {
       const rule = OBR.matchSiteRuleEx(location.href, s.siteRules);
       if (!rule || !rule.auto) return false;
       return OBR.saveSettings({ siteRules: OBR.setRuleAuto(s.siteRules, rule.match, false) });
     });
+    try {
+      if (!(globalThis.chrome && chrome.runtime && chrome.runtime.sendMessage)) return local();
+      return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'obr-stop-auto' }, (resp) => {
+          if (chrome.runtime.lastError || !resp) return local().then(resolve); // SW asleep/absent
+          resolve(!!resp.ok);
+        });
+      });
+    } catch (e) { return local(); }
   };
 
   // Transient auto-open status chip, in its OWN tiny shadow host so it rides above

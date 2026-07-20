@@ -272,15 +272,25 @@ test('permsFor derives ZIP origins from the actual image URLs, never <all_urls>'
     // data:/blob: need no host permission -> nothing to ask for -> no prompt at all
     dataOnly: permsFor({ type: 'obr-fetch-bytes', urls: ['data:image/png;base64,AAAA'] }),
     junk: permsFor({ type: 'obr-fetch-bytes', urls: ['not a url'] }),
+    // a `*` in the host can't form a valid pattern, and ONE bad entry fails the whole request
+    starHost: permsFor({ type: 'obr-fetch-bytes', urls: ['https://foo*bar.test/x.png'] }),
     // the single-file download path is unchanged: a plain `downloads` permission, no origins
     one: permsFor({ type: 'obr-download-one', url: 'https://x.test/a.png' }),
   }));
-  // Scheme-specific on purpose: narrower than `*://`, and exactly what we fetch.
-  expect(r.single).toEqual({ origins: ['https://i.cdn.test/*'] });
-  expect(r.multi).toEqual({ origins: ['https://i.cdn.test/*', 'https://img.other.test/*'] });
-  expect(r.port).toEqual({ origins: ['http://host.test/*'] });   // port stripped, or the pattern is invalid
+  // `*://host/*` — host granularity, BOTH schemes. Scheme-pinning looks narrower but breaks
+  // the common case: an http image URL 301s to https and the SW fetch follows the redirect
+  // straight out of its own grant.
+  expect(r.single).toEqual({ origins: ['*://i.cdn.test/*'] });
+  expect(r.multi).toEqual({ origins: ['*://i.cdn.test/*', '*://img.other.test/*'] });
+  // Port stripped — a port-less pattern matches ANY port, and it keeps the shape identical to
+  // originsForRule. (Not because Chrome rejects ports: contains() accepts `host:8080` patterns.)
+  expect(r.port).toEqual({ origins: ['*://host.test/*'] });
   expect(r.dataOnly).toBeNull();
   expect(r.junk).toBeNull();
+  // A `*` typed into a host is percent-encoded by the URL parser ('foo%2Abar.test'), so it
+  // never reaches permsFor's wildcard guard and the pattern stays well-formed. Asserting the
+  // OBSERVED behaviour, not the guard's premise.
+  expect(r.starHost).toEqual({ origins: ['*://foo%2Abar.test/*'] });
   expect(r.one).toEqual({ permissions: ['downloads'] });
   // The regression that matters: no code path hands back the blanket grant on its own.
   const asked = JSON.stringify([r.single, r.multi, r.port]);
@@ -302,8 +312,37 @@ test('permsFor derives ZIP origins from the actual image URLs, never <all_urls>'
       });
     }
     return out;
-  }, [...r.single.origins, ...r.multi.origins, ...r.port.origins]);
+  }, [...r.single.origins, ...r.multi.origins, ...r.port.origins, ...r.starHost.origins]);
   Object.entries(wellFormed).forEach(([pattern, verdict]) => {
     expect(verdict, `pattern ${pattern}`).toBe('ok');
   });
+});
+
+
+// stopAutoOpen is what the context menu AND the in-overlay chip both go through (the chip
+// relays via 'obr-stop-auto' because a content script cannot call permissions.remove). It must
+// clear only the auto flag, keep the mode rule, and hand the site grant back.
+test('stopAutoOpen clears the auto flag, keeps the mode, and releases the site grant', async ({ serviceWorker }) => {
+  const out = await serviceWorker.evaluate(async () => {
+    const removed = [];
+    const realRemove = chrome.permissions.remove;
+    chrome.permissions.remove = (need, cb) => { removed.push(need); if (cb) cb(true); };
+    await new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteRules: [
+      { match: 'stopme.test', mode: 'text', auto: true },
+      { match: 'other.test', mode: 'auto', auto: true },
+    ] } }, res));
+    const ok = await new Promise((res) => stopAutoOpen('https://stopme.test/thread/1', res));
+    const rules = await new Promise((res) =>
+      chrome.storage.sync.get('obr_settings', (d) => res(d.obr_settings.siteRules)));
+    chrome.permissions.remove = realRemove;
+    return { ok, rules, removed };
+  });
+  expect(out.ok).toBe(true);
+  // auto gone, mode kept — "stop automating" must not also forget "this site reads as text".
+  expect(out.rules).toEqual([
+    { match: 'stopme.test', mode: 'text' },
+    { match: 'other.test', mode: 'auto', auto: true },
+  ]);
+  // …and only THAT site's origins are handed back; the untouched rule keeps its grant.
+  expect(out.removed).toEqual([{ origins: ['*://stopme.test/*', '*://www.stopme.test/*'] }]);
 });

@@ -284,9 +284,11 @@ fetch cross-origin, so `gallery.js` messages `background.js` — `obr-download-o
 and the gallery builds the ZIP in-page (`OBR._buildZip`) and saves it via a blob `<a download>`. Hence
 `downloads` + `<all_urls>` as **optional** permissions (`optional_permissions` / `optional_host_permissions`),
 requested on first use — not held at install. **What a ZIP actually REQUESTS is per-origin, not
-`<all_urls>`**: `permsFor(msg)` derives the origin set from `msg.urls` (scheme + hostname, port
-STRIPPED — a match pattern's host may not carry one), so downloading an album grants only the CDNs
-it came from. `<all_urls>` stays in the manifest as the declared maximum (images can live anywhere)
+`<all_urls>`**: `permsFor(msg)` derives `*://<hostname>/*` per image URL from `msg.urls`, so downloading an album
+grants only the CDNs it came from. NOT scheme-pinned (an http image 301s to https and the SW fetch
+follows the redirect out of its own grant) and port-stripped (port-less matches any port, and it
+keeps the shape identical to `originsForRule`) — note `permissions.contains` does NOT reject a
+ported pattern, so the strip is about consistency, not API validity. `<all_urls>` stays in the manifest as the declared maximum (images can live anywhere)
 and remains reachable as a deliberate "Allow all sites instead" opt-out in `permission.html` — never
 the default. This is what keeps the options **Site access** card meaningful: a broad grant subsumes
 every per-site row, so silently escalating to it made the card useless.
@@ -432,15 +434,17 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   asking anyway made Chrome record a redundant per-site entry beside "All sites". Two
   consequences that have already bitten: (1) `remove()` resolves `true` even for origins that were
   NEVER granted, and cannot carve a per-site hole out of `<all_urls>` — so **always re-check
-  `contains()` afterwards** and report only that (`background.js`: "contains is authoritative
-  here"); (2) origins are HOST-scoped, so `host/blog/*` and `host/forum/*` share ONE grant —
+  `contains()` afterwards** and report only that (`options.js: revokeOrigins`; the SW's similar
+  "contains is authoritative here" note is about the request-WAITER path, not `remove`); (2) origins are HOST-scoped, so `host/blog/*` and `host/forum/*` share ONE grant —
   releasing on behalf of one silently pauses the other while its checkbox still reads "on".
   Two shared definitions in `settings.js` settle both, and every caller MUST use them:
   `OBR.autoRuleOrigins(rules)` (the union the sentinel registration reads) and
-  `OBR.releasableOrigins(rule, remaining)` (`[]` = keep the grant). All four "turn auto-open
-  off" paths go through them — options checkbox, rule delete, Reset to defaults, and the SW's
-  "Stop auto-opening" menu item — so WHERE you switch it off never changes what happens to the
-  grant. `permissions.remove` needs no user gesture, so the worker releases directly (it skips
+  `OBR.releasableOrigins(rule, remaining)` (`[]` = keep the grant). The deliberate turn-off paths
+  all release: options checkbox, rule delete, Reset to defaults, the context menu's "Stop
+  auto-opening", and the in-overlay chip's Stop (which RELAYS via `obr-stop-auto` — a content
+  script cannot call `permissions.remove`, so clearing in-page would keep the grant). Known
+  exception: editing a rule's pattern to a new host (`patCommit`) drops `auto` and ORPHANS the
+  old host's grant — it surfaces later as a "Not used by any auto-open rule" row. `permissions.remove` needs no user gesture, so the worker releases directly (it skips
   the verify step only because it reports nothing).
   A revoked auto rule KEEPS its `auto` flag on purpose — the sentinel re-arms if the grant returns,
   so the UI shows a paused line and never silently unchecks the box.

@@ -2,8 +2,8 @@
 
 Status: IMPLEMENTED (2026-07-16) — kept as the design record (decisions + rationale);
 the living architecture summary is in CLAUDE.md, tests in `tests/auto-open.spec.js`.
-Target release: next minor (1.6.0). Pre-release: the §10 manual checklist + the
-dashboard privacy-tab update (§9) remain to be done by hand.
+Shipped in 1.6.0. The permission-release behaviour below (2026-07) is NOT yet released:
+its §10 items 5b/5c and the dashboard privacy-tab update (§9) gate the NEXT release.
 
 ## 1. Problem
 
@@ -190,10 +190,16 @@ patterns (origins are host-scoped; the path part is enforced by the sentinel, no
   the Auto checkbox for that rule with a hint).
 
 **Turning auto-open OFF now releases the site permission** (changed 2026-07; it previously
-never auto-revoked). Every path agrees — the options checkbox, deleting the rule, "Reset to
-defaults", and the context menu's "Stop auto-opening" — all going through
-`OBR.releasableOrigins(rule, remainingRules)`, which returns `[]` (keep the grant) when a
-sibling auto rule on the same host still needs it. Origins are HOST-scoped, so
+never auto-revoked). Every DELIBERATE turn-off path releases: the options checkbox, deleting
+the rule, the context menu's "Stop auto-opening", and the in-overlay chip's Stop — the last
+one RELAYS via an `obr-stop-auto` message, because a content script cannot call
+`permissions.remove` and clearing in-page would drop the flag while keeping the grant. All of
+those route through `OBR.releasableOrigins(rule, remainingRules)`, which returns `[]` (keep the
+grant) when a sibling auto rule on the same host still needs it. "Reset to defaults" also
+releases, but via `OBR.autoRuleOrigins` directly (it wipes every rule at once, so there is no
+surviving sibling to test against). **Known exception:** editing a rule's *pattern* to a new
+host (`patCommit`) drops `auto` and ORPHANS the old host's grant; it surfaces afterwards as a
+"Not used by any auto-open rule" row in the Site access card rather than being handed back. Origins are HOST-scoped, so
 `host/blog/*` and `host/forum/*` share ONE grant; releasing for one would silently pause the
 other while its checkbox still read "on". The union side of that decision is
 `OBR.autoRuleOrigins(rules)` — the SAME function the sentinel registration uses, so a grant
@@ -467,8 +473,9 @@ On a real forum (e.g. any Discourse instance):
   thresholds fail toward not opening; documented in §4.
 - **Registration/permission drift** (revocations, sync from another device carrying rules
   this device has no grants for) — registration sync filters by `permissions.contains`, so
-  an ungranted rule is simply dormant on this device; options page shows its checkbox
-  unchecked-with-hint there.
+  an ungranted rule is simply dormant on this device. The options page keeps its checkbox
+  CHECKED (the stored intent is real, and the sentinel re-arms if the grant returns) and adds a
+  paused line with an inline re-grant — see `markPaused`/`refreshPausedLines`.
 
 ## 12. Rejected alternatives (for the record)
 

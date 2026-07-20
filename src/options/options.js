@@ -49,9 +49,10 @@
    * Grant state lives in CHROME, not in our settings, so it changes behind this page's back
    * (chrome://extensions, or the list below). Two different SCOPES reach us:
    *   auto-open      -> OBR.originsForRule(match)  e.g. *://site.com/* + *://www.site.com/*
-   *   ZIP download   -> '<all_urls>'               (background.js permsFor('obr-fetch-bytes'))
-   * <all_urls> COVERS every per-site pair, so once a user has downloaded a ZIP, a per-rule
-   * contains() reports "granted" for EVERY site. That's why the Site access card lists what
+   *   ZIP download   -> the image origins themselves   (background.js permsFor(msg))
+   * Neither is broad by default, but `<all_urls>` is still reachable via the permission popup's
+   * explicit "Allow all sites instead", and it COVERS every per-site pattern — once held, a
+   * per-rule contains() reports "granted" for EVERY site. That's why this card lists what
    * permissions.getAll() actually returns instead of testing each rule: the broad grant shows
    * up as ONE honest row rather than N false ones. */
   const ALL_URLS = '<all_urls>';
@@ -79,12 +80,12 @@
     });
   }
 
-  // Revoke, then VERIFY — resolves true only if the origins are genuinely gone.
-  // permissions.remove resolves `true` even for origins that were never granted, and it
-  // cannot carve a per-site hole out of a broader <all_urls> grant, so its own result proves
-  // nothing. contains() afterwards is the only honest signal (the service worker reasons the
-  // same way — see background.js "contains is authoritative here"). Never report a revoke
-  // from remove()'s callback alone.
+  // Revoke, then VERIFY — resolves true only if access is genuinely gone.
+  // permissions.remove resolves `true` even for origins that were never granted, so its own
+  // result proves nothing. And under a COVERING grant it does something subtler than failing:
+  // observed behaviour is that the per-site entries vanish from getAll() while contains() stays
+  // true — the bookkeeping changes, the access does not. contains() afterwards is the only
+  // honest signal. Never report a revoke from remove()'s callback alone.
   function revokeOrigins(origins) {
     return new Promise((res) => {
       try {
@@ -109,7 +110,12 @@
   // rather than collapsed to the apex: it covers strictly more, and merging it into a bare
   // `example.com` row would understate its reach on a card whose whole job is honest scope.
   function originHost(origin) {
-    const m = /^\*:\/\/([^/]+)\/\*$/.exec(String(origin));
+    // Accept a scheme-specific pattern too, not just our own `*://` shape: Chrome's own Site
+    // access box lets the user type one, and grants predating the per-origin download flow can
+    // carry them. Failing to parse is not cosmetic — an unparsed grant loses its label, is
+    // dropped by site scoping (the scoped view would claim no access while access exists), and
+    // reads as "not used by any rule".
+    const m = /^(?:\*|https?):\/\/([^/]+)\/\*$/.exec(String(origin));
     if (!m) return '';
     const host = m[1].toLowerCase();
     return host.startsWith('*.') ? host : host.replace(/^www\./, '');
@@ -288,8 +294,8 @@
 
   // The per-row Auto-open checkbox. Checking asks for the site permission first (a
   // denied prompt reverts the box); unchecking clears the flag AND hands the site permission
-  // back, because that per-site grant has no other consumer — the gallery's ZIP download asks
-  // for <all_urls> separately. The revoke is VERIFIED before it's reported: under a broad
+  // back. A ZIP download's grant is a DIFFERENT set of patterns (its own image origins), and
+  // `remove` is pattern-exact, so releasing this pair cannot disturb it. The revoke is VERIFIED before it's reported: under a broad
   // <all_urls> grant the per-site removal is a no-op, and claiming "removed" then would lie.
   // Rules whose host part can't form a Chrome match pattern (a mid-host `*`) can't auto-open:
   // disabled box + a title explaining why.

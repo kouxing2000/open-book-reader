@@ -395,28 +395,31 @@ chrome.permissions.onRemoved.addListener(() => { syncSentinelRegistration(); });
 // "Stop auto-opening on this site": clear the auto flag on whichever rule matches the page
 // (path rules included), keeping its mode. Uses the page URL so a path-scoped auto rule is
 // turned off precisely; the storage write re-syncs registration + rebuilds the menu.
-function stopAutoOpen(src) {
+function stopAutoOpen(src, done) {
+  const finish = (ok) => { if (done) { try { done(ok); } catch (e) { /* receiver gone */ } } };
   chrome.storage.sync.get('obr_settings', (data) => {
     void chrome.runtime.lastError;
     const raw = (data && data.obr_settings) || {};
     OBR.migrateSiteRules(raw);
     const rule = OBR.matchSiteRuleEx(src, raw.siteRules);
-    if (rule && rule.auto) {
-      const next = OBR.setRuleAuto(raw.siteRules, rule.match, false);
-      // Give the site permission back on exactly the same terms as the options checkbox, so
-      // WHERE you turn auto-open off doesn't change what happens to the grant. `remove` needs
-      // no user gesture (only `request` does), so the worker can do this itself. No verify
-      // step here: unlike the options page there's nothing to report to, and a removal that
-      // no-ops under a broader <all_urls> grant simply changes nothing.
-      const release = OBR.releasableOrigins(rule, next);
-      raw.siteRules = next;
-      chrome.storage.sync.set({ obr_settings: raw }, () => {
-        void chrome.runtime.lastError;
-        if (!release.length) return;
+    if (!(rule && rule.auto)) return finish(false);
+    const next = OBR.setRuleAuto(raw.siteRules, rule.match, false);
+    // Give the site permission back on exactly the same terms as the options checkbox, so
+    // WHERE you turn auto-open off doesn't change what happens to the grant. `remove` needs
+    // no user gesture (only `request` does), so the worker can do this itself. No verify step
+    // here: unlike the options page there's nothing to report to. Note it DOES change
+    // bookkeeping even when it cannot change access — under a covering broad grant the per-site
+    // entries disappear from permissions.getAll() while access itself remains (observed).
+    const release = OBR.releasableOrigins(rule, next);
+    raw.siteRules = next;
+    chrome.storage.sync.set({ obr_settings: raw }, () => {
+      void chrome.runtime.lastError;
+      if (release.length) {
         try { chrome.permissions.remove({ origins: release }, () => { void chrome.runtime.lastError; }); }
         catch (e) { /* permissions unavailable — the flag is cleared either way */ }
-      });
-    }
+      }
+      finish(true);
+    });
   });
 }
 
@@ -579,11 +582,16 @@ function permsFor(msg) {
       try {
         const url = new URL(u);
         if (!/^https?:$/.test(url.protocol)) return;
-        // hostname, NOT origin: a match pattern's host may not carry a port, and `origin`
-        // keeps one (`http://h:8080`), which would make the whole request invalid. Keeping the
-        // scheme (rather than `*://`) is deliberate — it is the narrower grant, and it is
-        // exactly what we are about to fetch.
-        const o = url.protocol + '//' + url.hostname + '/*';
+        // `*://host/*`, matching originsForRule's shape — host granularity, both schemes.
+        // NOT scheme-pinned: nearly every host redirects http->https, and the SW fetch follows
+        // redirects, so an `http://host/*` grant would fail the moment an http image URL
+        // (still common in lazy-load `data-src` markup) 301s to https. NOT url.origin either:
+        // that keeps the port, and a port belongs to neither originsForRule's shape nor the
+        // documented match-pattern host grammar — port-less matches any port, which is what we
+        // want anyway. A `*` inside the hostname can't form a valid pattern, and ONE invalid
+        // entry fails the whole permissions.request, so drop it rather than sink the batch.
+        if (url.hostname.includes('*')) return;
+        const o = '*://' + url.hostname + '/*';
         if (origins.indexOf(o) === -1) origins.push(o);
       } catch (e) { /* not an absolute http(s) URL — nothing to request */ }
     });
@@ -661,6 +669,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // to actually carry auto:true (a page can't talk itself into an open the user never
   // configured); the mode must be one of the two concrete engines and must agree with
   // the rule (an 'auto' rule resolves page-side, so either engine is legitimate there).
+  // The in-overlay chip's "Stop auto-opening on this site". A content script can't call
+  // permissions.remove, so it relays here instead of clearing the flag itself — otherwise the
+  // chip and the context menu would share a verb while only one of them released the grant.
+  // The sender's own URL decides which rule (never a URL from the message body).
+  if (msg.type === 'obr-stop-auto') {
+    const url = (_sender && _sender.url) || (_sender && _sender.tab && _sender.tab.url) || '';
+    if (!url) { sendResponse({ ok: false }); return true; }
+    stopAutoOpen(url, (ok) => sendResponse({ ok: !!ok }));
+    return true; // async response
+  }
+
   if (msg.type === 'obr-auto-open') {
     const tab = _sender && _sender.tab;
     const url = (_sender && _sender.url) || (tab && tab.url) || '';

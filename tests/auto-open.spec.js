@@ -288,7 +288,12 @@ test('open({trigger:"auto"}) shows the auto chip; a manual open does not', async
   expect(await page.evaluate(() => !!document.getElementById('obr-auto-chip-host'))).toBe(false);
 });
 
-test('the chip Stop button clears ONLY the auto flag — the mode rule survives', async ({ page }) => {
+// The chip's Stop RELAYS to the service worker instead of clearing the flag in-page: a content
+// script cannot call permissions.remove, so clearing locally would drop `auto` while keeping the
+// site grant — and the chip shares its verb ("Stop auto-opening") with the context-menu item,
+// which does release. What the content script owns is the relay; the clear-plus-release itself
+// is the SW's, covered against the REAL worker in extension-load.spec.js.
+test('the chip Stop button relays to the service worker (which owns clear + release)', async ({ page }) => {
   await gotoFixture(page, 'forum-topic.html');
   await seedSettings(page, { siteRules: [{ match: 'localhost', mode: 'text', auto: true }] });
   await injectAll(page);
@@ -298,6 +303,24 @@ test('the chip Stop button clears ONLY the auto flag — the mode rule survives'
   await page.evaluate(() => {
     document.getElementById('obr-auto-chip-host').shadowRoot.querySelector('.stop').click();
   });
+  await expect
+    .poll(() => page.evaluate(() => (window.__obrMsgs || []).map((m) => m && m.type)))
+    .toContain('obr-stop-auto');
+  // The relay carries no URL: the SW reads the SENDER's own url, so a page cannot name a
+  // different site to switch auto-open off for.
+  const relay = await page.evaluate(() =>
+    (window.__obrMsgs || []).find((m) => m && m.type === 'obr-stop-auto'));
+  expect(Object.keys(relay)).toEqual(['type']);
+});
+
+// Messaging absent (no SW at all) must still turn auto-open off rather than silently doing
+// nothing — the fallback keeps the flag clear locally, accepting that the grant stays.
+test('the chip Stop falls back to a local clear when messaging is unavailable', async ({ page }) => {
+  await gotoFixture(page, 'forum-topic.html');
+  await seedSettings(page, { siteRules: [{ match: 'localhost', mode: 'text', auto: true }] });
+  await injectAll(page);
+  await page.evaluate(() => { delete chrome.runtime.sendMessage; });
+  await page.evaluate(() => OBR._stopAutoHere());
   await expect
     .poll(() => page.evaluate(() => new Promise((res) =>
       chrome.storage.sync.get('obr_settings', (d) => res((d.obr_settings || {}).siteRules)))))
