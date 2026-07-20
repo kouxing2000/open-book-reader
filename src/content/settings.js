@@ -410,6 +410,35 @@
     return ['*://' + host + '/*', '*://www.' + host + '/*'];
   };
 
+  // The de-duped origin patterns the AUTO rules collectively need. ONE definition, shared by
+  // the sentinel registration + context-menu scoping (background.js) and the options page's
+  // revoke guard — they MUST agree. If the registration thinks a rule needs an origin but the
+  // revoke guard doesn't, the grant is handed back while the sentinel still expects it: a
+  // silently dead auto rule. The reverse orphans a grant nothing uses. (These three had
+  // already drifted — two copies required `mode`, one didn't.)
+  // A rule is live only with BOTH `match` and `mode` (matchSiteRuleEx ignores modeless rules);
+  // originsForRule yields [] for globs that can't form a match pattern. PURE + testable.
+  OBR.autoRuleOrigins = function (rules) {
+    const out = [];
+    (Array.isArray(rules) ? rules : []).forEach((r) => {
+      if (!r || r.auto !== true || !r.match || !r.mode) return;
+      OBR.originsForRule(r.match).forEach((o) => { if (out.indexOf(o) === -1) out.push(o); });
+    });
+    return out;
+  };
+
+  // The origins a rule can give back once it is no longer auto: its own, MINUS whatever the
+  // remaining auto rules still need. Origins are HOST-scoped (a rule's path is enforced by the
+  // sentinel, not the grant), so `host/blog/*` and `host/forum/*` share ONE grant — releasing
+  // for one would silently pause the other while its checkbox still read "on". `[]` means
+  // "keep the grant". `remainingRules` is the rule list AFTER the change. PURE + testable.
+  OBR.releasableOrigins = function (rule, remainingRules) {
+    const mine = OBR.originsForRule(rule && rule.match);
+    if (!mine.length) return [];
+    const needed = OBR.autoRuleOrigins(remainingRules);
+    return mine.filter((o) => needed.indexOf(o) === -1);
+  };
+
   // Migrate the legacy exact-host `sites` map ({host:{mode}}) into `siteRules` on a RAW
   // settings object (mutates in place) and guarantee `siteRules` is an array, so a user's
   // earlier per-host rules survive the model change. Shared by the read path (loadSettings)

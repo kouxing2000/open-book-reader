@@ -189,11 +189,33 @@ patterns (origins are host-scoped; the path part is enforced by the sentinel, no
 - a host glob that does not form a valid Chrome match pattern → `[]` (options UI disables
   the Auto checkbox for that rule with a hint).
 
-Permissions are never auto-revoked — not because we can't tell grants apart
-(`permissions.getAll` returns granted patterns literally, so an explicit per-site grant IS
-distinguishable from `<all_urls>` coverage), but because silently removing a permission the
-user granted is hostile UX and the grant may serve other features (the ZIP download's
-`<all_urls>`); removal is left to the user (chrome://extensions site access). A revoked
+**Turning auto-open OFF now releases the site permission** (changed 2026-07; it previously
+never auto-revoked). Every path agrees — the options checkbox, deleting the rule, "Reset to
+defaults", and the context menu's "Stop auto-opening" — all going through
+`OBR.releasableOrigins(rule, remainingRules)`, which returns `[]` (keep the grant) when a
+sibling auto rule on the same host still needs it. Origins are HOST-scoped, so
+`host/blog/*` and `host/forum/*` share ONE grant; releasing for one would silently pause the
+other while its checkbox still read "on". The union side of that decision is
+`OBR.autoRuleOrigins(rules)` — the SAME function the sentinel registration uses, so a grant
+can never be released while the registration still expects it.
+
+The superseded rationale, recorded because half of it was wrong: it argued that "silently
+removing a permission the user granted is hostile UX **and** the grant may serve other
+features (the ZIP download's `<all_urls>`)". The second clause is a mistake — ZIP asks for
+`<all_urls>`, a *separate, broader* grant, so it was never a reason to hold the per-site
+pair. The first clause was a real position, overridden by an explicit product decision: a
+user switching auto-open off expects the access to go with it, and a grant that outlives the
+only feature that asked for it is worse UX than a revoke the user just triggered. Revoking
+is cheap to undo — the extension re-asks on next use.
+
+Two mechanics this leans on. `permissions.remove` needs **no** user gesture (only `request`
+does), so the service worker can release directly. And `remove` resolves `true` even for
+origins that were never granted, and cannot carve a per-site hole out of a broader
+`<all_urls>` grant — so any path that REPORTS the outcome must re-check
+`permissions.contains` afterwards and trust only that (`options.js: revokeOrigins`). The SW
+path reports nothing, so it skips the verify.
+
+A revoked
 origin fires `permissions.onRemoved` → registration re-sync → that site's sentinel
 deactivates; the rule keeps its flag and re-arms if the permission comes back. One
 consequence stated plainly: once a user grants `<all_urls>` for a ZIP download, every
@@ -405,7 +427,14 @@ On a real forum (e.g. any Discourse instance):
 4. Chip "stop auto-opening" → flag cleared, mode rule survives, sentinel deregisters
    (verify via `chrome.scripting.getRegisteredContentScripts` in the SW console).
 5. Revoke site access in chrome://extensions → no errors, no red badge, sentinel gone;
-   re-grant via options checkbox → back.
+   the rule row shows the paused line; re-grant via its inline Grant (or the checkbox) → back.
+5b. **Release paths all agree** — with ONE auto rule on a host, each of: unchecking Auto-open,
+   deleting the rule, "Reset to defaults", and the menu's "Stop auto-opening" drops that host
+   from the options **Site access** card (and from `chrome.permissions.getAll`). With TWO auto
+   rules on one host (`host/blog/*` + `host/forum/*`), switching off ONE must keep the grant —
+   the other rule keeps auto-opening; only the last one released revokes.
+5c. After downloading a ZIP (granting `<all_urls>`), a per-site revoke reports "Still granted"
+   rather than claiming success — the broad grant still covers it.
 6. A `*.example.com` wildcard rule and a path rule authored in options.
 6b. An `images` auto rule on a lazy-loading manga/webtoon site: auto-opens even though
    below-fold images haven't decoded at probe time (lazy-evidence + layout-box counting,

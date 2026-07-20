@@ -346,6 +346,56 @@ test('originsForRule maps rule globs to host-scoped origin patterns', async ({ p
   expect(r.bad).toEqual([]);
 });
 
+// The union the sentinel registration and the options revoke guard BOTH read. They must agree:
+// if the guard released an origin the registration still expects, that rule would silently stop
+// auto-opening while its checkbox still read "on". Three hand-rolled copies had already drifted
+// (two required `mode`, one didn't) — this pins the shared definition.
+test('autoRuleOrigins unions only LIVE auto rules, de-duped', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await injectSentinel(page);
+  const r = await page.evaluate(() => ({
+    // two PATH rules on one host collapse to a single shared pair (origins are host-scoped)
+    siblings: OBR.autoRuleOrigins([
+      { match: 'example.com/blog/*', mode: 'auto', auto: true },
+      { match: 'example.com/forum/*', mode: 'text', auto: true },
+    ]),
+    skipsNonAuto: OBR.autoRuleOrigins([{ match: 'example.com', mode: 'auto' }]),
+    skipsModeless: OBR.autoRuleOrigins([{ match: 'example.com', auto: true }]), // not a live rule
+    skipsUngrantable: OBR.autoRuleOrigins([{ match: 'ex*mple.com', mode: 'auto', auto: true }]),
+    empty: OBR.autoRuleOrigins(null),
+  }));
+  expect(r.siblings).toEqual(['*://example.com/*', '*://www.example.com/*']);
+  expect(r.skipsNonAuto).toEqual([]);
+  expect(r.skipsModeless).toEqual([]);
+  expect(r.skipsUngrantable).toEqual([]);
+  expect(r.empty).toEqual([]);
+});
+
+// The release decision every "turn auto-open off" path shares (options checkbox, rule delete,
+// reset, and the SW's "Stop auto-opening" menu item).
+test('releasableOrigins holds the grant while a sibling auto rule on the same host needs it', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await injectSentinel(page);
+  const r = await page.evaluate(() => {
+    const blog = { match: 'example.com/blog/*', mode: 'auto', auto: true };
+    const forum = { match: 'example.com/forum/*', mode: 'text', auto: true };
+    const other = { match: 'other.test', mode: 'auto', auto: true };
+    return {
+      siblingNeedsIt: OBR.releasableOrigins(blog, [forum]),          // shared host -> keep
+      lastOneOut: OBR.releasableOrigins(blog, [other]),              // nothing shares it -> release
+      siblingNotAuto: OBR.releasableOrigins(blog, [{ match: 'example.com/forum/*', mode: 'text' }]),
+      ungrantable: OBR.releasableOrigins({ match: 'ex*mple.com' }, []),
+      wildcardIsDistinct: OBR.releasableOrigins(blog, [{ match: '*.example.com/*', mode: 'auto', auto: true }]),
+    };
+  });
+  expect(r.siblingNeedsIt).toEqual([]);                              // the whole point
+  expect(r.lastOneOut).toEqual(['*://example.com/*', '*://www.example.com/*']);
+  expect(r.siblingNotAuto).toEqual(['*://example.com/*', '*://www.example.com/*']);
+  expect(r.ungrantable).toEqual([]);
+  // A `*.example.com` grant is a DIFFERENT pattern, so it does not hold the apex pair.
+  expect(r.wildcardIsDistinct).toEqual(['*://example.com/*', '*://www.example.com/*']);
+});
+
 test('_pathPatternForUrl best-guesses a path-scoped rule pattern from the current URL', async ({ page }) => {
   await gotoFixture(page, 'article.html');
   await injectSentinel(page);

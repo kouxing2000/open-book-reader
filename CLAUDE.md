@@ -423,8 +423,14 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   NEVER granted, and cannot carve a per-site hole out of `<all_urls>` — so **always re-check
   `contains()` afterwards** and report only that (`background.js`: "contains is authoritative
   here"); (2) origins are HOST-scoped, so `host/blog/*` and `host/forum/*` share ONE grant —
-  releasing on behalf of one silently pauses the other while its checkbox still reads "on"
-  (`releaseRuleOrigins`' `stillNeeded` guard; covered by a red/green test in `options.spec.js`).
+  releasing on behalf of one silently pauses the other while its checkbox still reads "on".
+  Two shared definitions in `settings.js` settle both, and every caller MUST use them:
+  `OBR.autoRuleOrigins(rules)` (the union the sentinel registration reads) and
+  `OBR.releasableOrigins(rule, remaining)` (`[]` = keep the grant). All four "turn auto-open
+  off" paths go through them — options checkbox, rule delete, Reset to defaults, and the SW's
+  "Stop auto-opening" menu item — so WHERE you switch it off never changes what happens to the
+  grant. `permissions.remove` needs no user gesture, so the worker releases directly (it skips
+  the verify step only because it reports nothing).
   A revoked auto rule KEEPS its `auto` flag on purpose — the sentinel re-arms if the grant returns,
   so the UI shows a paused line and never silently unchecks the box.
 - **Never tell users to uninstall + reinstall to clear the chrome://extensions site list.** It's the

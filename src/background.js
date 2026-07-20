@@ -179,9 +179,7 @@ function createMenus() {
       .flatMap((r) => OBR.originsForRule(r.match)));
     // "Stop auto-opening" appears wherever an auto rule matches (path rules too; the
     // handler uses info.pageUrl to clear the exact one).
-    const autoPatterns = uniq(rules
-      .filter((r) => r && r.auto === true && r.match && r.mode)
-      .flatMap((r) => OBR.originsForRule(r.match)));
+    const autoPatterns = OBR.autoRuleOrigins(rules);
     // The site's CURRENT whole-site default view, shown as a disabled info line (Chrome can't
     // radio-check a per-site item declaratively — no negation, no onShown — so we ADD the one
     // matching mode's line via documentUrlPatterns, exactly like Stop/Clear). Whole-site rules
@@ -282,12 +280,10 @@ function syncSentinelRegistration() {
       catch (e) { res({}); }
     });
     OBR.migrateSiteRules(raw);
-    // The union of origin patterns over all auto rules...
-    let patterns = [];
-    for (const r of raw.siteRules) {
-      if (r && r.auto === true && r.match && r.mode) patterns.push(...OBR.originsForRule(r.match));
-    }
-    patterns = [...new Set(patterns)];
+    // The union of origin patterns over all auto rules (the shared definition — the options
+    // page's revoke guard reads the SAME function, so a grant is never released while this
+    // registration still expects it)...
+    const patterns = OBR.autoRuleOrigins(raw.siteRules);
     // ...filtered to what's actually granted. Registering an UNGRANTED (but valid)
     // pattern would merely never inject — this filter is hygiene, keeping the
     // registration equal to what can run. (Invalid globs never get here:
@@ -406,8 +402,20 @@ function stopAutoOpen(src) {
     OBR.migrateSiteRules(raw);
     const rule = OBR.matchSiteRuleEx(src, raw.siteRules);
     if (rule && rule.auto) {
-      raw.siteRules = OBR.setRuleAuto(raw.siteRules, rule.match, false);
-      chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; });
+      const next = OBR.setRuleAuto(raw.siteRules, rule.match, false);
+      // Give the site permission back on exactly the same terms as the options checkbox, so
+      // WHERE you turn auto-open off doesn't change what happens to the grant. `remove` needs
+      // no user gesture (only `request` does), so the worker can do this itself. No verify
+      // step here: unlike the options page there's nothing to report to, and a removal that
+      // no-ops under a broader <all_urls> grant simply changes nothing.
+      const release = OBR.releasableOrigins(rule, next);
+      raw.siteRules = next;
+      chrome.storage.sync.set({ obr_settings: raw }, () => {
+        void chrome.runtime.lastError;
+        if (!release.length) return;
+        try { chrome.permissions.remove({ origins: release }, () => { void chrome.runtime.lastError; }); }
+        catch (e) { /* permissions unavailable — the flag is cleared either way */ }
+      });
     }
   });
 }

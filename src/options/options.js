@@ -347,20 +347,15 @@
     });
   }
 
-  // Hand a rule's site permission back — but ONLY when no other auto rule still needs it.
-  // Origins are HOST-scoped (settings.js: a rule's path part is enforced by the sentinel, not
-  // by the grant), so `example.com/blog/*` and `example.com/forum/*` map to the SAME origin
-  // pair and share one grant. Revoking on behalf of one would silently pause the other while
-  // its checkbox still read "on" — and refining a whole-site rule into path rules is a
-  // documented workflow, so sibling rules per host are expected, not exotic.
-  // `nextRules` is the rule list AFTER the change. Resolves null when the revoke was skipped,
-  // otherwise revokeOrigins' verified boolean.
+  // Hand a rule's site permission back, on the shared terms in OBR.releasableOrigins — which
+  // holds the grant when a sibling auto rule on the same host still needs it (origins are
+  // HOST-scoped, so `host/blog/*` and `host/forum/*` share one). The service worker's
+  // "Stop auto-opening" menu item calls the same helper, so turning auto-open off behaves
+  // identically wherever the user does it. `nextRules` is the rule list AFTER the change.
+  // Resolves null when nothing was released, otherwise revokeOrigins' VERIFIED boolean.
   function releaseRuleOrigins(rule, nextRules) {
-    const origins = OBR.originsForRule(rule && rule.match);
-    if (!origins.length) return Promise.resolve(null); // not grantable -> nothing to release
-    const stillNeeded = (nextRules || []).some((r) => r && r.auto === true
-      && OBR.originsForRule(r.match).some((o) => origins.indexOf(o) !== -1));
-    if (stillNeeded) return Promise.resolve(null);
+    const origins = OBR.releasableOrigins(rule, nextRules); // [] = not grantable, or a sibling needs it
+    if (!origins.length) return Promise.resolve(null);
     return revokeOrigins(origins);
   }
 
@@ -738,6 +733,12 @@
   document.getElementById('reset').addEventListener('click', () => {
     // Reset to defaults wipes the settings blob (incl. site rules), the saved-pick map, AND the
     // hidden-images map — a full clear of the user's customizations.
+    // The auto rules are about to vanish, so the site permissions they asked for would outlive
+    // the only thing referencing them: an orphaned grant that nothing in the UI explains. Take
+    // the origins BEFORE the wipe and hand them back after. Deliberately rule-derived only —
+    // a broad <all_urls> grant belongs to the gallery's ZIP download, not to any rule, so a
+    // settings reset is not the place to revoke it.
+    const orphaned = OBR.autoRuleOrigins(rules);
     chrome.storage.sync.remove([OBR.PICKS_KEY, OBR.HIDDEN_KEY], () => {
       chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {
         OBR.loadSettings().then((s) => {
@@ -751,6 +752,8 @@
           hiddenMap = {};
           renderHidden();
           flashSaved();
+          if (orphaned.length) revokeOrigins(orphaned).then(renderSiteAccess);
+          else renderSiteAccess();
         });
       });
     });
