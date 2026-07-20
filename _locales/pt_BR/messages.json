@@ -325,5 +325,6 @@
   "optAccessRedundant": { "message": "Redundante — o acesso a todos os sites já cobre este." },
   "optAccessRemovedStillCovered": { "message": "Entrada removida — o acesso a todos os sites ainda cobre este site" },
   "permSitesNeeded": { "message": "Precisa de acesso a:" },
-  "permAllowAllSites": { "message": "Permitir todos os sites em vez disso" }
+  "permAllowAllSites": { "message": "Permitir todos os sites em vez disso" },
+  "permAllowAllHint": { "message": "Concede acesso a todos os sites, para que downloads de outros sites não perguntem de novo." }
 }

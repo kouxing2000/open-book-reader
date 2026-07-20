@@ -325,5 +325,6 @@
   "optAccessRedundant": { "message": "多余 —— 「所有网站」权限已经覆盖了这个站点。" },
   "optAccessRemovedStillCovered": { "message": "已移除该条目 —— 但「所有网站」权限仍覆盖此站点" },
   "permSitesNeeded": { "message": "需要访问以下网站:" },
-  "permAllowAllSites": { "message": "改为允许所有网站" }
+  "permAllowAllSites": { "message": "改为允许所有网站" },
+  "permAllowAllHint": { "message": "授予所有网站的访问权限，以后从其他网站下载时不再询问。" }
 }

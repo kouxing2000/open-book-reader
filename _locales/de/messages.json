@@ -325,5 +325,6 @@
   "optAccessRedundant": { "message": "Überflüssig — der Zugriff auf alle Websites deckt diese bereits ab." },
   "optAccessRemovedStillCovered": { "message": "Eintrag entfernt — der Zugriff auf alle Websites deckt sie weiterhin ab" },
   "permSitesNeeded": { "message": "Benötigt Zugriff auf:" },
-  "permAllowAllSites": { "message": "Stattdessen alle Websites erlauben" }
+  "permAllowAllSites": { "message": "Stattdessen alle Websites erlauben" },
+  "permAllowAllHint": { "message": "Erteilt Zugriff auf alle Websites, sodass Downloads von anderen Websites nicht erneut fragen." }
 }

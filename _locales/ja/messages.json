@@ -325,5 +325,6 @@
   "optAccessRedundant": { "message": "重複しています。すべてのサイトへのアクセスがすでにこのサイトを含みます。" },
   "optAccessRemovedStillCovered": { "message": "項目を削除しました。すべてのサイトへのアクセスがまだこのサイトを含みます" },
   "permSitesNeeded": { "message": "次のサイトへのアクセスが必要です:" },
-  "permAllowAllSites": { "message": "代わりにすべてのサイトを許可" }
+  "permAllowAllSites": { "message": "代わりにすべてのサイトを許可" },
+  "permAllowAllHint": { "message": "すべてのサイトへのアクセスを許可し、他のサイトからのダウンロードでは以降確認しません。" }
 }

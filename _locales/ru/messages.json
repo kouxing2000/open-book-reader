@@ -325,5 +325,6 @@
   "optAccessRedundant": { "message": "Избыточно — доступ ко всем сайтам уже покрывает этот сайт." },
   "optAccessRemovedStillCovered": { "message": "Запись удалена — доступ ко всем сайтам по-прежнему покрывает этот сайт" },
   "permSitesNeeded": { "message": "Требуется доступ к:" },
-  "permAllowAllSites": { "message": "Разрешить вместо этого все сайты" }
+  "permAllowAllSites": { "message": "Разрешить вместо этого все сайты" },
+  "permAllowAllHint": { "message": "Предоставляет доступ ко всем сайтам, чтобы загрузки с других сайтов больше не спрашивали." }
 }

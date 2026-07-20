@@ -74,6 +74,8 @@
     const all = document.getElementById('allowAll');
     all.hidden = false;
     all.addEventListener('click', () => requestAndFinish({ origins: ['<all_urls>'] }));
+    const hint = document.getElementById('allowAllHint');
+    if (hint) hint.hidden = false; // explain the tradeoff so it's an informed choice
   }
 
   document.getElementById('cancel').addEventListener('click', () => finish(false));

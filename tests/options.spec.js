@@ -788,12 +788,15 @@ test('the permission prompt lists the ZIP origins and offers all-sites only for 
   await expect(page.locator('#origins')).toContainText('i.cdn.test');
   await expect(page.locator('#origins')).toContainText('img.other.test');
   await expect(page.locator('#allowAll')).toBeVisible();      // the deliberate escape hatch
+  await expect(page.locator('#allowAllHint')).toBeVisible();  // …with its tradeoff explained
+  await expect(page.locator('#allowAllHint')).toContainText('all sites');
 
   // Auto-open asks for ONE site and names it in the prose — no list, and crucially no
   // one-tap upgrade to every site.
   await page.goto(permUrl(`reason=auto-open&host=example.com&origins=${encodeURIComponent('*://example.com/*')}`));
   await expect(page.locator('#origins')).toBeHidden();
   await expect(page.locator('#allowAll')).toBeHidden();
+  await expect(page.locator('#allowAllHint')).toBeHidden();   // no broad-grant pitch in the auto-open flow
   await expect(page.locator('#why')).toContainText('example.com');
 });
 
