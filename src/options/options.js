@@ -56,6 +56,11 @@
    * up as ONE honest row rather than N false ones. */
   const ALL_URLS = '<all_urls>';
 
+  // Whether a broad all-sites grant is currently held. Refreshed by renderSiteAccess (which
+  // already calls getAll), and read SYNCHRONOUSLY by the Auto-open checkbox: permissions.request
+  // must run inside the click's user gesture, so it cannot await a contains() round-trip first.
+  let broadGrantHeld = false;
+
   function permsGetAll() {
     return new Promise((res) => {
       try {
@@ -115,6 +120,7 @@
     if (!wrap) return;
     permsGetAll().then((p) => {
       let origins = ((p && p.origins) || []).slice();
+      broadGrantHeld = origins.some(isBroadOrigin); // read the UNfiltered set — scoping must not hide it
       // Scope to the focused site like the lists above, but ALWAYS keep the broad grant: it's
       // what explains why a scoped site still counts as granted. A `*.host` wildcard grant
       // covers the focused host too, so it belongs in that site's view.
@@ -165,9 +171,13 @@
         org.textContent = g.broad ? OBR.t('optAccessAllSites') : g.label;
         const why = document.createElement('span');
         why.className = 'acc-why';
+        // A per-site row under a broad grant is REDUNDANT — the all-sites grant already covers
+        // it, so removing this entry alone changes no access. Say so, rather than leaving the
+        // user to discover it by clicking Revoke and getting a contradictory result.
         why.textContent = g.broad ? OBR.t('optAccessWhyAll')
-          : OBR.t(g.targets.some((o) => usedByRules.indexOf(o) !== -1)
-            ? 'optAccessWhySite' : 'optAccessWhyUnused');
+          : broadGrantHeld ? OBR.t('optAccessRedundant')
+            : OBR.t(g.targets.some((o) => usedByRules.indexOf(o) !== -1)
+              ? 'optAccessWhySite' : 'optAccessWhyUnused');
         org.appendChild(why);
 
         const btn = document.createElement('button');
@@ -177,7 +187,13 @@
           btn.disabled = true;
           revokeOrigins(g.targets).then((gone) => {
             btn.disabled = false;
-            flashNote(OBR.t(gone ? 'optAccessRevoked' : 'optAccessStillGranted'), !gone);
+            // Removing a per-site entry under a broad grant DOES delete the entry (the row goes)
+            // but cannot remove access (the broad grant still covers the site). Reporting only
+            // "Still granted" while the row disappeared read as a contradiction — say both, and
+            // don't colour it as a failure, because the part the user asked for did happen.
+            const covered = !gone && !g.broad && broadGrantHeld;
+            flashNote(OBR.t(gone ? 'optAccessRevoked'
+              : covered ? 'optAccessRemovedStillCovered' : 'optAccessStillGranted'), !gone && !covered);
             renderSiteAccess();
             refreshPausedLines(); // a revoked site may now have paused auto-open rules
           });
@@ -309,6 +325,11 @@
           });
           return;
         }
+        // Don't ask for access we already have. A broad all-sites grant (from a ZIP download)
+        // already covers this site, and requesting anyway makes Chrome record a REDUNDANT
+        // per-site entry that then shows up as its own Site access row beside "All sites" —
+        // which is exactly what it looked like before this check.
+        if (broadGrantHeld) { commit(true); return; }
         requestOrigins(origins, (granted) => {
           if (!granted) { cb.checked = false; return; }
           commit(true);

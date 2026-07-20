@@ -308,7 +308,7 @@
   "optRevertTitle": { "message": "Reverter para o seletor de quando esta página foi aberta" },
 
   "optAccessHead": { "message": "Acesso a sites" },
-  "optAccessHint": { "message": "Os sites que esta extensão pode ler, conforme o Chrome registra — concedidos por você ao ativar a <b>abertura automática</b> ou ao baixar imagens da galeria pela primeira vez. O acesso é <b>compartilhado entre os dois recursos</b>, não é mantido por recurso: baixar imagens pede <b>todos os sites</b>, e essa única permissão passa a cobrir todos os sites listados aqui. Revogar é imediato e seguro — a extensão simplesmente pedirá de novo na próxima vez que você usar o recurso. Você também pode gerenciar esta mesma lista no Chrome, em <code>chrome://extensions</code>. O Chrome também mantém um registro dos sites sobre os quais perguntou: um site listado ali com a chave desativada não tem acesso — essa entrada é histórico, não permissão." },
+  "optAccessHint": { "message": "Os sites que esta extensão pode ler, conforme o Chrome registra — você os concedeu ao ativar a <b>abertura automática</b> ou ao baixar imagens da galeria. Downloads de imagens pedem apenas <b>os sites de onde essas imagens vêm</b>; se você escolheu <b>Permitir todos os sites</b>, essa única permissão cobre tudo o que está listado aqui e torna as linhas individuais redundantes. Revogar é imediato e seguro — a extensão simplesmente pedirá de novo na próxima vez. Você também pode gerenciar esta mesma lista no Chrome, em <code>chrome://extensions</code>. O Chrome ainda mantém um registro dos sites sobre os quais perguntou: um listado ali com a chave desativada não tem acesso — essa entrada é histórico, não permissão." },
   "optAccessNone": { "message": "Nenhum acesso concedido. A abertura automática e o download de imagens pedem acesso ao serem usados." },
   "optAccessNoneForSite": { "message": "Nenhum acesso concedido para $SITE$.", "placeholders": { "site": { "content": "$1" } } },
   "optAccessAllSites": { "message": "Todos os sites" },
@@ -320,5 +320,10 @@
   "optAccessRevoked": { "message": "Acesso ao site removido" },
   "optAccessStillGranted": { "message": "Ainda concedido — coberto pelo acesso a todos os sites" },
   "optAutoPaused": { "message": "⚠ Sem acesso ao site — a abertura automática está pausada." },
-  "optAutoRegrant": { "message": "Conceder" }
+  "optAutoRegrant": { "message": "Conceder" },
+
+  "optAccessRedundant": { "message": "Redundante — o acesso a todos os sites já cobre este." },
+  "optAccessRemovedStillCovered": { "message": "Entrada removida — o acesso a todos os sites ainda cobre este site" },
+  "permSitesNeeded": { "message": "Precisa de acesso a:" },
+  "permAllowAllSites": { "message": "Permitir todos os sites em vez disso" }
 }

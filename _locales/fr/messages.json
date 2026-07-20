@@ -308,7 +308,7 @@
   "optRevertTitle": { "message": "Revenir au sélecteur présent à l’ouverture de cette page" },
 
   "optAccessHead": { "message": "Accès aux sites" },
-  "optAccessHint": { "message": "Les sites que cette extension peut lire, tels que Chrome les enregistre — vous les avez autorisés en activant l’<b>ouverture auto</b> ou en téléchargeant des images de la galerie pour la première fois. L’accès est <b>partagé entre les deux fonctions</b>, il n’est pas conservé par fonction : le téléchargement d’images demande <b>tous les sites</b>, et cette seule autorisation couvre alors chaque site listé ici. Le retrait est immédiat et sans risque — l’extension redemandera simplement la prochaine fois que vous utiliserez la fonction. Vous pouvez aussi gérer cette même liste dans Chrome, à l’adresse <code>chrome://extensions</code>. Chrome conserve aussi la liste des sites au sujet desquels il a demandé : un site qui y figure avec son interrupteur désactivé n’a aucun accès — cette entrée est un historique, pas une autorisation." },
+  "optAccessHint": { "message": "Les sites que cette extension peut lire, tels que Chrome les enregistre — vous les avez autorisés en activant l’<b>ouverture auto</b> ou en téléchargeant des images de la galerie. Les téléchargements d’images ne demandent que <b>les sites d’où proviennent ces images</b> ; si vous avez choisi <b>Autoriser tous les sites</b>, cette seule autorisation couvre tout ce qui figure ici et rend les lignes individuelles redondantes. Le retrait est immédiat et sans risque — l’extension redemandera simplement la prochaine fois. Vous pouvez aussi gérer cette même liste dans Chrome, à l’adresse <code>chrome://extensions</code>. Chrome conserve en outre la liste des sites au sujet desquels il a demandé : un site qui y figure avec son interrupteur désactivé n’a aucun accès — cette entrée est un historique, pas une autorisation." },
   "optAccessNone": { "message": "Aucun accès accordé. L’ouverture auto et le téléchargement d’images le demandent à l’usage." },
   "optAccessNoneForSite": { "message": "Aucun accès accordé pour $SITE$.", "placeholders": { "site": { "content": "$1" } } },
   "optAccessAllSites": { "message": "Tous les sites" },
@@ -320,5 +320,10 @@
   "optAccessRevoked": { "message": "Accès au site supprimé" },
   "optAccessStillGranted": { "message": "Toujours accordé — couvert par l’accès à tous les sites" },
   "optAutoPaused": { "message": "⚠ Aucun accès au site — ouverture auto en pause." },
-  "optAutoRegrant": { "message": "Autoriser" }
+  "optAutoRegrant": { "message": "Autoriser" },
+
+  "optAccessRedundant": { "message": "Redondant — l’accès à tous les sites le couvre déjà." },
+  "optAccessRemovedStillCovered": { "message": "Entrée supprimée — l’accès à tous les sites le couvre toujours" },
+  "permSitesNeeded": { "message": "Accès nécessaire à :" },
+  "permAllowAllSites": { "message": "Autoriser tous les sites à la place" }
 }

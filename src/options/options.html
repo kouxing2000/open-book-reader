@@ -338,13 +338,13 @@
     <div class="subhead">
       <span data-i18n="optAccessHead">Site access</span> <span id="accessCount" class="subhead-count"></span>
       <span class="hint" data-i18n-html="optAccessHint">The sites this extension may read, as Chrome records them —
-      granted by you when you turned on <b>auto-open</b> or first downloaded gallery images. Access is
-      <b>shared between both features</b>, not held per feature: downloading images asks for
-      <b>all sites</b>, and that one grant then covers every site listed here. Revoking is instant and
-      safe — the extension simply asks again next time you use the feature. You can also manage the
-      same list in Chrome at <code>chrome://extensions</code>. Chrome also keeps a record of sites it has
-      asked about: a site listed there with its toggle off has no access &mdash; that entry is history,
-      not permission.</span>
+      you granted them by turning on <b>auto-open</b> or by downloading gallery images. Image downloads
+      ask only for <b>the sites those images come from</b>; if you chose <b>Allow all sites</b> instead,
+      that single grant covers everything listed here and makes the individual rows redundant. Revoking
+      is instant and safe — the extension simply asks again next time you use the feature. You can also
+      manage the same list in Chrome at <code>chrome://extensions</code>. Chrome keeps a record of sites
+      it has asked about: one listed there with its toggle off has no access &mdash; that entry is
+      history, not permission.</span>
     </div>
     <div id="siteAccess"></div>
 

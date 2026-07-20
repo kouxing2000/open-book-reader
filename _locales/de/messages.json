@@ -308,7 +308,7 @@
   "optRevertTitle": { "message": "Auf den Selektor zurücksetzen, der beim Öffnen dieser Seite galt" },
 
   "optAccessHead": { "message": "Website-Zugriff" },
-  "optAccessHint": { "message": "Die Websites, die diese Erweiterung lesen darf, so wie Chrome sie speichert — von dir erteilt, als du <b>Auto-Öffnen</b> aktiviert oder zum ersten Mal Galeriebilder heruntergeladen hast. Der Zugriff wird <b>von beiden Funktionen gemeinsam genutzt</b>, nicht pro Funktion gehalten: Das Herunterladen von Bildern fragt nach <b>allen Websites</b>, und diese eine Berechtigung deckt dann jede hier aufgeführte Website ab. Das Entziehen wirkt sofort und ist unbedenklich — die Erweiterung fragt beim nächsten Mal einfach erneut. Dieselbe Liste kannst du auch in Chrome unter <code>chrome://extensions</code> verwalten. Chrome führt außerdem eine Liste der Websites, nach denen es gefragt hat: Eine dort mit ausgeschaltetem Schalter aufgeführte Website hat keinen Zugriff — dieser Eintrag ist Verlauf, keine Berechtigung." },
+  "optAccessHint": { "message": "Die Websites, die diese Erweiterung lesen darf, so wie Chrome sie speichert — du hast sie erteilt, indem du <b>Auto-Öffnen</b> aktiviert oder Galeriebilder heruntergeladen hast. Bild-Downloads fragen nur nach <b>den Websites, von denen die Bilder stammen</b>; wenn du stattdessen <b>Alle Websites erlauben</b> gewählt hast, deckt diese eine Berechtigung alles hier Aufgeführte ab und macht die einzelnen Zeilen überflüssig. Das Entziehen wirkt sofort und ist unbedenklich — die Erweiterung fragt beim nächsten Mal einfach erneut. Dieselbe Liste kannst du auch in Chrome unter <code>chrome://extensions</code> verwalten. Chrome führt zudem eine Liste der Websites, nach denen es gefragt hat: Eine dort mit ausgeschaltetem Schalter aufgeführte Website hat keinen Zugriff — dieser Eintrag ist Verlauf, keine Berechtigung." },
   "optAccessNone": { "message": "Kein Website-Zugriff erteilt. Auto-Öffnen und Bild-Downloads fragen bei der Nutzung danach." },
   "optAccessNoneForSite": { "message": "Kein Website-Zugriff für $SITE$ erteilt.", "placeholders": { "site": { "content": "$1" } } },
   "optAccessAllSites": { "message": "Alle Websites" },
@@ -320,5 +320,10 @@
   "optAccessRevoked": { "message": "Website-Zugriff entfernt" },
   "optAccessStillGranted": { "message": "Weiterhin erteilt — durch Zugriff auf alle Websites abgedeckt" },
   "optAutoPaused": { "message": "⚠ Kein Website-Zugriff — Auto-Öffnen pausiert." },
-  "optAutoRegrant": { "message": "Erteilen" }
+  "optAutoRegrant": { "message": "Erteilen" },
+
+  "optAccessRedundant": { "message": "Überflüssig — der Zugriff auf alle Websites deckt diese bereits ab." },
+  "optAccessRemovedStillCovered": { "message": "Eintrag entfernt — der Zugriff auf alle Websites deckt sie weiterhin ab" },
+  "permSitesNeeded": { "message": "Benötigt Zugriff auf:" },
+  "permAllowAllSites": { "message": "Stattdessen alle Websites erlauben" }
 }

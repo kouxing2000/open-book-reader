@@ -20,8 +20,9 @@ Chrome MV3 extension, two reading modes: a two-page open-book **text** reader (k
 page-flipping) and an **image-gallery** mode (a **Wall** masonry grid or an **Ordered** row-major
 layout for sequential images, + lightbox). Reading is fully local —
 no data collected, nothing sent to the developer. The one network case: when the user explicitly
-downloads gallery images (needs the OPTIONAL `downloads` + `<all_urls>` permissions — requested on
-first use, not held at install — so the service worker can fetch image bytes cross-origin to build a ZIP).
+downloads gallery images (needs the OPTIONAL `downloads` permission plus host access to the sites
+those images live on — requested on first use, not held at install — so the service worker can fetch
+image bytes cross-origin to build a ZIP).
 
 Zero-dependency, zero-build: Chrome loads `manifest.json` + `src/` + `icons/` directly. Edit files,
 reload the unpacked extension. (`package.json`/`scripts/` are release tooling only — never bundled.)
@@ -282,7 +283,13 @@ fetch cross-origin, so `gallery.js` messages `background.js` — `obr-download-o
 `host_permissions`, sent with `credentials:'include'` so login-gated images resolve) returns base64,
 and the gallery builds the ZIP in-page (`OBR._buildZip`) and saves it via a blob `<a download>`. Hence
 `downloads` + `<all_urls>` as **optional** permissions (`optional_permissions` / `optional_host_permissions`),
-requested on first use — not held at install.
+requested on first use — not held at install. **What a ZIP actually REQUESTS is per-origin, not
+`<all_urls>`**: `permsFor(msg)` derives the origin set from `msg.urls` (scheme + hostname, port
+STRIPPED — a match pattern's host may not carry one), so downloading an album grants only the CDNs
+it came from. `<all_urls>` stays in the manifest as the declared maximum (images can live anywhere)
+and remains reachable as a deliberate "Allow all sites instead" opt-out in `permission.html` — never
+the default. This is what keeps the options **Site access** card meaningful: a broad grant subsumes
+every per-site row, so silently escalating to it made the card useless.
 
 **First-run activation** (`src/welcome.html`, `background.js` `onInstalled`): on first install the SW opens
 a one-screen WELCOME page (pin the icon, the two shortcuts, a "try it" sample article) — NOT the options
@@ -413,12 +420,16 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
 
 ## Gotchas
 
-- **Host grants: two scopes, one of them broad — and NEVER trust `permissions.remove`.** Auto-open
-  requests a per-site PAIR (`originsForRule` → `*://host/*` + `*://www.host/*`); the gallery's ZIP
-  download requests the literal **`<all_urls>`** (`permsFor('obr-fetch-bytes')`). The broad grant
-  COVERS every pair, so after one ZIP download `permissions.contains(anyPair)` is true for every
-  site — which is why the options **Site access** card is driven by `permissions.getAll()` (ground
-  truth, one honest broad row) rather than by testing each rule (N falsely-granted rows). Two
+- **Host grants: everything is per-origin, and NEVER trust `permissions.remove`.** Auto-open
+  requests a per-site PAIR (`originsForRule` → `*://host/*` + `*://www.host/*`); a ZIP download
+  requests the origins its images actually live on (`permsFor(msg)` off `msg.urls`). `<all_urls>`
+  is reachable ONLY through the popup's explicit "Allow all sites instead" — it used to be what
+  every ZIP silently asked for, which is the bug this design replaced. It still matters because a
+  broad grant COVERS every pair: once held, `permissions.contains(anyPair)` is true for every site,
+  which is why the options **Site access** card is driven by `permissions.getAll()` (ground truth,
+  one honest broad row) rather than by testing each rule (N falsely-granted rows), why per-site rows
+  then read "Redundant", and why the Auto-open checkbox skips requesting at all (`broadGrantHeld`) —
+  asking anyway made Chrome record a redundant per-site entry beside "All sites". Two
   consequences that have already bitten: (1) `remove()` resolves `true` even for origins that were
   NEVER granted, and cannot carve a per-site hole out of `<all_urls>` — so **always re-check
   `contains()` afterwards** and report only that (`background.js`: "contains is authoritative

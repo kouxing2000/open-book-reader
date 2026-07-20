@@ -40,12 +40,41 @@
     });
   }
 
-  document.getElementById('allow').addEventListener('click', () => {
+  // The ZIP fetch asks for the origins its images actually live on (background.js permsFor),
+  // so LIST them — "Allow" should be an informed click, not a leap of faith. The auto-open
+  // flow names its one site in the `why` text already, so it skips the list.
+  const isZip = origins.length && reason !== 'auto-open';
+  if (isZip) {
+    const list = document.getElementById('origins');
+    origins.forEach((o) => {
+      const li = document.createElement('li');
+      // '*://host/*' -> 'host'. Show the host, not the match-pattern syntax.
+      li.textContent = o.replace(/^\*:\/\//, '').replace(/\/\*$/, '');
+      list.appendChild(li);
+    });
+    list.hidden = false;
+    document.getElementById('sitesIntro').hidden = false;
+  }
+
+  function requestAndFinish(req) {
     try {
-      chrome.permissions.request(request, (granted) => { void chrome.runtime.lastError; finish(granted); });
+      chrome.permissions.request(req, (granted) => { void chrome.runtime.lastError; finish(granted); });
     } catch (e) {
       finish(false);
     }
-  });
+  }
+
+  document.getElementById('allow').addEventListener('click', () => requestAndFinish(request));
+
+  // The escape hatch for people who download a lot: one broad grant instead of a prompt per
+  // new CDN. Deliberately styled as a quiet secondary link — broad access stays available but
+  // never the path of least resistance, and it's now an explicit choice rather than (as it was)
+  // what every ZIP download silently asked for.
+  if (isZip) {
+    const all = document.getElementById('allowAll');
+    all.hidden = false;
+    all.addEventListener('click', () => requestAndFinish({ origins: ['<all_urls>'] }));
+  }
+
   document.getElementById('cancel').addEventListener('click', () => finish(false));
 })();

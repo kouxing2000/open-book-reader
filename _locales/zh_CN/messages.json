@@ -308,7 +308,7 @@
   "optRevertTitle": { "message": "恢复为打开此页时的选择器" },
 
   "optAccessHead": { "message": "网站访问权限" },
-  "optAccessHint": { "message": "此扩展可以读取的网站,以 Chrome 记录的为准 —— 由你在开启<b>自动打开</b>或首次下载图库图片时授予。访问权限由<b>两个功能共用</b>,并非各自独立持有:下载图片申请的是<b>所有网站</b>,而这一项授权随后就覆盖了这里列出的每个网站。撤销会立即生效且不会有副作用 —— 下次使用该功能时,扩展会重新申请。你也可以在 Chrome 的 <code>chrome://extensions</code> 中管理同一份列表。 Chrome 还会保留它询问过的网站记录：列在那里但开关是关闭的网站并没有访问权限 —— 那条记录是历史，不是权限。" },
+  "optAccessHint": { "message": "此扩展可以读取的网站,以 Chrome 记录的为准 —— 由你在开启<b>自动打开</b>或下载图库图片时授予。下载图片只会申请<b>这些图片所在的站点</b>;如果你选择了<b>允许所有网站</b>,那一项授权就会覆盖这里列出的全部内容,使各条目变得多余。撤销会立即生效且不会有副作用 —— 下次使用该功能时,扩展会重新申请。你也可以在 Chrome 的 <code>chrome://extensions</code> 中管理同一份列表。此外 Chrome 还会保留它询问过的网站记录:列在那里但开关是关闭的网站并没有访问权限 —— 那条记录是历史,不是权限。" },
   "optAccessNone": { "message": "尚未授予任何网站访问权限。自动打开和图片下载会在使用时申请。" },
   "optAccessNoneForSite": { "message": "尚未为 $SITE$ 授予访问权限。", "placeholders": { "site": { "content": "$1" } } },
   "optAccessAllSites": { "message": "所有网站" },
@@ -320,5 +320,10 @@
   "optAccessRevoked": { "message": "已移除该网站的访问权限" },
   "optAccessStillGranted": { "message": "仍处于已授权状态 —— 被「所有网站」权限覆盖" },
   "optAutoPaused": { "message": "⚠ 没有网站访问权限 —— 自动打开已暂停。" },
-  "optAutoRegrant": { "message": "授予" }
+  "optAutoRegrant": { "message": "授予" },
+
+  "optAccessRedundant": { "message": "多余 —— 「所有网站」权限已经覆盖了这个站点。" },
+  "optAccessRemovedStillCovered": { "message": "已移除该条目 —— 但「所有网站」权限仍覆盖此站点" },
+  "permSitesNeeded": { "message": "需要访问以下网站:" },
+  "permAllowAllSites": { "message": "改为允许所有网站" }
 }

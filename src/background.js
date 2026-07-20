@@ -561,9 +561,34 @@ function runDownload(msg, sendResponse) {
  * (src/permission.html) where the user's click IS a genuine gesture that can call
  * permissions.request. Each action asks only for what it needs: a single download
  * needs `downloads`; a ZIP needs cross-origin `<all_urls>` to fetch the bytes. */
-function permsFor(type) {
+function permsFor(msg) {
+  const type = msg && msg.type;
   if (type === 'obr-download-one') return { permissions: ['downloads'] };
-  if (type === 'obr-fetch-bytes') return { origins: ['<all_urls>'] };
+  if (type === 'obr-fetch-bytes') {
+    // LEAST PRIVILEGE: ask for the origins these images actually live on, not <all_urls>.
+    // The exact URLs are right here in the message; the old code keyed off `type` alone and
+    // threw them away, so downloading one album escalated to read access on every site the
+    // user would ever visit — and that single broad grant then subsumes every per-site
+    // auto-open grant, which is what made the options Site access card collapse to one
+    // all-covering row. The popup still offers "all sites" as a deliberate opt-out for people
+    // who download a lot (permission.js), so the escape hatch is a choice, not the default.
+    // data:/blob: images need no host permission, so they contribute nothing here; a message
+    // with only those yields null and skips the prompt entirely.
+    const origins = [];
+    (msg.urls || []).forEach((u) => {
+      try {
+        const url = new URL(u);
+        if (!/^https?:$/.test(url.protocol)) return;
+        // hostname, NOT origin: a match pattern's host may not carry a port, and `origin`
+        // keeps one (`http://h:8080`), which would make the whole request invalid. Keeping the
+        // scheme (rather than `*://`) is deliberate — it is the narrower grant, and it is
+        // exactly what we are about to fetch.
+        const o = url.protocol + '//' + url.hostname + '/*';
+        if (origins.indexOf(o) === -1) origins.push(o);
+      } catch (e) { /* not an absolute http(s) URL — nothing to request */ }
+    });
+    return origins.length ? { origins } : null;
+  }
   return null;
 }
 
@@ -679,7 +704,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if ((msg.type === 'obr-download-one' && msg.url) ||
       (msg.type === 'obr-fetch-bytes' && Array.isArray(msg.urls))) {
-    const need = permsFor(msg.type);
+    const need = permsFor(msg);
+    // Nothing host-scoped to ask for (e.g. every image is a data:/blob: URL) — no prompt.
+    if (!need) { runDownload(msg, sendResponse); return true; }
     chrome.permissions.contains(need, (has) => {
       if (has) return runDownload(msg, sendResponse);
       requestPerm(need, (granted) => {

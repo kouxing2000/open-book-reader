@@ -16,6 +16,23 @@
     h1 { font-size: 18px; margin: 0 0 10px; display: flex; gap: 8px; justify-content: center; align-items: center; }
     p { font-size: 13.5px; line-height: 1.5; opacity: .8; margin: 0 0 20px; }
     .actions { display: flex; gap: 10px; justify-content: center; }
+    /* The exact origins being requested — shown so "Allow" is an informed click rather than a
+       leap of faith. The ZIP fetch asks only for the sites the selected images live on. */
+    .sites-intro { font-size: 12.5px; opacity: .7; margin: 14px 0 4px; }
+    .origins { list-style: none; margin: 0 0 16px; padding: 0; text-align: left;
+      max-height: 132px; overflow-y: auto; }
+    .origins li { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+      padding: 4px 9px; margin: 3px 0; border-radius: 6px; background: rgba(127,127,127,.14);
+      word-break: break-all; }
+    /* The deliberate escape hatch: quieter than the primary action on purpose — broad access
+       should be a considered choice, never the path of least resistance. */
+    .link { display: block; margin: 14px auto 0; background: none; border: 0; padding: 4px;
+      font-size: 12.5px; opacity: .6; text-decoration: underline; cursor: pointer; color: inherit; }
+    .link:hover { opacity: .85; }
+    /* `display:block` above beats the UA's `[hidden] { display: none }` (equal specificity,
+       later rule wins), so the hidden attribute alone would NOT hide this button — it leaked
+       the all-sites escape into the auto-open flow. Restore it explicitly. */
+    [hidden] { display: none !important; }
     button { padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-family: inherit; }
     .primary { background: #2b6cff; color: #fff; }
     .ghost { background: rgba(127,127,127,.18); color: inherit; }
@@ -25,10 +42,13 @@
   <div class="card">
     <h1>📖 Open Book Reader</h1>
     <p id="why">This feature needs an additional permission.</p>
+    <p class="sites-intro" id="sitesIntro" hidden data-i18n="permSitesNeeded">It needs access to:</p>
+    <ul class="origins" id="origins" hidden></ul>
     <div class="actions">
       <button class="primary" id="allow" data-i18n="permAllow">Allow</button>
       <button class="ghost" id="cancel" data-i18n="permCancel">Not now</button>
     </div>
+    <button class="link" id="allowAll" hidden data-i18n="permAllowAllSites">Allow all sites instead</button>
   </div>
   <script src="permission.js"></script>
 </body>

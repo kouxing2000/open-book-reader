@@ -744,3 +744,53 @@ test('Site access scopes to ?site= but always keeps the broad grant', async ({ p
   await expect(page.locator('#siteAccess')).toContainText('kept.test');
   await expect(page.locator('#siteAccess')).not.toContainText('other.test');
 });
+
+// With <all_urls> held, contains() is true for every site — so a per-site grant adds nothing.
+// The card must SAY so rather than let the user find out by clicking Revoke, and the checkbox
+// must not request access it already has (which is what put a redundant example.com row beside
+// "All sites" in the first place).
+test('under a broad grant, per-site rows read as redundant and Auto-open asks for nothing', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'example.com', mode: 'auto' }] },   // rule exists, auto OFF
+  }, res)));
+  await stubGrants(page, ['<all_urls>', '*://legacy.test/*']);
+  await page.reload();
+  await openSections(page);
+  await page.evaluate(() => { window.__requested = []; const r = chrome.permissions.request;
+    chrome.permissions.request = (need, cb) => { window.__requested.push(need); return r(need, cb); }; });
+
+  // The pre-existing per-site row is labelled redundant, not "granted for auto-open".
+  await expect(page.locator('.acc-row', { hasText: 'legacy.test' }).locator('.acc-why'))
+    .toContainText('Redundant');
+
+  // Ticking Auto-open must NOT ask for an origin the broad grant already covers.
+  await page.locator('.site-row .site-auto input').first().click();
+  await expect.poll(() => page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res(d.obr_settings.siteRules[0].auto)))))
+    .toBe(true);
+  expect(await page.evaluate(() => window.__requested)).toEqual([]); // no redundant grant created
+});
+
+// The ZIP prompt now names the exact origins it will fetch from, with a quiet opt-out to a
+// broad grant. Regression guard for a CSS trap: `.link { display: block }` beats the UA's
+// `[hidden] { display: none }` (equal specificity, later rule), so the hidden attribute alone
+// did NOT hide the all-sites button — it leaked into the auto-open flow, which must never
+// offer it. The `hidden` attribute is load-bearing here; assert both flows.
+test('the permission prompt lists the ZIP origins and offers all-sites only for ZIP', async ({ page, extensionId }) => {
+  const permUrl = (qs) => `chrome-extension://${extensionId}/src/permission.html?${qs}`;
+  const zip = encodeURIComponent(['https://i.cdn.test/*', 'https://img.other.test/*'].join(','));
+
+  await page.goto(permUrl(`origins=${zip}`));
+  await expect(page.locator('#origins li')).toHaveCount(2);
+  await expect(page.locator('#origins')).toContainText('i.cdn.test');
+  await expect(page.locator('#origins')).toContainText('img.other.test');
+  await expect(page.locator('#allowAll')).toBeVisible();      // the deliberate escape hatch
+
+  // Auto-open asks for ONE site and names it in the prose — no list, and crucially no
+  // one-tap upgrade to every site.
+  await page.goto(permUrl(`reason=auto-open&host=example.com&origins=${encodeURIComponent('*://example.com/*')}`));
+  await expect(page.locator('#origins')).toBeHidden();
+  await expect(page.locator('#allowAll')).toBeHidden();
+  await expect(page.locator('#why')).toContainText('example.com');
+});

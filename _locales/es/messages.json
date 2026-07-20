@@ -308,7 +308,7 @@
   "optRevertTitle": { "message": "Revertir al selector de cuando se abrió esta página" },
 
   "optAccessHead": { "message": "Acceso a sitios" },
-  "optAccessHint": { "message": "Los sitios que esta extensión puede leer, tal como los registra Chrome: los concediste al activar la <b>apertura automática</b> o al descargar imágenes de la galería por primera vez. El acceso se <b>comparte entre ambas funciones</b>, no se guarda por función: descargar imágenes pide <b>todos los sitios</b>, y ese único permiso cubre entonces todos los sitios que aparecen aquí. Revocarlo es inmediato y seguro: la extensión simplemente volverá a pedirlo la próxima vez que uses la función. También puedes gestionar esta misma lista en Chrome, en <code>chrome://extensions</code>. Chrome también guarda un registro de los sitios sobre los que ha preguntado: un sitio que aparezca allí con su interruptor desactivado no tiene acceso; esa entrada es historial, no permiso." },
+  "optAccessHint": { "message": "Los sitios que esta extensión puede leer, tal como los registra Chrome: los concediste al activar la <b>apertura automática</b> o al descargar imágenes de la galería. Las descargas de imágenes piden solo <b>los sitios de donde provienen esas imágenes</b>; si elegiste <b>Permitir todos los sitios</b>, ese único permiso cubre todo lo que aparece aquí y hace redundantes las filas individuales. Revocarlo es inmediato y seguro: la extensión volverá a pedirlo la próxima vez que uses la función. También puedes gestionar esta misma lista en Chrome, en <code>chrome://extensions</code>. Chrome guarda además un registro de los sitios sobre los que ha preguntado: uno que aparezca allí con su interruptor desactivado no tiene acceso; esa entrada es historial, no permiso." },
   "optAccessNone": { "message": "No has concedido acceso a ningún sitio. La apertura automática y las descargas de imágenes lo piden al usarlas." },
   "optAccessNoneForSite": { "message": "No hay acceso concedido para $SITE$.", "placeholders": { "site": { "content": "$1" } } },
   "optAccessAllSites": { "message": "Todos los sitios" },
@@ -320,5 +320,10 @@
   "optAccessRevoked": { "message": "Acceso al sitio eliminado" },
   "optAccessStillGranted": { "message": "Sigue concedido: cubierto por el acceso a todos los sitios" },
   "optAutoPaused": { "message": "⚠ Sin acceso al sitio: la apertura automática está pausada." },
-  "optAutoRegrant": { "message": "Conceder" }
+  "optAutoRegrant": { "message": "Conceder" },
+
+  "optAccessRedundant": { "message": "Redundante: el acceso a todos los sitios ya cubre este." },
+  "optAccessRemovedStillCovered": { "message": "Entrada eliminada: el acceso a todos los sitios sigue cubriéndolo" },
+  "permSitesNeeded": { "message": "Necesita acceso a:" },
+  "permAllowAllSites": { "message": "Permitir todos los sitios en su lugar" }
 }

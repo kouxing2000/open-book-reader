@@ -201,9 +201,9 @@ can never be released while the registration still expects it.
 
 The superseded rationale, recorded because half of it was wrong: it argued that "silently
 removing a permission the user granted is hostile UX **and** the grant may serve other
-features (the ZIP download's `<all_urls>`)". The second clause is a mistake — ZIP asks for
-`<all_urls>`, a *separate, broader* grant, so it was never a reason to hold the per-site
-pair. The first clause was a real position, overridden by an explicit product decision: a
+features (the ZIP download's `<all_urls>`)". The second clause is a mistake — ZIP's grant is
+*separate*, so it was never a reason to hold the per-site pair. (ZIP now requests only the
+origins its images live on; `<all_urls>` survives solely as an explicit opt-out.) The first clause was a real position, overridden by an explicit product decision: a
 user switching auto-open off expects the access to go with it, and a grant that outlives the
 only feature that asked for it is worse UX than a revoke the user just triggered. Revoking
 is cheap to undo — the extension re-asks on next use.
@@ -218,9 +218,9 @@ path reports nothing, so it skips the verify.
 A revoked
 origin fires `permissions.onRemoved` → registration re-sync → that site's sentinel
 deactivates; the rule keeps its flag and re-arms if the permission comes back. One
-consequence stated plainly: once a user grants `<all_urls>` for a ZIP download, every
-synced auto rule activates on that device — acceptable, since each rule was its own
-explicit opt-in.
+consequence stated plainly: if a user takes the "Allow all sites" opt-out during a ZIP
+download, every synced auto rule activates on that device — acceptable, since each rule was
+its own explicit opt-in, and it is no longer what a plain ZIP download asks for.
 
 ### 5.2 Sentinel (new `src/content/sentinel.js`)
 A tiny registered content script — NOT the engine. Registered as ONE registration
@@ -433,8 +433,10 @@ On a real forum (e.g. any Discourse instance):
    from the options **Site access** card (and from `chrome.permissions.getAll`). With TWO auto
    rules on one host (`host/blog/*` + `host/forum/*`), switching off ONE must keep the grant —
    the other rule keeps auto-opening; only the last one released revokes.
-5c. After downloading a ZIP (granting `<all_urls>`), a per-site revoke reports "Still granted"
-   rather than claiming success — the broad grant still covers it.
+5c. A plain ZIP download prompts for ONLY the image origins (listed in the popup) — not all
+   sites. After deliberately taking "Allow all sites instead", per-site rows read "Redundant",
+   ticking Auto-open prompts for nothing, and a per-site revoke says the entry was removed but
+   all-sites access still covers the site.
 6. A `*.example.com` wildcard rule and a path rule authored in options.
 6b. An `images` auto rule on a lazy-loading manga/webtoon site: auto-opens even though
    below-fold images haven't decoded at probe time (lazy-evidence + layout-box counting,

@@ -254,3 +254,56 @@ test('enabling auto-open (the menu-click path) writes the rule and registers the
   expect(r.rule).toEqual({ match: 'example.com', mode: 'auto', auto: true }); // flagged in real storage
   expect(r.matches).toEqual(['*://example.com/*', '*://www.example.com/*']);  // sentinel registered for it
 });
+
+
+// LEAST PRIVILEGE for the ZIP fetch. The old code keyed off the message TYPE and always asked
+// for <all_urls>, so downloading one album granted read access to every site — and that one
+// broad grant then subsumed every per-site auto-open grant. The exact URLs are in the message,
+// so the request is now derived from them.
+test('permsFor derives ZIP origins from the actual image URLs, never <all_urls>', async ({ serviceWorker }) => {
+  const r = await serviceWorker.evaluate(() => ({
+    single: permsFor({ type: 'obr-fetch-bytes', urls: ['https://i.cdn.test/a/1.jpg'] }),
+    // several images on one host collapse to ONE origin; two hosts give two
+    multi: permsFor({ type: 'obr-fetch-bytes', urls: [
+      'https://i.cdn.test/a/1.jpg', 'https://i.cdn.test/b/2.jpg', 'https://img.other.test/3.png',
+    ] }),
+    // a match pattern's host may NOT carry a port, so it is stripped; the path never appears
+    port: permsFor({ type: 'obr-fetch-bytes', urls: ['http://host.test:8080/deep/path/x.png'] }),
+    // data:/blob: need no host permission -> nothing to ask for -> no prompt at all
+    dataOnly: permsFor({ type: 'obr-fetch-bytes', urls: ['data:image/png;base64,AAAA'] }),
+    junk: permsFor({ type: 'obr-fetch-bytes', urls: ['not a url'] }),
+    // the single-file download path is unchanged: a plain `downloads` permission, no origins
+    one: permsFor({ type: 'obr-download-one', url: 'https://x.test/a.png' }),
+  }));
+  // Scheme-specific on purpose: narrower than `*://`, and exactly what we fetch.
+  expect(r.single).toEqual({ origins: ['https://i.cdn.test/*'] });
+  expect(r.multi).toEqual({ origins: ['https://i.cdn.test/*', 'https://img.other.test/*'] });
+  expect(r.port).toEqual({ origins: ['http://host.test/*'] });   // port stripped, or the pattern is invalid
+  expect(r.dataOnly).toBeNull();
+  expect(r.junk).toBeNull();
+  expect(r.one).toEqual({ permissions: ['downloads'] });
+  // The regression that matters: no code path hands back the blanket grant on its own.
+  const asked = JSON.stringify([r.single, r.multi, r.port]);
+  expect(asked).not.toContain('<all_urls>');
+
+  // Every generated pattern must be WELL-FORMED: permissions.contains validates its input
+  // (it rejects e.g. a pathless 'http://host.test' with "Empty path"), and one invalid entry
+  // sinks an entire permissions request. It does NOT police ports — 'http://h:8080/*' is
+  // accepted here — so the port strip is about matching the documented match-pattern grammar
+  // and staying consistent with originsForRule, not about dodging an API error.
+  const wellFormed = await serviceWorker.evaluate(async (origins) => {
+    const out = {};
+    for (const o of origins) {
+      out[o] = await new Promise((res) => {
+        try {
+          chrome.permissions.contains({ origins: [o] }, () => res(
+            chrome.runtime.lastError ? chrome.runtime.lastError.message : 'ok'));
+        } catch (e) { res('threw: ' + (e && e.message)); }
+      });
+    }
+    return out;
+  }, [...r.single.origins, ...r.multi.origins, ...r.port.origins]);
+  Object.entries(wellFormed).forEach(([pattern, verdict]) => {
+    expect(verdict, `pattern ${pattern}`).toBe('ok');
+  });
+});
