@@ -139,6 +139,7 @@
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbCounter, lbStrip, lbSecsEl, lbControls;
   let active = false, built = false;
+  let openedByAuto = false; // this session was sentinel-opened (tempers the chip's ask moment)
   let images = [];           // [{url, w, h}]
   let lightboxIndex = -1;
   let busy = false;          // a batch download is in flight
@@ -1774,6 +1775,8 @@
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
     active = true;
+    openedByAuto = trigger === 'auto';
+    if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
     render();
     startWatching(); // pick up late/lazy/inserted images without user action
     maybePreload();  // if the grid is shorter than the viewport, pull one chunk now
@@ -1795,6 +1798,11 @@
     document.documentElement.style.overflow = '';
     window.scrollTo(savedPageX, savedPageY); // page may have been scrolled to hydrate
     active = false;
+    // Engagement chip moment — user-initiated closes only, mirroring reader.js close().
+    // An AUTO-opened gallery the user closes is skipped outright (the gallery has no
+    // "finished" signal to tell a satisfied close from a dismissal — err quiet).
+    if (!openedByAuto
+      && !(opts && opts.suppress === false) && OBR._maybeEngageAsk) OBR._maybeEngageAsk();
   }
   function toggle() { active ? close() : open(); }
 

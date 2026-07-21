@@ -207,6 +207,36 @@
       opacity: .55; font-size: 13px; padding: 4px 6px; border-radius: 6px; font-family: inherit;
     }
     .obr-pick-x:hover { opacity: 1; background: rgba(127,127,127,.18); }
+
+    /* Back-cover colophon — the reward page at the article's end. Lives IN the column
+       flow (break-before starts its own column; height set per layout() so it fills
+       exactly one page): it lands on the final spread's blank page when one exists, or
+       forms its own back-cover spread one flip past the end — never over article text.
+       Deliberately set like a page a book designer would close with: muted ink, small
+       caps, text-styled links, no fills, no motion beyond the one-time fade-in. */
+    .obr-colophon { break-before: column; position: relative; display: flex;
+      flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; gap: 8px; padding: 0 9%;
+      opacity: 0; transition: opacity ${reduceMotion ? 0 : 600}ms ease; }
+    .obr-colophon.obr-colo-in { opacity: 1; }
+    .obr-colophon [hidden] { display: none !important; }
+    .obr-colo-fin { font-size: .74em; letter-spacing: .3em; opacity: .5; }
+    .obr-colo-stats { font-size: 1.02em; opacity: .82; margin-top: .5em; }
+    .obr-colo-life { font-size: .78em; font-style: italic; opacity: .58; }
+    .obr-colo-hide { border: none; background: transparent; cursor: pointer; color: inherit;
+      font: inherit; font-size: .9em; opacity: .7; text-decoration: underline;
+      text-underline-offset: 2px; padding: 0 2px; }
+    .obr-colo-hide:hover { opacity: 1; }
+    /* The ask is the QUIETEST thing on the page — a footer line, not a banner. */
+    .obr-colo-ask { position: absolute; left: 0; right: 0; bottom: 14px;
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      font-family: ${FONT_STACKS.sans}; font-size: 11.5px; opacity: .6; }
+    .obr-colo-ask:hover { opacity: .9; }
+    .obr-colo-ask a, .obr-colo-ask button { border: none; background: transparent;
+      cursor: pointer; color: inherit; font: inherit; padding: 2px 3px;
+      text-decoration: underline; text-underline-offset: 2px; }
+    .obr-colo-x { opacity: .65; text-decoration: none !important; }
+    .obr-colo-x:hover { opacity: 1; }
     `;
   };
 })();

@@ -549,12 +549,12 @@ test('an open() aborted after build() leaves no unclosable overlay', async ({ pa
   // The openGen guard can abort open() AFTER build() has appended #obr-host but BEFORE
   // active=true (e.g. the gallery takes over mid-open). Since close()/Escape/✕ all bail on
   // !active, a host left visible by such an abort would be a wedged, unclosable overlay.
-  // Simulate the abort at the loadPosition await (which runs after build()+renderContent)
+  // Simulate the abort at the position-entry await (which runs after build()+renderContent)
   // by having it close() first — bumping openGen so the open() that follows aborts.
   await page.evaluate(async () => {
-    const orig = OBR.loadPosition;
-    OBR.loadPosition = () => { OBR.close(); return Promise.resolve(null); }; // concurrent takeover
-    try { await OBR.open(); } finally { OBR.loadPosition = orig; }
+    const orig = OBR.loadPositionEntry;
+    OBR.loadPositionEntry = () => { OBR.close(); return Promise.resolve(null); }; // concurrent takeover
+    try { await OBR.open(); } finally { OBR.loadPositionEntry = orig; }
   });
   expect((await readState(page)).hostDisplay).toBe('none'); // aborted open must not leave it shown
 
@@ -1019,4 +1019,196 @@ test('vendored Readability exposes disableConditionalCleaning as a public option
   expect(r.disabledStrip).toBe(true);
   expect(r.defaultWeight).toBe(true);
   expect(r.disabledWeight).toBe(true);
+});
+
+/* ------------------------------------------------ back-cover colophon + engagement */
+
+// The engagement/colophon state persists in the shimmed (localStorage-backed) storage
+// across tests in this context, so each test below seeds its own clean slate BEFORE
+// opening — otherwise an earlier test's ✕ (done=true) or accumulated ask impressions
+// would leak in and the assertions would depend on test order.
+function resetEngagement(page) {
+  // obr_positions clears too: an earlier End-pressing test leaves fin:1 on this
+  // article's entry, which would defeat the "counts once" assertions below.
+  return page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.set({ obr_engage: {} }, () =>
+      chrome.storage.local.set({ obr_usage: {}, obr_lifetime: {}, obr_positions: {} }, res))));
+}
+
+// Re-open within the same page session. openReader()'s indicator poll would pass
+// instantly on the PREVIOUS open's still-rendered DOM (close only hides the host), so
+// wait on the _opensCompleted hook instead, plus a double rAF for the deferred layout().
+async function reopenReader(page) {
+  const before = await page.evaluate(() => OBR._opensCompleted || 0);
+  await page.evaluate(() => OBR.open());
+  await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBe(before + 1);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+}
+
+test.describe('back-cover colophon', () => {
+  test('shows The End + reading stats at the article end, with the quiet ask', async ({ page }) => {
+    await resetEngagement(page);
+    await openReader(page);
+    await page.keyboard.press('End');
+    const colo = await page.evaluate(() => {
+      const el = document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon');
+      if (!el) return null;
+      return {
+        fin: el.querySelector('.obr-colo-fin')?.textContent || '',
+        stats: el.querySelector('.obr-colo-stats')?.textContent || '',
+        askHidden: el.querySelector('.obr-colo-ask')?.hidden,
+        fadedIn: el.classList.contains('obr-colo-in'),
+      };
+    });
+    expect(colo).not.toBeNull();
+    expect(colo.fin).toContain('The End');
+    expect(colo.stats).toMatch(/[\d,]+ words/);   // article word count
+    expect(colo.stats).toMatch(/\d+ (min|h)/);    // accumulated reading time
+    expect(colo.askHidden).toBe(false);           // fresh profile → the ask line is present
+    expect(colo.fadedIn).toBe(true);              // revealed when its spread came on screen
+  });
+
+  test('✕ retires the ask everywhere (synced) but keeps the stats page', async ({ page }) => {
+    await resetEngagement(page);
+    await openReader(page);
+    await page.keyboard.press('End');
+    await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-x').click());
+    // Hidden immediately, and the outcome is persisted for every future surface.
+    expect(await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-ask').hidden)).toBe(true);
+    await expect.poll(() => page.evaluate(() => new Promise((res) =>
+      chrome.storage.sync.get('obr_engage', (d) => res((d.obr_engage || {}).done))))).toBe(true);
+    // Reopen: the reward page still appears; only the ask is gone.
+    await page.evaluate(() => OBR.close());
+    await reopenReader(page);
+    await page.keyboard.press('End');
+    const again = await page.evaluate(() => {
+      const el = document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon');
+      return { stats: el.querySelector('.obr-colo-stats').textContent, askHidden: el.querySelector('.obr-colo-ask').hidden };
+    });
+    expect(again.stats).toMatch(/words/);
+    expect(again.askHidden).toBe(true);
+  });
+
+  test('colophon setting off = the article just ends', async ({ page }) => {
+    await resetEngagement(page);
+    await page.evaluate(() => OBR.saveSettings({ colophon: false }));
+    await openReader(page);
+    await page.keyboard.press('End');
+    expect(await page.evaluate(() =>
+      !!document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon'))).toBe(false);
+    await page.evaluate(() => OBR.saveSettings({ colophon: true })); // restore for later tests
+  });
+
+  test('lifetime line appears for an established reader and hides via its inline link', async ({ page }) => {
+    await resetEngagement(page);
+    // 3 articles / 2h already on this device; finishing this one makes it the 4th.
+    await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.set({ obr_lifetime: { articles: 3, ms: 7200000 } }, res)));
+    await openReader(page);
+    await page.keyboard.press('End');
+    const life = await page.evaluate(() => {
+      const el = document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-life');
+      return { hidden: el.hidden, text: el.querySelector('span').textContent };
+    });
+    expect(life.hidden).toBe(false);
+    expect(life.text).toMatch(/4 articles finished/);
+    expect(life.text).toMatch(/2 h/);
+    // The inline "hide" is the promised off switch — flips the synced setting directly.
+    await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-hide').click());
+    expect(await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-life').hidden)).toBe(true);
+    await expect.poll(() => page.evaluate(() => new Promise((res) =>
+      chrome.storage.sync.get('obr_settings', (d) => res((d.obr_settings || {}).colophonLifetime))))).toBe(false);
+    await page.evaluate(() => OBR.saveSettings({ colophonLifetime: true })); // restore
+  });
+
+  test('finishing an article counts once toward the device totals', async ({ page }) => {
+    await resetEngagement(page);
+    await openReader(page);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Home');
+    await page.keyboard.press('End'); // reaching the end twice must not double-count
+    await expect.poll(() => page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.get('obr_lifetime', (d) => res((d.obr_lifetime || {}).articles))))).toBe(1);
+    // Re-open the same article and finish again: still one.
+    await page.evaluate(() => OBR.close());
+    await reopenReader(page);
+    await page.keyboard.press('End');
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.get('obr_lifetime', (d) => res((d.obr_lifetime || {}).articles))))).toBe(1);
+  });
+
+  test('"Use full page" after a saved pick cannot double-count a finished article', async ({ page }) => {
+    // Regression (review finding): reExtractWholePage resets the in-memory priorFin, so the
+    // finish count must be gated on the STORED fin flag, not the session copy. Seed the
+    // whole-page entry as already finished, read via a saved pick, then switch to full page
+    // and press End — the lifetime count must stay 0.
+    await resetEngagement(page);
+    await page.evaluate(() => new Promise((res) => chrome.storage.local.set(
+      { obr_positions: { [location.origin + location.pathname]: { f: 1, fin: 1, t: 1 } } }, res)));
+    await page.evaluate(() => OBR.savePick(OBR.normalizeHost(location.href), 'article'));
+    await openReader(page); // reads via the saved pick (its own #pick position key)
+    await clickInReader(page, '.obr-pick-hint [data-pick="fullpage"]');
+    await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
+    await page.keyboard.press('End');
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.get('obr_lifetime', (d) => res((d.obr_lifetime || {}).articles || 0))))).toBe(0);
+    await page.evaluate(() => OBR.clearPick(OBR.normalizeHost(location.href))); // clean up for later tests
+  });
+});
+
+test.describe('engagement ask policy', () => {
+  test('_shouldAskEngage: regulars only, capped, spaced, one channel at a time', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const now = Date.now();
+      const P = OBR._shouldAskEngage;
+      const DAY = 24 * 3600 * 1000;
+      return {
+        fresh: P({ opens: 1, days: 1 }, {}, now),
+        regular: P({ opens: 5, days: 2 }, {}, now),
+        oneBusyDay: P({ opens: 9, days: 1 }, {}, now),
+        done: P({ opens: 9, days: 5 }, { done: true }, now),
+        colophonUser: P({ opens: 9, days: 5 }, { colSeen: 1 }, now),
+        capped: P({ opens: 9, days: 5 }, { asks: 2 }, now),
+        tooSoon: P({ opens: 9, days: 5 }, { asks: 1, lastAsk: now - DAY }, now),
+        spaced: P({ opens: 9, days: 5 }, { asks: 1, lastAsk: now - 91 * DAY }, now),
+      };
+    });
+    expect(r).toEqual({
+      fresh: false, regular: true, oneBusyDay: false, done: false,
+      colophonUser: false, capped: false, tooSoon: false, spaced: true,
+    });
+  });
+
+  test('the chip appears on a user close for an established profile, and the ask is recorded', async ({ page }) => {
+    await resetEngagement(page);
+    await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.set({ obr_usage: { opens: 6, days: 3, lastDay: '2020-01-01' } }, res)));
+    await openReader(page);
+    await page.evaluate(() => OBR.close()); // user-initiated close = the one ask moment
+    await expect.poll(() => page.evaluate(() => {
+      const h = document.getElementById('obr-engage-chip-host');
+      return h ? (h.shadowRoot.querySelector('.msg')?.textContent || '') : '';
+    })).toContain('Enjoying');
+    // Recorded BEFORE showing — an ignored ask still counts toward the lifetime cap.
+    const engage = await page.evaluate(() => new Promise((res) =>
+      chrome.storage.sync.get('obr_engage', (d) => res(d.obr_engage || {}))));
+    expect(engage.asks).toBe(1);
+    expect(engage.lastAsk).toBeGreaterThan(0);
+  });
+
+  test('a mode switch is not a dismissal — no chip on suppress:false closes', async ({ page }) => {
+    await resetEngagement(page);
+    await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.set({ obr_usage: { opens: 6, days: 3, lastDay: '2020-01-01' } }, res)));
+    await openReader(page);
+    await page.evaluate(() => OBR.close({ suppress: false })); // internal close path
+    await page.waitForTimeout(250);
+    expect(await page.evaluate(() => !!document.getElementById('obr-engage-chip-host'))).toBe(false);
+  });
 });

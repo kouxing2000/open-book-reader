@@ -308,6 +308,33 @@ the SAME `[feedback-meta v1]` body (`pageUrl` = `origin+pathname` only; no telem
 Web Store data disclosure off "none"). `reportBroken` falls back to a direct `mailto:` when messaging is
 unavailable (e.g. the test harness). The extension only OPENS the page; nothing is sent until the user submits.
 
+**Rate/share engagement — the colophon + the one-time chip** (`reader.js` colophon section,
+`settings.js` engagement stores + `_showEngageChip`/`_maybeEngageAsk`/`_shouldAskEngage`). Two
+ask surfaces, designed reward-first and capped hard. (1) **Back-cover colophon**: when the reader
+reaches the end of a substantial article (≥300 extracted words, ≥2 content spreads), a back-cover
+page renders — "The End" + words + accumulated reading time, an optional per-device lifetime line
+(from the 3rd finished article; carries its own inline "hide" link → `colophonLifetime:false`),
+and a QUIET footer ask ("Enjoying…? ★ Rate · Send feedback ✕" — equal siblings, deliberately NO
+"enjoying it? yes/no" pre-screen, that's soft review-gating). `layout()` appends it INTO the
+column flow (`break-before: column`, sized to one page) AFTER measuring the content alone, so it
+fills the final spread's blank page when the count doesn't divide evenly, else becomes its own
+back-cover spread one flip past the end — it never covers text, never auto-navigates, fades in
+once (reduced-motion: instant). (2) **Engagement chip** (reuses the auto-chip shell CSS): shown
+only by `_maybeEngageAsk` on a USER-initiated close (reader or gallery; `suppress:false` paths
+never ask), gated by the pure `_shouldAskEngage`: ≥5 opens across ≥2 distinct days, max 2 asks
+lifetime ≥90 days apart, skipped entirely once the colophon ask has reached the user (one channel
+at a time). **Retirement**: ANY interaction with the colophon ask (Rate/Feedback/✕) sets
+`done:true` in SYNCED `obr_engage` — no surface ever asks again, on any device; 10 unacted
+impressions retire the colophon ask by itself; the stats page keeps appearing (reward, not ask).
+**Reading time** is active-time only: the clock pauses while the tab is hidden, each silent gap
+caps at 4 min (`READ_GAP_CAP`), flushed on close/pagehide/visibility-hidden into the article's
+`obr_positions` entry (`ms`, `fin` — merge-`update`, never replace-write) and the per-device
+`obr_lifetime` local totals. Storage: `obr_lifetime`/`obr_usage` LOCAL (chatty, per-device is
+honest), `obr_engage` SYNC (outcomes must follow the user). Zero telemetry — everything stays in
+extension storage, consistent with the "collects nothing" disclosure. Rate links point at
+`OBR.STORE_REVIEWS_URL` (canonical store URL now lives in settings.js beside the print-QR's).
+Passive rate/star links also sit in the welcome + options footers.
+
 **Feedback pipeline** (`site/uninstall.html`, `src/report.html`, `tools/feedback-form/`): the report page and
 the **uninstall survey** (opened by `chrome.runtime.setUninstallURL` on uninstall — a static GitHub Pages
 page, param-free so the extension appends nothing) each build a `[feedback-meta v1]` body and POST it to ONE

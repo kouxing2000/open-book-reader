@@ -55,6 +55,25 @@
   // stay quiet; the ⌖ Pick toolbar button remains the always-available affordance.
   let extractionSuspect = false;
 
+  /* ----- back-cover colophon + reading-time state (see the colophon section) -----
+   * readMs accumulates ACTIVE reading time this session: the clock pauses while the tab
+   * is hidden and each silent gap is capped (READ_GAP_CAP) so a walked-away tab doesn't
+   * inflate the count. priorMs/priorFin come from the article's saved position entry;
+   * engageState/lifetimeStats load once per open (ask policy + lifetime line). Everything
+   * stays in extension storage — no telemetry. contentColumns is the column count of the
+   * article WITHOUT the colophon page (finish detection needs the last CONTENT spread). */
+  let readMs = 0, lastTick = 0;
+  let priorMs = 0, priorFin = false;
+  let engageState = null, lifetimeStats = null;
+  let colophonEl = null, articleWords = 0, contentColumns = 1;
+  let finishedThisOpen = false, colSeenThisOpen = false;
+  let openedByAuto = false;   // this session was sentinel-opened (tempers the ask moment)
+  let flipSnapping = false;   // inside beginFlip's synchronous snap (see syncColophonView)
+  const READ_GAP_CAP = 240000;        // ms of credit for one silent gap (no input events)
+  const COLOPHON_MIN_WORDS = 300;     // short pieces get no colophon — the moment must be earned
+  const COLOPHON_ASK_SEEN_MAX = 10;   // unacted ask impressions before the ask retires itself
+  const LIFETIME_MIN_ARTICLES = 3;    // lifetime line appears from the 3rd finished article
+
   // The current usable text selection, or null. "Usable" = a non-collapsed
   // selection with enough text to be a deliberate choice (guards against a stray
   // click-drag selecting a word or two). Read straight off the live page.
@@ -176,6 +195,7 @@
 
   function showChrome() {
     if (!built) return;
+    tickRead(); // mouse activity keeps the reading clock's gaps small (tickRead gates on active)
     overlay.classList.remove('obr-chrome-hidden');
     scheduleHideChrome();
   }
@@ -215,7 +235,9 @@
   // screen px don't map to paper. Exposed for unit testing, like _buildReportMailto.
   // The print-branding QR links to the Chrome Web Store listing (the same public URL as the
   // README / landing "Add to Chrome" button), so a shared PDF sends readers straight to install.
-  const STORE_URL = 'https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca';
+  // Canonical URL lives on the shared namespace (settings.js) — the colophon and the
+  // engagement chip point at the same place.
+  const STORE_URL = OBR.STORE_URL;
 
   function printCSS({ fontFamily, lineHeight }) {
     const fam = FONT_STACKS[fontFamily] || FONT_STACKS.serif;
@@ -889,6 +911,16 @@
     restoreFraction = null;
     currentSpread = 0;
     renderContent(lastArticle);
+    // renderContent zeroed the per-article time/finish state; re-fill it for the restored
+    // whole-page key so the colophon shows the article's accumulated time, not just this
+    // session's. (The finish COUNT is safe either way — the stored fin flag is authoritative.)
+    if (posKey && OBR.loadPositionEntry) {
+      OBR.loadPositionEntry(posKey).then((e) => {
+        if (contentSource !== 'whole') return; // superseded by another content switch
+        priorMs = e && typeof e.ms === 'number' ? e.ms : 0;
+        priorFin = !!(e && e.fin);
+      });
+    }
     updatePickHint();
     requestAnimationFrame(() => layout(false));
     watchMedia();
@@ -977,6 +1009,193 @@
       img.remove();
       if (fig && !fig.querySelector('img, picture, video, svg, iframe') && !fig.textContent.trim()) fig.remove();
     });
+    // Colophon inputs reset with every content render: the word count is of the EXTRACTED
+    // text (what the user actually reads — selections and picks count too); the cached
+    // colophon element died with pagesEl.innerHTML above; per-article time/finish state
+    // belongs to the previous content (open() re-fills it from the saved entry).
+    articleWords = article ? countWords(article.textContent) : 0;
+    colophonEl = null;
+    finishedThisOpen = false;
+    priorMs = 0;
+    priorFin = false;
+  }
+
+  /* ------------------------------------------------------------ back-cover colophon
+   * The reward page at an article's end: "The End", the article's words + this reader's
+   * accumulated reading time, an optional per-device lifetime line, and the QUIETEST
+   * possible rate/feedback ask (a footer line on the page — Rate and Feedback as equal
+   * siblings, deliberately no "enjoying it? yes/no" pre-screen). layout() appends it
+   * into the column flow so it fills the final spread's blank page when one exists, or
+   * becomes its own back-cover spread one flip past the end — it never covers article
+   * text, never auto-navigates, and fades in once when first seen.
+   * Ask retirement: any interaction (Rate / Feedback / ✕) sets `done` in SYNCED engage
+   * state — no surface asks again, on any device — and COLOPHON_ASK_SEEN_MAX unacted
+   * impressions retire the ask by themselves. The stats page keeps appearing either way
+   * (it's a reward, not an ask); the `colophon` setting turns the whole page off. */
+
+  // Fold the time since the last activity into readMs (capped so a silent walk-away
+  // doesn't count) and restart the clock. lastTick == 0 means paused (hidden/closed).
+  function tickRead() {
+    const now = Date.now();
+    if (active && lastTick) readMs += Math.min(Math.max(0, now - lastTick), READ_GAP_CAP);
+    lastTick = active && document.visibilityState !== 'hidden' ? now : 0;
+  }
+
+  function totalArticleMs() { tickRead(); return priorMs + readMs; }
+
+  // Persist the session's reading time into the article's entry + the device lifetime
+  // totals. Folds readMs into priorMs and zeroes it, so a double flush (visibility-hidden
+  // then close) can't double-count while the on-screen stats stay monotonic.
+  function flushReadingTime() {
+    tickRead();
+    const ms = readMs;
+    if (ms < 1000) return;
+    readMs = 0;
+    priorMs += ms;
+    if (lifetimeStats) lifetimeStats.ms = (lifetimeStats.ms || 0) + ms;
+    if (posKey && OBR.addReadingTime) OBR.addReadingTime(posKey, ms);
+    if (OBR.bumpLifetime) OBR.bumpLifetime({ ms });
+  }
+
+  function colophonAskVisible() {
+    const eng = engageState || {};
+    return !eng.done && (eng.colSeen || 0) < COLOPHON_ASK_SEEN_MAX;
+  }
+
+  // Any interaction with the ask — including dismissing it — means "stop asking",
+  // everywhere, forever (synced). The stats page itself is unaffected.
+  function recordAskDone() {
+    engageState = Object.assign({}, engageState, { done: true });
+    if (OBR.saveEngage) OBR.saveEngage({ done: true });
+    if (colophonEl) {
+      const a = colophonEl.querySelector('.obr-colo-ask');
+      if (a) a.hidden = true;
+    }
+  }
+
+  // Build the colophon element once per rendered content (renderContent resets the cache).
+  function ensureColophonEl() {
+    if (colophonEl) return colophonEl;
+    const el = document.createElement('div');
+    el.className = 'obr-colophon';
+    const fin = document.createElement('div');
+    fin.className = 'obr-colo-fin';
+    fin.textContent = OBR.t('colophonTheEnd');
+    const stats = document.createElement('div');
+    stats.className = 'obr-colo-stats';
+    const life = document.createElement('div');
+    life.className = 'obr-colo-life';
+    life.hidden = true;
+    const lifeText = document.createElement('span');
+    const lifeHide = document.createElement('button');
+    lifeHide.className = 'obr-colo-hide';
+    lifeHide.textContent = OBR.t('colophonLifeHide');
+    lifeHide.addEventListener('click', () => {
+      // The inline off switch the lifetime line carries — no options-hunting. Synced
+      // like any other setting; the options checkbox reflects it.
+      settings.colophonLifetime = false;
+      OBR.saveSettings({ colophonLifetime: false });
+      life.hidden = true;
+    });
+    life.append(lifeText, document.createTextNode(' '), lifeHide);
+    const ask = document.createElement('div');
+    ask.className = 'obr-colo-ask';
+    ask.hidden = true;
+    const q = document.createElement('span');
+    q.textContent = OBR.t('colophonAsk');
+    const rate = document.createElement('a');
+    rate.href = OBR.STORE_REVIEWS_URL;
+    rate.target = '_blank';
+    rate.rel = 'noreferrer';
+    rate.textContent = OBR.t('colophonRate');
+    rate.addEventListener('click', recordAskDone); // the anchor itself opens the store tab
+    const fb = document.createElement('button');
+    fb.textContent = OBR.t('colophonFeedback');
+    fb.addEventListener('click', () => {
+      recordAskDone();
+      if (OBR.reportBroken) OBR.reportBroken({ source: 'colophon', mode: 'text', proseWords: articleWords });
+    });
+    const x = document.createElement('button');
+    x.className = 'obr-colo-x';
+    x.textContent = '✕';
+    x.title = OBR.t('colophonAskDismiss');
+    x.addEventListener('click', recordAskDone);
+    ask.append(q, rate, document.createTextNode('·'), fb, x);
+    el.append(fin, stats, life, ask);
+    colophonEl = el;
+    return el;
+  }
+
+  function updateColophonContent() {
+    if (!colophonEl) return;
+    const ms = totalArticleMs(); // ticks first, so readMs below is current too
+    const stats = colophonEl.querySelector('.obr-colo-stats');
+    if (stats) {
+      stats.textContent = OBR.t('colophonStats',
+        [articleWords.toLocaleString(), OBR._formatReadingDuration(ms)]);
+    }
+    const life = colophonEl.querySelector('.obr-colo-life');
+    if (life) {
+      const lt = lifetimeStats || {};
+      // The lifetime line earns its place only once there IS a lifetime (3rd article on);
+      // readMs adds the not-yet-flushed session so the total never reads behind the clock.
+      const show = settings.colophonLifetime !== false && (lt.articles || 0) >= LIFETIME_MIN_ARTICLES;
+      life.hidden = !show;
+      if (show) {
+        life.querySelector('span').textContent = OBR.t('colophonLifeLine',
+          [String(lt.articles || 0), OBR._formatReadingDuration((lt.ms || 0) + readMs)]);
+      }
+    }
+    const ask = colophonEl.querySelector('.obr-colo-ask');
+    if (ask) ask.hidden = !colophonAskVisible();
+  }
+
+  // Reached the last CONTENT spread of a qualifying article: count "articles finished"
+  // exactly once per article. The STORED fin flag is authoritative — markPositionFinished
+  // decides "newly finished" atomically inside its read-modify-write, so a stale in-memory
+  // priorFin (e.g. after "Use full page" rebuilt the reader state) can't double-count;
+  // priorFin here only skips a pointless storage roundtrip.
+  function noteFinish() {
+    if (finishedThisOpen || articleWords < COLOPHON_MIN_WORDS) return;
+    if (Math.ceil(contentColumns / pagesPerSpread) < 2) return;
+    finishedThisOpen = true;
+    if (posKey && !priorFin && OBR.markPositionFinished) {
+      priorFin = true;
+      OBR.markPositionFinished(posKey).then((newlyFinished) => {
+        if (!newlyFinished) return; // finished before, in some earlier session or path
+        if (OBR.bumpLifetime) OBR.bumpLifetime({ articles: 1 });
+        if (lifetimeStats) lifetimeStats.articles = (lifetimeStats.articles || 0) + 1;
+        updateColophonContent(); // the lifetime line may already be on screen — refresh it
+      });
+    }
+  }
+
+  // Called from applySpread whenever the visible spread changes: refresh + fade in the
+  // colophon when its spread is on screen, and count ONE ask impression per open (only
+  // when the ask line actually rendered — a stats-only page is not an ask).
+  function syncColophonView() {
+    if (!colophonEl || !colophonEl.isConnected) return;
+    if (currentSpread !== totalSpreads - 1) return; // the colophon column is always last
+    updateColophonContent();
+    if (flipSnapping) {
+      // Arriving via an animated page turn: the turn overlay's clones render fully opaque,
+      // so a mid-fade real colophon would "pop" dimmer when the layer lifts. Snap to
+      // visible — the turn itself is the arrival motion; the fade stays for plain arrivals.
+      colophonEl.style.transition = 'none';
+      colophonEl.classList.add('obr-colo-in');
+      const el = colophonEl;
+      requestAnimationFrame(() => { el.style.transition = ''; });
+    } else {
+      colophonEl.classList.add('obr-colo-in');
+    }
+    if (!colSeenThisOpen && colophonAskVisible()) {
+      colSeenThisOpen = true;
+      engageState = Object.assign({}, engageState,
+        { colSeen: ((engageState && engageState.colSeen) || 0) + 1 });
+      // Function-form patch: increment against the STORED counter — obr_engage is synced,
+      // and another device may have advanced it since this session's snapshot loaded.
+      if (OBR.saveEngage) OBR.saveEngage((p) => Object.assign({}, p, { colSeen: (p.colSeen || 0) + 1 }));
+    }
   }
 
   /* ---------------------------------------------------------------- layout */
@@ -1019,9 +1238,28 @@
     // Center spine only fits an even split (its 50% line lands on the middle gap).
     overlay.querySelector('.obr-spine').classList.toggle('hidden', pagesPerSpread % 2 !== 0);
 
+    // Measure the CONTENT alone first — a colophon left attached by a previous pass
+    // would distort the blank-page detection below.
+    if (colophonEl && colophonEl.parentNode) colophonEl.remove();
     void pagesEl.offsetWidth; // force reflow before measuring
     const total = pagesEl.scrollWidth;
     totalColumns = Math.max(1, Math.round((total + colGap) / (colW + colGap)));
+    contentColumns = totalColumns;
+    // Back-cover colophon: appended INTO the column flow (break-before → its own column,
+    // sized to exactly one page), so it fills the final spread's blank page when the
+    // content columns don't divide evenly into spreads — and forms its own back-cover
+    // spread one flip past the end when they do. Gated to substantial articles with at
+    // least two content spreads: the moment must be earned, and a one-spread piece would
+    // surface it with zero interaction.
+    const contentRoot = pagesEl.querySelector('.obr-content');
+    if (contentRoot && settings.colophon !== false && articleWords >= COLOPHON_MIN_WORDS
+        && Math.ceil(contentColumns / pagesPerSpread) >= 2) {
+      const colo = ensureColophonEl();
+      colo.style.height = colH + 'px';
+      contentRoot.appendChild(colo);
+      void pagesEl.offsetWidth;
+      totalColumns = Math.max(1, Math.round((pagesEl.scrollWidth + colGap) / (colW + colGap)));
+    }
     totalSpreads = Math.max(1, Math.ceil(totalColumns / pagesPerSpread));
 
     // An explicit anchor (font/column change) wins; otherwise, while a saved
@@ -1054,6 +1292,10 @@
       const pct = totalSpreads <= 1 ? 1 : currentSpread / (totalSpreads - 1);
       progressFillEl.style.width = Math.round(pct * 100) + '%';
     }
+    // Colophon bookkeeping: "finished" = seeing the last CONTENT spread (the colophon
+    // column, when present, is always the last column overall — possibly one spread later).
+    if (currentSpread >= Math.max(0, Math.ceil(contentColumns / pagesPerSpread) - 1)) noteFinish();
+    syncColophonView();
     persistPosition();
   }
 
@@ -1077,6 +1319,7 @@
   }
 
   function flip(dir) {
+    tickRead(); // a page turn is the strongest "still reading" signal for the time clock
     // Flush any queued late-media re-pagination first, so we turn from the CURRENT page
     // count — not a stale one measured before a slow image finished (which can reject a
     // valid turn near the end, or land it on the wrong page).
@@ -1158,10 +1401,13 @@
     const fwd = dir > 0;
 
     // Snap the real strip (+ indicator / progress / persist) straight to the destination with
-    // no slide, so the final state matches the plain-flip path synchronously.
+    // no slide, so the final state matches the plain-flip path synchronously. flipSnapping
+    // tells syncColophonView this arrival is animated (activeFlip isn't set yet here).
     pagesEl.style.transition = 'none';
+    flipSnapping = true;
     currentSpread = next;
     applySpread();
+    flipSnapping = false;
 
     // Geometry. A "page" is the full PAPER half — text column PLUS its white margins — not
     // just the text area, so the turning leaf matches the page the reader sees. pageGeom()
@@ -1543,14 +1789,30 @@
     // BEFORE the first layout/show so the reader opens directly at the resumed
     // page — not flash page 1 then jump. (It also avoids a close()-before-resume
     // race that would flush spread 0 over the real saved position.) The read is a
-    // few ms on a real storage backend.
-    restoreFraction = posKey && OBR.loadPosition ? await OBR.loadPosition(posKey) : null;
+    // few ms on a real storage backend. The WHOLE entry loads (not just the fraction):
+    // the colophon needs the accumulated reading time + finished flag, and the
+    // engagement/lifetime state rides the same parallel await.
+    const [entry, engage, lifetime] = await Promise.all([
+      posKey && OBR.loadPositionEntry ? OBR.loadPositionEntry(posKey) : null,
+      OBR.loadEngage ? OBR.loadEngage() : {},
+      OBR.loadLifetime ? OBR.loadLifetime() : {},
+    ]);
     if (gen !== openGen) return;
+    restoreFraction = entry && typeof entry.f === 'number' ? entry.f : null;
+    priorMs = entry && typeof entry.ms === 'number' ? entry.ms : 0;
+    priorFin = !!(entry && entry.fin);
+    engageState = engage || {};
+    lifetimeStats = lifetime || {};
 
     savedScrollY = window.scrollY;
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
     active = true;
+    readMs = 0;
+    lastTick = Date.now();
+    colSeenThisOpen = false;
+    openedByAuto = trigger === 'auto';
+    if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
     showChrome(); // show controls briefly, then auto-hide
     requestAnimationFrame(() => layout(false));
     watchMedia(); // re-paginate once late-loading images / fonts settle
@@ -1572,10 +1834,17 @@
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
     // Flush the reading position now (don't wait out the debounce — the tab may go away).
     flushPosition();
+    flushReadingTime();
     host.style.display = 'none';
     document.documentElement.style.overflow = '';
     window.scrollTo(0, savedScrollY);
     active = false;
+    // The one moment the engagement chip may appear: after a USER-initiated close — the
+    // reading is over, nothing gets interrupted. Mode switches / cross-closes never ask.
+    // Nor does dismissing an AUTO-opened session the user never finished: they may be
+    // closing something they didn't want — the worst possible instant to ask for a rating.
+    if (!(openedByAuto && !finishedThisOpen)
+      && !(opts && opts.suppress === false) && OBR._maybeEngageAsk) OBR._maybeEngageAsk();
   }
 
   function toggle() { active ? close() : open(); }
@@ -1594,6 +1863,7 @@
 
   document.addEventListener('keydown', (e) => {
     if (!active || pickerActive) return; // picker owns the keyboard while it's up
+    tickRead(); // keyboard activity keeps the reading clock's gaps small
     // Let modifier combos fall through to the browser for zoom (Ctrl/Cmd+±) and new tab
     // (Cmd+T). Print is the deliberate exception: Cmd/Ctrl+P stays captured so it runs the
     // reader's CLEAN print (printReader) rather than the browser printing the clipped overlay
@@ -1620,9 +1890,10 @@
   // unload / bfcache; visibilitychange -> hidden catches a backgrounded tab the browser
   // may discard without ever firing pagehide. (Deliberately NOT beforeunload — it is
   // unreliable and blocks bfcache under MV3.)
-  window.addEventListener('pagehide', flushPosition);
+  window.addEventListener('pagehide', () => { flushPosition(); flushReadingTime(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flushPosition();
+    if (document.visibilityState === 'hidden') { flushPosition(); flushReadingTime(); }
+    else if (active) lastTick = Date.now(); // tab is back — resume the reading clock
   });
 
   // Live-apply settings changed elsewhere (e.g. the Options page) to an open reader.

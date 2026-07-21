@@ -244,6 +244,16 @@
       <label><span data-i18n="optPrintBranding">Add a QR / branding footer to print</span> <span class="hint" data-i18n="optPrintBrandingHint">When you 🖨 Print / Save as PDF, add a small “Open Book Reader” footer with a QR code to the project page, so a shared PDF can lead readers back to the extension. Fully local — nothing is sent. Off = no branding.</span></label>
       <span><input type="checkbox" id="printBranding" /></span>
     </div>
+
+    <div class="row">
+      <label><span data-i18n="optColophon">End-of-article page</span> <span class="hint" data-i18n="optColophonHint">When you reach the end of an article, add a small back-cover page with your reading stats (words, time) and a quiet rate/feedback line. It never covers article text, and everything is counted on this device only — nothing is sent. Off = the article just ends.</span></label>
+      <span><input type="checkbox" id="colophon" /></span>
+    </div>
+
+    <div class="row">
+      <label><span data-i18n="optColophonLife">Lifetime stats on the end page</span> <span class="hint" data-i18n="optColophonLifeHint">Include your running totals (articles finished, total reading time) on the end-of-article page. Stored locally on this device; never sent anywhere.</span></label>
+      <span><input type="checkbox" id="colophonLifetime" /></span>
+    </div>
   </details>
 
   <details class="card">
@@ -385,6 +395,12 @@
     <span data-i18n-html="optNoteOpenSource">Open source: this extension is fully open &mdash; read every line, verify the privacy
     claims, file an issue, or contribute at
     <a href="https://github.com/kouxing2000/open-book-reader" target="_blank" rel="noopener">github.com/kouxing2000/open-book-reader</a>.</span>
+    <br /><br />
+    <span>
+      <a href="https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca/reviews" target="_blank" rel="noopener" data-i18n="optRateLink">★ Rate on the Chrome Web Store</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/kouxing2000/open-book-reader" target="_blank" rel="noopener" data-i18n="optStarLink">⭐ Star on GitHub</a>
+    </span>
   </p>
 
   <script src="../content/settings.js"></script>

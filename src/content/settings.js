@@ -25,6 +25,12 @@
 
   OBR.STORAGE_KEY = 'obr_settings';
 
+  // The public Chrome Web Store listing (same URL as the README / landing "Add to Chrome"
+  // button — no new exposure). Canonical here so the print-branding QR (reader.js), the
+  // colophon's Rate link, and the engagement chip all point at ONE place.
+  OBR.STORE_URL = 'https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca';
+  OBR.STORE_REVIEWS_URL = OBR.STORE_URL + '/reviews';
+
   OBR.DEFAULTS = {
     fontSize: 19,          // px
     theme: 'paper',        // 'auto' | 'paper' | 'light' | 'dark'. 'auto' follows the OS
@@ -53,6 +59,14 @@
     printBranding: true,   // print / Save as PDF: append a small "Open Book Reader" footer with
                            // a QR code to the project page, so a shared PDF can lead readers back
                            // to the extension. Off = no branding block.
+    colophon: true,        // text reader: when you reach the END of a substantial article, show
+                           // a small back-cover page ("The End" + reading stats + a quiet
+                           // rate/feedback line). It fills the final spread's blank page when one
+                           // exists, else forms its own back-cover spread one flip past the end —
+                           // it never covers article text. Off = the article just ends.
+    colophonLifetime: true, // colophon: include the lifetime line (articles finished + total
+                           // reading time, per device). The line carries its own inline "hide"
+                           // link that flips this off — no options-hunting needed.
     galleryColumns: 4,     // image-gallery WALL layout: masonry column COUNT (fewer = larger images;
                            // clamped per screen so "biggest" is a 2-up grid everywhere)
     galleryOrderedCols: 2, // image-gallery ORDERED layout: columns per row (1 = single-page reading
@@ -634,7 +648,34 @@
       chain = chain.then(run, run); // chain through failures too
       return chain;
     };
-    return { read, readAll, write, remove: (k) => write(k, null) };
+    // Merge-update entry k via `fn(existing || {}) -> next` inside the same serialized
+    // read-modify-write (so concurrent patches to DIFFERENT fields of one entry — e.g. the
+    // debounced position fraction vs. the reading-time accumulator — can't clobber each
+    // other the way two replace-writes would). Same pruning + confirmed-write contract.
+    const update = (k, fn, now) => {
+      const run = () => new Promise((resolve) => {
+        const a = area();
+        if (!a || !k) return resolve(false);
+        const stamp = typeof now === 'number' ? now : Date.now();
+        try {
+          a.get(key, (d) => {
+            const map = (d && d[key]) || {};
+            map[k] = Object.assign({}, fn(map[k] || {}), { t: stamp });
+            const byAge = () => Object.keys(map).sort((x, y) => (map[x].t || 0) - (map[y].t || 0));
+            let keys = byAge();
+            while (keys.length > max) delete map[keys.shift()];
+            if (maxBytes) while (keys.length > 1 && JSON.stringify(map).length > maxBytes) delete map[(keys = byAge()).shift()];
+            try {
+              a.set({ [key]: map },
+                () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
+            } catch (e) { resolve(false); }
+          });
+        } catch (e) { resolve(false); }
+      });
+      chain = chain.then(run, run);
+      return chain;
+    };
+    return { read, readAll, write, update, remove: (k) => write(k, null) };
   }
 
   const positionsStore = makeMapStore({ area: localArea, key: OBR.POSITIONS_KEY, max: OBR.POSITIONS_MAX });
@@ -642,10 +683,39 @@
   // Resolve to the saved fraction [0,1] for `key`, or null when none/unavailable.
   OBR.loadPosition = (key) => positionsStore.read(key).then((e) => (e && typeof e.f === 'number' ? e.f : null));
 
+  // The WHOLE entry for `key` ({ f, ms?, fin?, t }) or null — the colophon needs the
+  // accumulated reading time (`ms`) and the finished flag (`fin`) beside the fraction.
+  OBR.loadPositionEntry = (key) => positionsStore.read(key);
+
   // Persist the fraction for `key`, LRU-pruning the map to POSITIONS_MAX entries.
+  // A merge-update, NOT a replace: the entry also carries the reading-time fields
+  // (`ms`, `fin`), which a replace-write would silently drop.
   OBR.savePosition = function (key, fraction, now) {
     if (!key || typeof fraction !== 'number') return Promise.resolve(false);
-    return positionsStore.write(key, { f: Math.max(0, Math.min(1, fraction)) }, now);
+    const f = Math.max(0, Math.min(1, fraction));
+    return positionsStore.update(key, (e) => Object.assign({}, e, { f }), now);
+  };
+
+  // Add a session's active reading time to the article's entry. Capped per article (24h)
+  // as a sanity backstop — the caller already pauses on tab-hide and caps idle gaps.
+  OBR.addReadingTime = function (key, deltaMs, now) {
+    if (!key || !(deltaMs > 0)) return Promise.resolve(false);
+    return positionsStore.update(key,
+      (e) => Object.assign({}, e, { ms: Math.min((e.ms || 0) + Math.round(deltaMs), 86400000) }), now);
+  };
+
+  // Mark the article as finished (reached its last content page). Resolves TRUE only when
+  // the flag was NEWLY set — decided atomically inside the store's serialized
+  // read-modify-write, so the caller can gate the lifetime "articles finished" bump on the
+  // STORED flag. The reader's in-memory copy can be stale (e.g. "Use full page" rebuilds
+  // its per-article state), and trusting it would double-count.
+  OBR.markPositionFinished = function (key, now) {
+    if (!key) return Promise.resolve(false);
+    let fresh = false;
+    return positionsStore.update(key, (e) => {
+      fresh = !e.fin;
+      return Object.assign({}, e, { fin: 1 });
+    }, now).then((ok) => !!ok && fresh);
   };
 
   /* --------------------------------------------------------------- saved picks
@@ -794,6 +864,108 @@
     return hiddenStore.write(host, clean.length ? { p: clean.slice(0, OBR.HIDDEN_PER_HOST_MAX) } : null, now);
   };
 
+  /* ------------------------------------------------- single-object stores
+   * One tiny JSON object per storage item (reading totals, usage counters, engagement
+   * state), read-modify-write serialized on a chain like makeMapStore — same rationale:
+   * two near-simultaneous patches must not interleave and drop each other's fields.
+   * patch() takes an object (shallow-merged) or a function (prev -> next); resolves the
+   * UPDATED object on a confirmed write, null on failure. All best-effort. */
+  function makeObjStore(area, key) {
+    let chain = Promise.resolve();
+    const load = () => new Promise((resolve) => {
+      const a = area();
+      if (!a) return resolve({});
+      try { a.get(key, (d) => resolve((d && d[key]) || {})); } catch (e) { resolve({}); }
+    });
+    const patch = (p) => {
+      const run = () => new Promise((resolve) => {
+        const a = area();
+        if (!a) return resolve(null);
+        try {
+          a.get(key, (d) => {
+            const prev = (d && d[key]) || {};
+            const next = typeof p === 'function' ? p(prev) : Object.assign({}, prev, p);
+            try {
+              a.set({ [key]: next },
+                () => resolve((globalThis.chrome && chrome.runtime && chrome.runtime.lastError) ? null : next));
+            } catch (e) { resolve(null); }
+          });
+        } catch (e) { resolve(null); }
+      });
+      chain = chain.then(run, run);
+      return chain;
+    };
+    return { load, patch };
+  }
+
+  /* ------------------------------------------------- engagement (rate / share asks)
+   * Three small stores drive the two ask surfaces (the reader's back-cover colophon and
+   * the one-time "Enjoying it?" chip):
+   *   obr_lifetime (LOCAL, per-device): { articles, ms } — running totals for the
+   *     colophon's lifetime line. Local on purpose: written on every close, and a
+   *     per-device count is honest ("on this device") without burning sync quota.
+   *   obr_usage (LOCAL): { opens, days, lastDay } — how established a user is (the chip
+   *     asks only regulars). Local for the same chatty-writes reason.
+   *   obr_engage (SYNC): { done, colSeen, asks, lastAsk } — the ask OUTCOMES. Synced so
+   *     a user who rated (or said no) on one device is never re-asked on another.
+   * Nothing here ever leaves extension storage — no telemetry, consistent with the
+   * "collects nothing" disclosure. */
+  OBR.LIFETIME_KEY = 'obr_lifetime';
+  OBR.USAGE_KEY = 'obr_usage';
+  OBR.ENGAGE_KEY = 'obr_engage';
+
+  const lifetimeStore = makeObjStore(localArea, OBR.LIFETIME_KEY);
+  OBR.loadLifetime = lifetimeStore.load;
+  // Add deltas to the device totals: { articles?, ms? }.
+  OBR.bumpLifetime = (delta) => lifetimeStore.patch((p) => ({
+    articles: (p.articles || 0) + ((delta && delta.articles) || 0),
+    ms: (p.ms || 0) + ((delta && delta.ms) || 0),
+  }));
+
+  const usageStore = makeObjStore(localArea, OBR.USAGE_KEY);
+  OBR.loadUsage = usageStore.load;
+  // Count one reader/gallery open; `days` counts DISTINCT days (regularity signal).
+  OBR.bumpUsage = (now) => usageStore.patch((p) => {
+    const day = new Date(typeof now === 'number' ? now : Date.now()).toISOString().slice(0, 10);
+    return { opens: (p.opens || 0) + 1, days: (p.days || 0) + (day === p.lastDay ? 0 : 1), lastDay: day };
+  });
+
+  const engageStore = makeObjStore(syncArea, OBR.ENGAGE_KEY);
+  OBR.loadEngage = engageStore.load;
+  OBR.saveEngage = engageStore.patch;
+
+  OBR.ENGAGE_MIN_OPENS = 5;                        // chip: only after real, repeated use...
+  OBR.ENGAGE_MIN_DAYS = 2;                         // ...across at least two distinct days
+  OBR.ENGAGE_MAX_ASKS = 2;                         // chip: lifetime cap
+  OBR.ENGAGE_ASK_GAP_MS = 90 * 24 * 3600 * 1000;   // chip: minimum gap between the two asks
+
+  // Should the one-time chip ask now? PURE — feed it the loaded usage/engage state.
+  // Every clause is an anti-annoyance guard; see each line.
+  OBR._shouldAskEngage = function (usage, engage, now) {
+    usage = usage || {}; engage = engage || {};
+    if ((usage.opens || 0) < OBR.ENGAGE_MIN_OPENS) return false;  // not yet a regular
+    if ((usage.days || 0) < OBR.ENGAGE_MIN_DAYS) return false;    // one busy day ≠ a habit
+    if (engage.done) return false;                                // already rated / said no
+    if ((engage.colSeen || 0) >= 1) return false;                 // the back cover reaches them — one channel is enough
+    if ((engage.asks || 0) >= OBR.ENGAGE_MAX_ASKS) return false;  // lifetime cap
+    if (engage.lastAsk && (now - engage.lastAsk) < OBR.ENGAGE_ASK_GAP_MS) return false;
+    return true;
+  };
+
+  // Short human reading duration: minutes under an hour ("9 min"), else hours to one
+  // decimal ("3.4 h" / "3,4 h" per UI locale). Localized units via statMinutes / statHours.
+  OBR._formatReadingDuration = function (ms) {
+    const m = Math.max(1, Math.round((ms || 0) / 60000));
+    if (m < 60) return OBR.t('statMinutes', [String(m)]);
+    const h = Math.round((m / 60) * 10) / 10;
+    let hs = String(h);
+    try {
+      const lang = globalThis.chrome && chrome.i18n && chrome.i18n.getUILanguage && chrome.i18n.getUILanguage();
+      hs = h.toLocaleString(lang || undefined);
+    } catch (e) { /* keep the plain form */ }
+    return OBR.t('statHours', [hs]);
+  };
+
   // Estimated reading minutes from a word count (220 wpm). 0 when there's no
   // measurable text, so callers can hide the badge instead of showing "~1 min".
   OBR.readingTimeMin = function (words) {
@@ -899,6 +1071,24 @@
   // confirmation, §3.1 of docs/auto-open-spec.md). kind: 'opened' (auto-opened; carries
   // the Stop button) | 'enabled' (auto-open armed but this page didn't qualify) |
   // 'stopped' (feedback after Stop). Best-effort UI: never throws into an open().
+  // Shared bottom-chip shell (the auto-open chip and the engagement chip must look like
+  // one family — same position, same skin).
+  const CHIP_CSS = `
+    .chip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      z-index: 2147483647; display: flex; align-items: center; gap: 9px;
+      padding: 8px 10px 8px 14px; border-radius: 12px;
+      font: 12.5px/1.4 -apple-system, system-ui, "PingFang SC", sans-serif;
+      background: rgba(24,25,30,.96); color: #eee;
+      box-shadow: 0 8px 26px rgba(0,0,0,.35); max-width: 92vw; }
+    .msg { opacity: .92; }
+    button { border: none; cursor: pointer; border-radius: 7px; font: inherit; }
+    .stop { background: #7c6cff; color: #fff; padding: 5px 11px; white-space: nowrap; }
+    .stop:hover { background: #6a59f2; }
+    .alt { background: rgba(255,255,255,.14); color: #ddd; padding: 5px 11px; white-space: nowrap; }
+    .alt:hover { background: rgba(255,255,255,.26); }
+    .x { background: transparent; color: inherit; opacity: .6; padding: 4px 7px; }
+    .x:hover { opacity: 1; }`;
+
   let chipTimer = null;
   OBR._showAutoChip = function (kind, host) {
     try {
@@ -907,19 +1097,7 @@
       clearTimeout(chipTimer);
       const made = OBR.makeShadowHost('obr-auto-chip-host');
       const el = made.host, root = made.root;
-      OBR.adoptStyles(root, `
-        .chip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
-          z-index: 2147483647; display: flex; align-items: center; gap: 9px;
-          padding: 8px 10px 8px 14px; border-radius: 12px;
-          font: 12.5px/1.4 -apple-system, system-ui, "PingFang SC", sans-serif;
-          background: rgba(24,25,30,.96); color: #eee;
-          box-shadow: 0 8px 26px rgba(0,0,0,.35); max-width: 92vw; }
-        .msg { opacity: .92; }
-        button { border: none; cursor: pointer; border-radius: 7px; font: inherit; }
-        .stop { background: #7c6cff; color: #fff; padding: 5px 11px; white-space: nowrap; }
-        .stop:hover { background: #6a59f2; }
-        .x { background: transparent; color: inherit; opacity: .6; padding: 4px 7px; }
-        .x:hover { opacity: 1; }`);
+      OBR.adoptStyles(root, CHIP_CSS);
       const chip = document.createElement('div');
       chip.className = 'chip';
       const msg = document.createElement('span');
@@ -952,5 +1130,77 @@
       root.append(chip);
       chipTimer = setTimeout(gone, kind === 'opened' ? 6000 : 5000);
     } catch (e) { /* chip is best-effort — never break an open over it */ }
+  };
+
+  /* -------------------------------------------------- one-time engagement chip
+   * "Enjoying Open Book Reader? ★ Rate it · Send feedback" — Rate and Feedback are
+   * EQUAL siblings (deliberately no "enjoying it? yes/no" pre-screen: that's soft
+   * review-gating). Shown only via OBR._maybeEngageAsk on a USER-initiated close —
+   * never during reading — and hard-capped by _shouldAskEngage. Rate opens the store's
+   * review page; Feedback rides the existing report pipeline. Any action marks the
+   * ask done (synced) so no surface ever asks again. */
+  let engageChipTimer = null;
+  OBR._showEngageChip = function () {
+    try {
+      ['obr-auto-chip-host', 'obr-engage-chip-host'].forEach((id) => {
+        const p = document.getElementById(id);
+        if (p) p.remove();
+      });
+      clearTimeout(engageChipTimer);
+      const made = OBR.makeShadowHost('obr-engage-chip-host');
+      const el = made.host, root = made.root;
+      OBR.adoptStyles(root, CHIP_CSS);
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      const gone = () => { clearTimeout(engageChipTimer); el.remove(); };
+      const done = () => { try { OBR.saveEngage({ done: true }); } catch (e) { /* */ } };
+      const msg = document.createElement('span');
+      msg.className = 'msg';
+      msg.textContent = OBR.t('colophonAsk');
+      const rate = document.createElement('button');
+      rate.className = 'stop';
+      rate.textContent = OBR.t('colophonRate');
+      rate.addEventListener('click', () => {
+        done();
+        try { globalThis.open(OBR.STORE_REVIEWS_URL, '_blank', 'noopener'); } catch (e) { /* */ }
+        gone();
+      });
+      const fb = document.createElement('button');
+      fb.className = 'alt';
+      fb.textContent = OBR.t('colophonFeedback');
+      fb.addEventListener('click', () => {
+        done();
+        try { OBR.reportBroken && OBR.reportBroken({ source: 'engage-chip' }); } catch (e) { /* */ }
+        gone();
+      });
+      const x = document.createElement('button');
+      x.className = 'x';
+      x.textContent = '✕';
+      x.setAttribute('aria-label', OBR.t('autoChipDismiss'));
+      x.addEventListener('click', gone); // dismiss ≠ "never": the asks counter caps at 2 anyway
+      chip.append(msg, rate, fb, x);
+      root.append(chip);
+      // Longer than the auto chip (two choices to read), still transient — the page is
+      // the user's again either way.
+      engageChipTimer = setTimeout(gone, 15000);
+    } catch (e) { /* best-effort — never break a close over it */ }
+  };
+
+  // The one entry point: called on user-initiated closes (reader + gallery). Loads the
+  // counters, applies the pure policy, records the ask BEFORE showing (an ignored ask
+  // must still count toward the cap, or an ignoring user would be asked forever).
+  OBR._maybeEngageAsk = function (now) {
+    const ts = typeof now === 'number' ? now : Date.now();
+    try {
+      return Promise.all([OBR.loadUsage(), OBR.loadEngage()]).then(([usage, engage]) => {
+        if (!OBR._shouldAskEngage(usage, engage, ts)) return false;
+        // Function-form patch: increment against the STORED counter inside the serialized
+        // write — the snapshot above is only for the gate, and another surface/device may
+        // have recorded an ask meanwhile.
+        return Promise.resolve(OBR.saveEngage((p) => Object.assign({}, p,
+          { asks: (p.asks || 0) + 1, lastAsk: ts })))
+          .then(() => { OBR._showEngageChip(); return true; });
+      });
+    } catch (e) { return Promise.resolve(false); }
   };
 })();
