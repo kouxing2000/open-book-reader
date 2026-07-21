@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   section listing every site you've granted — for auto-open or for image downloads — each with a
   one-tap **Revoke** (and **Grant** to restore one). It says plainly what each grant is for, and
   flags any that are redundant or no longer used, so nothing lingers without your knowing.
+- **Articles now end like a book — with a back cover.** Finish a long read and a quiet closing
+  page appears: "The End", the article's length and your reading time, and — from your third
+  finished article — your running totals (articles finished, hours read) with an inline "hide"
+  link. Both the totals line and the whole page have Settings toggles. Reading time only counts
+  while you're actually there, everything stays on your device, and nothing is ever sent.
+- **A small, rare "Enjoying it?" note.** The back cover carries a quiet rate/feedback line, and
+  regular readers may once see the same question as a small chip after closing the reader. It
+  asks at most twice ever, months apart — and rating, sending feedback, or dismissing it
+  silences every ask, on every synced device.
 
 ### Changed
 - **Downloading images now asks only for the sites those images come from** — no longer for access

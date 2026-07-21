@@ -2,8 +2,8 @@
 
 Status: IMPLEMENTED (2026-07-16) — kept as the design record (decisions + rationale);
 the living architecture summary is in CLAUDE.md, tests in `tests/auto-open.spec.js`.
-Shipped in 1.6.0. The permission-release behaviour below (2026-07) is NOT yet released:
-its §10 items 5b/5c and the dashboard privacy-tab update (§9) gate the NEXT release.
+Shipped in 1.6.0. The permission-release behaviour below (2026-07) ships in v1.7.0:
+its §10 items 5b/5c and the dashboard privacy-tab update (§9) gated that release.
 
 ## 1. Problem
 
