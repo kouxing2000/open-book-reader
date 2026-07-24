@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-07-24
+
 ### Fixed
 - **Blank pages after a tall image are largely gone.** A portrait screenshot or scan that couldn't
   fit the space left in its column used to jump to the next page and leave the rest of the previous
@@ -264,7 +266,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.1
 [1.7.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.0
 [1.6.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.6.0
 [1.5.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.5.0
