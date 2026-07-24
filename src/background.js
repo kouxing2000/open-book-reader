@@ -58,12 +58,11 @@ function swLog() {
   }
   if (!OBR._debug) return;
   try {
-    const age = Math.round(performance.now());
-    // boot = how long the worker took to become READY (top-level evaluated, listeners
-    // registered); import = the settings.js importScripts slice of that. A trigger whose
-    // swAge is close to boot waited out a cold start — that IS the delay you felt. When
-    // swAge >> boot the worker was already warm, so look further down the trace instead.
-    const ready = typeof SW_BOOT_MS === 'number' ? SW_BOOT_MS : -1;
+    // The tag (swAge / boot / import) is built by swLogArgs below. boot = how long the worker
+    // took to become READY (top-level evaluated, listeners registered); import = the settings.js
+    // importScripts slice of that. A trigger whose swAge is close to boot waited out a cold start
+    // — that IS the delay you felt. When swAge >> boot the worker was already warm, so a failure
+    // there is NOT cold start; look further down the trace instead.
     console.info.apply(console, swLogArgs(arguments));
   } catch (e) { /* */ }
 }

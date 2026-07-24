@@ -1110,6 +1110,23 @@ function blankTails(page) {
   });
 }
 
+/* openReader() resolves at the FIRST layout, but the reader keeps re-paginating through its
+ * late-media settle window (scheduleMediaRelayout's 80ms debounce, re-armed per decoded image,
+ * plus document.fonts.ready). Sampling once therefore sometimes read the PRE-settle geometry and
+ * reported the un-fitted column count — a flake, not a regression (observed once in a full-file
+ * run; the same test passed 3/3 in isolation). Read until two consecutive samples agree so the
+ * assertion sees the settled layout. */
+async function settledBlankTails(page) {
+  let prev = await blankTails(page);
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(100);
+    const cur = await blankTails(page);
+    if (cur.cols === prev.cols && cur.bigBlanks === prev.bigBlanks) return cur;
+    prev = cur;
+  }
+  return prev;
+}
+
 test.describe('tall-figure shrink-to-slack', () => {
   test('fits bumped figures into the slack they stranded, cutting blank pages', async ({ page }) => {
     await gotoTallFigures(page);
@@ -1121,12 +1138,12 @@ test.describe('tall-figure shrink-to-slack', () => {
     // this robust to font/metric drift while still proving the pass is what causes the win.
     await page.evaluate(() => { OBR._fitPass = false; });
     await openReader(page);
-    const off = await blankTails(page);
+    const off = await settledBlankTails(page);
     await page.evaluate(() => OBR.close());
 
     await page.evaluate(() => { OBR._fitPass = true; });
     await openReader(page);
-    const on = await blankTails(page);
+    const on = await settledBlankTails(page);
 
     expect(off.bigBlanks).toBeGreaterThan(0);        // the fixture really does strand blanks
     expect(on.bigBlanks).toBeLessThan(off.bigBlanks); // ...and the pass removes some of them
@@ -1137,7 +1154,7 @@ test.describe('tall-figure shrink-to-slack', () => {
     await gotoTallFigures(page);
     await injectReader(page);
     await openReader(page);
-    const first = await blankTails(page);
+    const first = await settledBlankTails(page); // same pre-settle race as the A/B test above
     // Re-run layout twice (the late-image settle window does exactly this). The pass clears its
     // own overrides first, so repeated layouts must converge to the same geometry rather than
     // ratcheting images smaller each time.

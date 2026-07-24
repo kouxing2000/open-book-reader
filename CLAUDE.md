@@ -627,8 +627,11 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   cause: the file simply never defines `_readerCSS`, and the reader throws
   `OBR._readerCSS is not a function` from `applyStylesheet()`. This has bitten three times — write
   such names as plain words (`the style attribute`, `minus-3em`), never quoted with backticks.
-  Guarded by the `every shipped script parses` test in `packaging.spec.js` (`node --check` over
-  `git ls-files src/**/*.js`), which is the fast-fail nothing else in the suite provided.
+  Guarded by the `every shipped script parses` test in `packaging.spec.js`, which is the fast-fail
+  nothing else in the suite provided. It parses each file with `new vm.Script`, NOT `node --check`:
+  package.json is `"type": "module"`, so `node --check` would apply the ESM goal to files that ship
+  as CLASSIC scripts (wrong goal, wrong answer in both directions). It walks the `src/` filesystem
+  rather than `git ls-files`, so a newly added, not-yet-staged script is covered too.
 - **An `<img width>`/`height` ATTRIBUTE survives extraction and pins images small.** Readability
   strips `style` everywhere and strips `width`/`height` only on `TABLE/TH/TD/HR/PRE`
   (`DEPRECATED_SIZE_ATTRIBUTE_ELEMS`) — an `IMG`'s own size attributes pass through untouched. A
