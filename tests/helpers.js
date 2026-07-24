@@ -138,6 +138,15 @@ export async function gotoThinPage(page) {
   await page.goto('/thin-page.html');
 }
 
+/** Load the tall-figures fixture: prose interleaved with 420x880 portrait figures, each taller
+ *  than the space left in its column, so break-inside: avoid bumps it and strands a blank tail.
+ *  Drives reader.js's fitTallFigures() shrink-to-slack pass. */
+export async function gotoTallFigures(page) {
+  await page.addInitScript(storageShim);
+  await page.addInitScript(i18nShim, EN_MESSAGES);
+  await page.goto('/tall-figures.html');
+}
+
 /** Load the illustrated-article fixture (real prose + 12 figures) and wait for the
  *  figures to decode, so OBR._imageCount and OBR._articleWordCount both see real data. */
 export async function gotoIllustratedArticle(page) {

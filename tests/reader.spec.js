@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, injectReader, openReader, readState, clickInReader } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, injectReader, openReader, readState, clickInReader } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -1021,6 +1021,155 @@ test('vendored Readability exposes disableConditionalCleaning as a public option
   expect(r.disabledWeight).toBe(true);
 });
 
+test('incognito leaves no reading trace on disk, but deliberate preferences still persist', async ({ page }) => {
+  // The manifest declares no `incognito` key, so Chrome's default "spanning" mode gives normal
+  // and incognito windows ONE worker and ONE chrome.storage. A content script can't tell which
+  // kind of tab it's in, so the SW sets OBR._incognito from tab.incognito. Without that, reading
+  // in incognito wrote obr_positions (which carries origin+pathname — browsing history),
+  // obr_lifetime and obr_usage into storage.local, which OUTLIVES the incognito session.
+  // Passive records must be suppressed; a preference the user deliberately changed must not be.
+  // obr_engage is included deliberately: it is SYNC storage AND a permanent kill-switch — one
+  // recorded colophon impression retires the engagement chip forever on every device — so an
+  // incognito leak there is the worst of the set. An earlier version of this test omitted it and
+  // passed while that hole was wide open.
+  const read = () => page.evaluate(() => new Promise((res) => chrome.storage.local.get(
+    ['obr_positions', 'obr_lifetime', 'obr_usage'],
+    (d) => chrome.storage.sync.get('obr_engage', (s) => res({
+      positions: Object.keys(d.obr_positions || {}).length,
+      lifetime: Object.keys(d.obr_lifetime || {}).length,
+      usage: Object.keys(d.obr_usage || {}).length,
+      engage: Object.keys(s.obr_engage || {}).length,
+    })))));
+
+  await page.evaluate(() => { OBR._incognito = true; });
+  await openReader(page);
+  await page.keyboard.press('End');   // finishing is what bumps lifetime + marks the position
+  await page.evaluate(() => OBR.close());
+  await page.waitForTimeout(300);     // past the persist debounce
+  expect(await read()).toEqual({ positions: 0, lifetime: 0, usage: 0, engage: 0 });
+
+  // A deliberate settings write is the user's own choice — it must still stick.
+  await page.evaluate(() => OBR.saveSettings({ theme: 'dark' }));
+  await expect.poll(() => page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res((d.obr_settings || {}).theme))))).toBe('dark');
+  await page.evaluate(() => OBR.saveSettings({ theme: 'paper' })); // restore for later tests
+
+  // Control: with the flag off, the same journey DOES record — proving the test can fail.
+  await page.evaluate(() => { OBR._incognito = false; });
+  await openReader(page);
+  await page.keyboard.press('End');
+  await page.evaluate(() => OBR.close());
+  await expect.poll(() => read().then((r) => r.positions)).toBeGreaterThan(0);
+});
+
+test('rapid re-triggers start ONE open instead of cancelling each other', async ({ page }) => {
+  // Regression: `active` is only set at the END of the open path, after ~5 awaits (settings,
+  // saved pick, position/engage/lifetime), so `if (active) return` guarded nothing during that
+  // window. Every trigger inside it started a RIVAL open, and since each open does ++openGen the
+  // newcomer cancelled the in-flight one — so mashing the shortcut because nothing had appeared
+  // yet cancelled each attempt in turn. A real-world debug trace showed 4x "start" against a
+  // single completed run. Probing via the debug-timing console output keeps this on OBSERVABLE
+  // behaviour rather than the internal `opening` flag.
+  const starts = [];
+  page.on('console', (m) => { if (m.text().includes('[OBR reader] start')) starts.push(m.text()); });
+  await page.evaluate(() => OBR.debugTiming(true));
+  await page.evaluate(() => { for (let i = 0; i < 5; i++) OBR.toggle(); });
+  await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
+  expect(starts.length).toBe(1);                  // 5 before the guard, 1 after
+  expect(await readState(page).then((s) => s.hostDisplay)).not.toBe('none'); // and it really opened
+  await page.evaluate(() => OBR.debugTiming(false));
+});
+
+/* --------------------------------------------- tall-figure shrink-to-slack (fitTallFigures) */
+
+// Count the blank TAILS the pass exists to remove: non-final columns whose content stops well
+// short of the column bottom. This is the quantity the fix actually moves, measured off the real
+// rendered geometry — deliberately NOT the pass's internals (no assertions on inline max-height
+// or on which figure got picked), so a future rewrite achieving the same result still passes.
+function blankTails(page) {
+  return page.evaluate(() => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const pages = sr.querySelector('.obr-pages');
+    const content = sr.querySelector('.obr-content');
+    const cs = getComputedStyle(pages);
+    const colW = parseFloat(cs.columnWidth), gap = parseFloat(cs.columnGap), colH = parseFloat(cs.height);
+    const pr = pages.getBoundingClientRect();
+    const colOf = (x) => Math.round((x - pr.left) / (colW + gap));
+    const cols = Math.max(1, Math.round((pages.scrollWidth + gap) / (colW + gap)));
+    const ends = new Array(cols).fill(0);
+    for (const n of content.querySelectorAll('p, h1, figure, figcaption')) {
+      for (const r of n.getClientRects()) {
+        if (r.width <= 0.5 || r.height <= 0.5) continue;
+        const c = colOf(r.left);
+        if (c < 0 || c >= cols) continue;
+        ends[c] = Math.max(ends[c], r.bottom - pr.top);
+      }
+    }
+    const slacks = ends.slice(0, Math.max(0, cols - 1)).map((e) => Math.max(0, colH - e));
+    return { cols, bigBlanks: slacks.filter((s) => s > colH * 0.30).length };
+  });
+}
+
+test.describe('tall-figure shrink-to-slack', () => {
+  test('fits bumped figures into the slack they stranded, cutting blank pages', async ({ page }) => {
+    await gotoTallFigures(page);
+    await injectReader(page);
+
+    // A/B on ONE fixture via the OBR._fitPass seam: without the pass, the CSS cap alone leaves
+    // each tall figure bumped with a large blank tail behind it; with it, those figures shrink
+    // into the slack. Comparing the two runs (rather than asserting fixed pixel counts) keeps
+    // this robust to font/metric drift while still proving the pass is what causes the win.
+    await page.evaluate(() => { OBR._fitPass = false; });
+    await openReader(page);
+    const off = await blankTails(page);
+    await page.evaluate(() => OBR.close());
+
+    await page.evaluate(() => { OBR._fitPass = true; });
+    await openReader(page);
+    const on = await blankTails(page);
+
+    expect(off.bigBlanks).toBeGreaterThan(0);        // the fixture really does strand blanks
+    expect(on.bigBlanks).toBeLessThan(off.bigBlanks); // ...and the pass removes some of them
+    expect(on.cols).toBeLessThanOrEqual(off.cols);    // never costs pages
+  });
+
+  test('is idempotent across relayouts and never strands an unfitted shrink', async ({ page }) => {
+    await gotoTallFigures(page);
+    await injectReader(page);
+    await openReader(page);
+    const first = await blankTails(page);
+    // Re-run layout twice (the late-image settle window does exactly this). The pass clears its
+    // own overrides first, so repeated layouts must converge to the same geometry rather than
+    // ratcheting images smaller each time.
+    for (let i = 0; i < 2; i++) {
+      await page.setViewportSize({ width: 1281, height: 800 });
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.waitForTimeout(300);
+    }
+    const again = await blankTails(page);
+    expect(again.cols).toBe(first.cols);
+    expect(again.bigBlanks).toBe(first.bigBlanks);
+    // Every surviving override must have actually moved its figure up a column (verify-or-revert),
+    // so no image is ever left shrunken for nothing.
+    const stranded = await page.evaluate(() => {
+      const sr = document.getElementById('obr-host').shadowRoot;
+      const pages = sr.querySelector('.obr-pages');
+      const cs = getComputedStyle(pages);
+      const colW = parseFloat(cs.columnWidth), gap = parseFloat(cs.columnGap);
+      const pr = pages.getBoundingClientRect();
+      const colOf = (x) => Math.round((x - pr.left) / (colW + gap));
+      let bad = 0;
+      for (const el of sr.querySelectorAll('.obr-content [data-obr-fit]')) {
+        const block = el.closest('figure') || el;
+        // A fitted figure shares a column with preceding text, so it must NOT sit at a column top.
+        if (block.getBoundingClientRect().top - pr.top < 4 && colOf(block.getBoundingClientRect().left) > 0) bad++;
+      }
+      return bad;
+    });
+    expect(stranded).toBe(0);
+  });
+});
+
 /* ------------------------------------------------ back-cover colophon + engagement */
 
 // The engagement/colophon state persists in the shimmed (localStorage-backed) storage
@@ -1099,6 +1248,30 @@ test.describe('back-cover colophon', () => {
     expect(await page.evaluate(() =>
       !!document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon'))).toBe(false);
     await page.evaluate(() => OBR.saveSettings({ colophon: true })); // restore for later tests
+  });
+
+  // Pure parity guard for the "546 words -> blank facing page" report: the colophon may only
+  // fill an ALREADY-blank trailing page, never open its own fresh spread. It fits iff the
+  // content does NOT divide evenly into spreads; single-page mode (no facing page) always fits.
+  test('_colophonFitsLastSpread: only fills an existing blank, never opens a blank spread', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const F = OBR._colophonFitsLastSpread;
+      return {
+        // 2-up: odd content columns leave a spare page -> fits; even fills spreads -> would blank.
+        twoOdd: F(3, 2), twoOdd2: F(5, 2), twoOdd3: F(7, 2),
+        twoEven: F(2, 2), twoEven2: F(4, 2), twoEven3: F(6, 2),
+        // 3-up: fits unless content is a multiple of 3.
+        threeSpare: F(4, 3), threeSpare2: F(5, 3), threeFull: F(6, 3), threeFull2: F(3, 3),
+        // single-page: no facing page can go blank -> always fits, any parity.
+        singleEven: F(4, 1), singleOdd: F(5, 1),
+      };
+    });
+    expect(r).toEqual({
+      twoOdd: true, twoOdd2: true, twoOdd3: true,
+      twoEven: false, twoEven2: false, twoEven3: false,
+      threeSpare: true, threeSpare2: true, threeFull: false, threeFull2: false,
+      singleEven: true, singleOdd: true,
+    });
   });
 
   test('lifetime line appears for an established reader and hides via its inline link', async ({ page }) => {

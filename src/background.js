@@ -8,7 +8,13 @@
 // migration) instead of re-implementing them here. settings.js touches no DOM at load
 // time, so a classic service worker can importScripts it. Leading slash = resolve from
 // the extension root (this worker lives in src/, so a bare 'src/…' path would double up).
+// MV3 evicts this worker after ~30s idle, so a trigger arriving cold pays for this whole
+// top-level evaluation before ANY listener can run — the usual cause of "the first press did
+// nothing, the next one was instant". performance.now() in a worker is measured from the
+// worker's own creation, so these two readings ARE the cold-start cost, reported by swLog().
+const SW_IMPORT_T0 = performance.now();
 importScripts('/src/content/settings.js');
+const SW_IMPORT_MS = Math.round(performance.now() - SW_IMPORT_T0);
 const OBR = globalThis.OBR;
 
 const FILES = [
@@ -21,6 +27,79 @@ const FILES = [
   'src/content/gallery.js'       // image-gallery mode; exposes OBR.toggleGallery()
 ];
 
+/* Trigger tracing (only when OBR.debugTiming(true) — see settings.js). Answers "did my click
+ * even reach the worker?", which is the question a silent first trigger raises. `swAge` is
+ * performance.now() in the WORKER, i.e. ms since this service worker started: a small value
+ * (< ~200ms) means the trigger COLD-STARTED the worker — MV3 evicts it after ~30s idle, and that
+ * boot (plus importScripts of settings.js) is the usual reason a first press feels dead while the
+ * next one is instant. A large value means the worker was already warm, so a failure there is NOT
+ * cold start and the reason will be in the lines that follow. */
+// Trace emitted BEFORE the debug flag finished hydrating from storage. Without this the very
+// trigger that cold-started the worker — the case this instrumentation exists for — would be
+// dropped, because the queued event and the async storage read are in flight simultaneously,
+// and the reader would then wrongly conclude "the worker never woke". Bounded so a debug-off
+// session can never accumulate.
+const SW_PENDING = [];
+const SW_PENDING_MAX = 40;
+// "Worth building a trace line for": debug is on, OR the flag hasn't resolved yet so we can't
+// tell — in which case swLog buffers it and the flush decides. Callers use this to avoid the
+// eager JSON.stringify on the hot path once we KNOW debug is off.
+const swWant = () => OBR._debug || !OBR._debugReady;
+OBR._onDebugReady = function () {
+  if (OBR._debug) { for (let i = 0; i < SW_PENDING.length; i++) { try { console.info.apply(console, SW_PENDING[i]); } catch (e) { /* */ } } }
+  SW_PENDING.length = 0;
+};
+
+function swLog() {
+  // Not resolved yet: buffer rather than drop, and decide once the flag lands.
+  if (!OBR._debug && !OBR._debugReady) {
+    if (SW_PENDING.length < SW_PENDING_MAX) SW_PENDING.push(swLogArgs(arguments));
+    return;
+  }
+  if (!OBR._debug) return;
+  try {
+    const age = Math.round(performance.now());
+    // boot = how long the worker took to become READY (top-level evaluated, listeners
+    // registered); import = the settings.js importScripts slice of that. A trigger whose
+    // swAge is close to boot waited out a cold start — that IS the delay you felt. When
+    // swAge >> boot the worker was already warm, so look further down the trace instead.
+    const ready = typeof SW_BOOT_MS === 'number' ? SW_BOOT_MS : -1;
+    console.info.apply(console, swLogArgs(arguments));
+  } catch (e) { /* */ }
+}
+
+// Build the tagged argument list once, so a buffered line keeps the swAge/boot reading from
+// WHEN IT HAPPENED rather than from when it was eventually flushed.
+function swLogArgs(args) {
+  const age = Math.round(performance.now());
+  const ready = typeof SW_BOOT_MS === 'number' ? SW_BOOT_MS : -1;
+  const tag = '[OBR sw] (swAge=' + age + 'ms boot=' + ready + 'ms import=' + SW_IMPORT_MS + 'ms'
+    + (ready >= 0 && age - ready < 250 ? ' COLD-START' : '') + ')';
+  return [tag].concat(Array.prototype.slice.call(args));
+}
+
+/* A "working on it" badge on the toolbar icon. The slow part of a cold open is the worker boot +
+ * injecting ~430KB of content scripts — all BEFORE any content script exists to draw an in-page
+ * toast, so the feedback has to come from the worker. chrome.action badges need no permission and
+ * work on any tab. DELAYED (see BADGE_DELAY_MS) so a normal fast open never flashes it; only an
+ * open slow enough to look broken gets a visible signal. */
+const BADGE_DELAY_MS = 350;
+const badgeTimers = new Map();
+function showWorking(tabId) {
+  clearWorking(tabId);
+  badgeTimers.set(tabId, setTimeout(() => {
+    try {
+      chrome.action.setBadgeBackgroundColor({ tabId, color: '#7c6cff' }, () => void chrome.runtime.lastError);
+      chrome.action.setBadgeText({ tabId, text: '...' }, () => void chrome.runtime.lastError);
+    } catch (e) { /* tab gone */ }
+  }, BADGE_DELAY_MS));
+}
+function clearWorking(tabId) {
+  const t = badgeTimers.get(tabId);
+  if (t) { clearTimeout(t); badgeTimers.delete(tabId); }
+  try { chrome.action.setBadgeText({ tabId, text: '' }, () => void chrome.runtime.lastError); } catch (e) { /* */ }
+}
+
 // mode: 'text' (reader), 'images' (masonry gallery), or 'auto' (toolbar icon —
 // pick the mode by how many images the page has; see the func below).
 // opts.auto: the auto-open sentinel triggered this (no gesture): dispatch calls
@@ -28,56 +107,147 @@ const FILES = [
 // could CLOSE a just-opened overlay on a rare double fire — and the engines show the
 // "Auto-opened" chip.
 async function invokeReader(tabId, url, mode, opts) {
-  if (!tabId) return;
+  if (!tabId) { swLog('invokeReader: NO TAB ID — nothing to inject into'); return; }
   // Don't try to inject into restricted pages.
   if (url && /^(chrome|edge|about|chrome-extension|edge-extension|view-source):/i.test(url)) {
+    swLog('invokeReader: restricted page, skipping —', url);
     return;
   }
+  swLog('invokeReader: mode=' + mode, 'tab=' + tabId, 'url=' + (url ? 'visible' : 'HIDDEN (restricted or no activeTab yet)'));
 
+  // Local debug-timing flag (see settings.js). Read off the in-memory OBR._debug — hydrated at
+  // importScripts and kept fresh by the storage.onChanged listener below — so the normal path
+  // adds NO per-invoke storage read (which would slow the very thing we're measuring).
+  const dbg = !!OBR._debug;
+  const t = dbg && OBR._timer ? OBR._timer('[OBR sw]') : null;
+
+  // Only for a real user gesture: an auto-open has no one waiting on a click, so a badge
+  // there would appear unprompted (and could stick if the worker is evicted mid-timer).
+  if (!(opts && opts.auto)) showWorking(tabId); // cleared in the finally below, whatever happens
   try {
-    // Inject the engine once per tab; OBR._engineLoaded marks it present.
+    // Probe the tab. Returns the full page-side STATE, not just "is the engine loaded": a
+    // trigger that silently does nothing on a page the reader already worked on is a state
+    // problem, not an injection one, and the bare boolean could never show which.
     const [{ result } = {}] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => !!(globalThis.OBR && globalThis.OBR._engineLoaded)
+      func: () => {
+        const O = globalThis.OBR;
+        let ctxAlive = false;
+        // An extension reload/update ORPHANS already-injected content scripts: they keep
+        // running, so _engineLoaded stays true, but their extension context is dead and every
+        // chrome.* call throws "Extension context invalidated". chrome.runtime.id going
+        // undefined is the canonical tell.
+        try { ctxAlive = !!(chrome && chrome.runtime && chrome.runtime.id); } catch (e) { ctxAlive = false; }
+        return {
+          engine: !!(O && O._engineLoaded),
+          gallery: !!(O && O._galleryLoaded),
+          ctxAlive: ctxAlive,
+          reader: O && O._diagReader ? O._diagReader() : null,
+          gal: O && O._diagGallery ? O._diagGallery() : null,
+        };
+      },
     });
-    if (!result) {
+    const st = result || {};
+    if (t) t.mark(st.engine ? 'probe(warm)' : 'probe');
+    if (swWant()) swLog('page state:', JSON.stringify(st));
+    // The one failure the user cannot diagnose unaided, and cannot fix by re-triggering: the
+    // engine is present so we skip injection, but it is a corpse from a previous extension
+    // instance. Re-injecting can't revive it either — reader.js/gallery.js bail on their own
+    // _engineLoaded/_galleryLoaded guards. Only a PAGE RELOAD gives a fresh isolated world.
+    if (st.engine && !st.ctxAlive) {
+      // UNCONDITIONAL (console.warn, never console.error — the Errors-badge rule): this is the
+      // one failure the user cannot diagnose unaided, and gating it behind debug mode would be
+      // circular, since turning debug on needs a working extension. Warn is also correct because
+      // it IS a real fault, unlike the benign restricted-page no-op.
+      console.warn('[OpenBookReader] ORPHANED ENGINE: content scripts survive from a previous '
+        + 'extension instance (chrome.runtime.id is undefined). Injection is skipped and every '
+        + 'dispatch is a no-op. RELOAD THE PAGE — re-injection cannot fix this '
+        + '(the double-injection guards block it).');
+    }
+    if (!st.engine) {
       await chrome.scripting.executeScript({ target: { tabId }, files: FILES });
+      if (t) t.mark('inject');
     }
 
-    // Toggle the requested mode.
-    await chrome.scripting.executeScript({
+    // Toggle the requested mode. Reports what it actually DID (and any throw) so a dispatch
+    // that quietly does nothing is visible in the trace instead of looking like a dead trigger.
+    const [{ result: acted } = {}] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (m, auto) => {
+      func: (m, auto, debug, incognito) => {
         const OBR = globalThis.OBR;
-        if (!OBR) return;
-        if (auto) {
-          // Sentinel-triggered: open directly (mode was resolved page-side).
-          if (m === 'images') return OBR.openGallery && OBR.openGallery({ trigger: 'auto' });
-          return OBR.open && OBR.open({ trigger: 'auto' });
+        if (!OBR) return { did: 'NO OBR IN PAGE — injection did not take' };
+        OBR._debug = !!debug; // carry the flag BOTH ways, so turning debug off propagates too
+        // A content script cannot tell an incognito tab from a normal one; only the SW can
+        // (tab.incognito). Set BEFORE any open() so the very first position/usage write is
+        // already suppressed. See the incognito note in settings.js.
+        OBR._incognito = !!incognito;
+        const snap = () => (OBR._diagReader ? OBR._diagReader() : null);
+        const before = snap();
+        let did = 'dispatched';
+        try {
+          if (auto) {
+            // Sentinel-triggered: open directly (mode was resolved page-side).
+            if (m === 'images') { if (OBR.openGallery) OBR.openGallery({ trigger: 'auto' }); else did = 'NO openGallery'; }
+            else if (OBR.open) OBR.open({ trigger: 'auto' }); else did = 'NO open';
+          } else if (m === 'images') {
+            if (OBR.toggleGallery) OBR.toggleGallery(); else did = 'NO toggleGallery';
+          } else if (m === 'text') {
+            if (OBR.toggle) OBR.toggle(); else did = 'NO toggle';
+          } else if (OBR._autoToggle) {
+            OBR._autoToggle(); // 'auto' (toolbar icon): the engine picks the mode by image count
+          } else if (OBR.toggle) {
+            OBR.toggle();
+          } else { did = 'NO entry point available'; }
+        } catch (e) {
+          // A dead (orphaned) engine throws here — "Extension context invalidated" — which is
+          // exactly the silent no-op the user sees. Report it instead of swallowing it.
+          did = 'THREW: ' + ((e && e.message) || e);
         }
-        // Explicit intent from the keyboard commands — always honor the named mode.
-        if (m === 'images') return OBR.toggleGallery && OBR.toggleGallery();
-        if (m === 'text') return OBR.toggle && OBR.toggle();
-        // 'auto' (toolbar icon): let the engine pick the mode by image count.
-        if (OBR._autoToggle) return OBR._autoToggle();
-        return OBR.toggle && OBR.toggle();
+        return { did: did, before: before, after: snap() };
       },
-      args: [mode, !!(opts && opts.auto)]
+      args: [mode, !!(opts && opts.auto), dbg, !!(opts && opts.incognito)]
     });
+    if (t) t.mark('dispatch');
+    if (swWant()) swLog('dispatch:', JSON.stringify(acted));
+    // Before this func caught its own exceptions, a throw (canonically "Extension context
+    // invalidated" from an orphaned engine) rejected executeScript and printed via the outer
+    // catch. Capturing it must not make it QUIETER, so surface any non-success unconditionally.
+    if (acted && acted.did && acted.did !== 'dispatched') {
+      console.warn('[OpenBookReader] trigger did not take effect:', acted.did);
+    }
+    if (t) t.flush('mode=' + mode);
   } catch (err) {
-    console.error('[OpenBookReader] injection failed:', err);
+    // Injecting is EXPECTED to fail on a restricted page — chrome://, the Web Store, a
+    // PDF viewer, another extension, the New Tab page. The toolbar icon and shortcut stay
+    // clickable there but there's nothing we can open. The url guard above catches these
+    // when the URL is visible, but it ISN'T always: a restricted tab reports an empty/
+    // undefined `tab.url` to a worker that holds no host access, so the `url &&` guard
+    // short-circuits to false and we reach the doomed executeScript anyway ("Cannot access
+    // a chrome:// URL"). Log via console.WARN, never console.error — chrome://extensions
+    // collects the worker's console.error into the card's red Errors list, and a red badge
+    // for a benign no-op is misleading (same rule createMenus / syncSentinelRegistration
+    // already follow). This is the backstop; the guard is the fast path.
+    console.warn('[OpenBookReader] cannot open on this page:', (err && err.message) || err);
+    swLog('invokeReader FAILED:', (err && err.message) || err);
+  } finally {
+    clearWorking(tabId); // never leave a stuck badge, on success or failure
   }
 }
 
-chrome.action.onClicked.addListener((tab) => invokeReader(tab.id, tab.url, 'auto'));
+chrome.action.onClicked.addListener((tab) => {
+  swLog('trigger: toolbar icon', tab && tab.incognito ? '(incognito)' : '');
+  invokeReader(tab.id, tab.url, 'auto', { incognito: tab && tab.incognito });
+});
 
 chrome.commands.onCommand.addListener(async (command) => {
+  swLog('trigger: keyboard command', command);
   const mode = command === 'toggle-gallery' ? 'images'
     : command === 'toggle-reader' ? 'text'
     : null;
   if (!mode) return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab) invokeReader(tab.id, tab.url, mode);
+  if (!tab) { swLog('command: tabs.query returned NO active tab — trigger dropped'); return; }
+  invokeReader(tab.id, tab.url, mode, { incognito: tab.incognito });
 });
 
 /* --------------------------------------------------------- context menu
@@ -382,6 +552,9 @@ function enableAutoOpen(host, tab) {
 // site's sentinel; the rule keeps its flag and re-arms if the permission comes back),
 // and worker activations.
 chrome.storage.onChanged.addListener((changes, area) => {
+  // Keep the SW's in-memory debug flag in step with a toggle made from any other context
+  // (a content-script or page console calling OBR.debugTiming). Local area, no rule work.
+  if (area === 'local' && changes.obr_debug) { OBR._debug = !!changes.obr_debug.newValue; return; }
   if (area !== 'sync' || !changes.obr_settings) return;
   const rulesOf = (v) => JSON.stringify((v && (v.siteRules || v.sites)) || []);
   if (rulesOf(changes.obr_settings.oldValue) !== rulesOf(changes.obr_settings.newValue)) {
@@ -441,12 +614,13 @@ function configureDefault(host, mode) {
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (!tab) return;
+  swLog('trigger: context menu', info.menuItemId);
+  if (!tab) { swLog('menu: no tab in the click event — dropped'); return; }
   const act = OBR._menuAction(info.menuItemId); // pure id → descriptor; null = ignore (separators/parent)
-  if (!act) return;
+  if (!act) { swLog('menu: id maps to no action (separator/parent) — ignored'); return; }
   const src = info.pageUrl || tab.url || '';
   // The gesture-only actions don't need a rule host.
-  if (act.do === 'open') return void invokeReader(tab.id, tab.url, act.mode);
+  if (act.do === 'open') return void invokeReader(tab.id, tab.url, act.mode, { incognito: tab.incognito });
   if (act.do === 'stop-auto') return stopAutoOpen(src);
   if (act.do === 'auto-url') return void openOptionsPrefill(OBR._pathPatternForUrl(src));
   // Host-scoped actions. Gate on a parseable URL before normalizing: OBR.normalizeHost is lenient
@@ -699,7 +873,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: false });
         return;
       }
-      invokeReader(tab.id, url, mode, { auto: true });
+      invokeReader(tab.id, url, mode, { auto: true, incognito: tab.incognito });
       sendResponse({ ok: true });
     });
     return true; // async response
@@ -741,3 +915,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true; // async response
   }
 });
+
+/* Worker READY. Every listener above is now registered — this is the moment a queued trigger can
+ * finally be handled, so this reading is the true cold-start cost the user waits out. Kept at the
+ * very bottom on purpose: anything added below this line lands OUTSIDE the measurement. Reported
+ * on every swLog() line as `boot=`, with `COLD-START` flagged when a trigger arrived within
+ * 250ms of it. Assigned to a `var` so swLog() (defined earlier) can read it without a TDZ error
+ * if it ever runs mid-evaluation. */
+var SW_BOOT_MS = Math.round(performance.now());

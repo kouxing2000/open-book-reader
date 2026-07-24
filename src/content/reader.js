@@ -317,6 +317,18 @@
   }
   OBR._buildPrintDoc = buildPrintDoc;
 
+  // Pure: does the back-cover colophon FIT the last content spread's already-blank page, or
+  // would its break-before push it onto a fresh spread whose facing page is blank? The
+  // colophon takes the single column at index `contentColumns`; it opens a NEW spread exactly
+  // when the content fills whole spreads — contentColumns is a multiple of pagesPerSpread. A
+  // single-page layout (pagesPerSpread < 2) has no facing page to blank, so it always fits.
+  // Exposed for a unit test: the parity is easy to get subtly wrong (the "546 words → blank
+  // page" report was this returning true when it should be false).
+  OBR._colophonFitsLastSpread = function (contentColumns, pagesPerSpread) {
+    if (pagesPerSpread < 2) return true;
+    return contentColumns % pagesPerSpread !== 0;
+  };
+
   // Hand a clean print document to the browser's print dialog (which offers
   // "Save as PDF"). Renders into a hidden iframe so the page's own CSS and the
   // reader's screen-only column transform are entirely out of the picture.
@@ -1194,7 +1206,144 @@
         { colSeen: ((engageState && engageState.colSeen) || 0) + 1 });
       // Function-form patch: increment against the STORED counter — obr_engage is synced,
       // and another device may have advanced it since this session's snapshot loaded.
-      if (OBR.saveEngage) OBR.saveEngage((p) => Object.assign({}, p, { colSeen: (p.colSeen || 0) + 1 }));
+      // PASSIVE impression counter, and a load-bearing one: a single colSeen permanently
+      // retires the engagement chip (settings.js _shouldAskEngage) and obr_engage is SYNC, so
+      // recording one incognito read would silently burn that channel on every device forever.
+      if (OBR.saveEngage && !(OBR._skipPassiveWrite && OBR._skipPassiveWrite())) {
+        OBR.saveEngage((p) => Object.assign({}, p, { colSeen: (p.colSeen || 0) + 1 }));
+      }
+    }
+  }
+
+  /* ------------------------------------------- per-figure shrink-to-slack
+   * A tall figure carrying `break-inside: avoid` that doesn't fit the space left in its
+   * column BUMPS to the next column, leaving the remainder blank (measured on a 5-tall-image
+   * fixture: 53-57% of a page, WITH the CSS cap already active). That CSS max-height cap is a
+   * GLOBAL proxy for a LOCAL collision — it shrinks every image, including ones that never
+   * collide, and still can't fit a figure to the exact slack available. This pass fixes the
+   * collision where it happens: for each figure that bumped, measure the slack it left behind
+   * and shrink JUST that figure to fit it. That's what lets the CSS cap stay generous, so
+   * non-colliding images render LARGER than under the old blanket cap.
+   *
+   * The constraints this is built around (each verified by a real-Chromium probe):
+   *  - You cannot ask the multicol fragmenter for "space remaining before element X", so we
+   *    measure post-layout rects instead.
+   *  - A block fragmented across a column break has a USELESS union getBoundingClientRect
+   *    (measured 1168px wide across a 544px column), so the end of the flow is found via a
+   *    Range's per-fragment getClientRects() — its LAST rect is the true flow end.
+   *  - All geometry is measured RELATIVE to pagesEl's rect, which cancels the horizontal
+   *    translateX (verified identical at translateX(0) and translateX(-3744px)).
+   *  - Shrinks are MONOTONE (only ever set, never grown or reverted mid-pass) and applied in
+   *    document order in ONE forward sweep: a shrink can only pull later content earlier, so
+   *    it may fix a later bump but can never un-fix an earlier one — hence it terminates with
+   *    no convergence loop.
+   *  - A readability FLOOR, not a ceiling: when the slack is too small to leave a usable
+   *    image, the blank is left alone. A postage-stamp screenshot is worse than a blank half
+   *    page. This is why the fix stays "partial by nature" — but on a principled floor.
+   * Reworking this is layout-heavy: re-verify with real-Chromium screenshots AND rect
+   * measurement (see the pagination Gotcha in CLAUDE.md), never by eye alone. */
+  const FIT_MIN_PX = 240;     // never leave an image shorter than this...
+  const FIT_MIN_FRAC = 0.35;  // ...nor shorter than this fraction of the column
+  const FIT_TOP_EPS = 40;     // "starts at the column top" tolerance == it bumped
+  const FIT_MAX_ADJUST = 20;  // pathological-page guard (each adjustment costs one reflow)
+
+  function fitTallFigures(colW, colGap, colH) {
+    const contentRoot = pagesEl.querySelector('.obr-content');
+    if (!contentRoot) return;
+    // Idempotence first: drop the previous pass's overrides, which were computed against a
+    // stale colH / font-size / column geometry. This is what lets the late-image settle
+    // window simply re-run layout() with no extra bookkeeping or hooks.
+    const prevFit = contentRoot.querySelectorAll('[data-obr-fit]');
+    for (let i = 0; i < prevFit.length; i++) {
+      // Restore whatever inline max-height the CONTENT author had (usually none). Blindly
+      // clearing would permanently destroy an authored value, since rawFallback keeps inline
+      // styles on the picked/selected path.
+      prevFit[i].style.maxHeight = prevFit[i].getAttribute('data-obr-fit') || '';
+      prevFit[i].removeAttribute('data-obr-fit');
+    }
+    // Seam checked AFTER the cleanup: bailing first would strand the previous pass's overrides.
+    if (OBR._fitPass === false) { if (prevFit.length) void pagesEl.offsetWidth; return; }
+    const media = contentRoot.querySelectorAll('img, svg');
+    if (!media.length) return;
+    if (prevFit.length) void pagesEl.offsetWidth; // re-measure from the un-overridden state
+
+    // One entry per fragmenting BLOCK (the <figure> wrapper when there is one) — a figure
+    // holding two images must not be visited twice, or the second visit would build a
+    // backwards Range against itself.
+    const blocks = [];
+    const seen = new Set();
+    for (let i = 0; i < media.length; i++) {
+      const block = media[i].closest('figure') || media[i];
+      if (seen.has(block)) continue;
+      seen.add(block);
+      blocks.push({ el: media[i], block });
+    }
+
+    const floor = Math.max(FIT_MIN_PX, colH * FIT_MIN_FRAC);
+    // Counts ATTEMPTS, not successes: a failed attempt still costs two forced synchronous
+    // layouts (the trial reflow + the revert reflow), and layout() re-runs for every late
+    // image through the settle window — so an image-heavy page could otherwise thrash.
+    let attempts = 0;
+    let prevBlock = null;
+    for (let i = 0; i < blocks.length && attempts < FIT_MAX_ADJUST; i++) {
+      const el = blocks[i].el, block = blocks[i].block;
+      const startAfter = prevBlock;
+      prevBlock = block; // advances regardless of whether this one is adjusted
+      const pr = pagesEl.getBoundingClientRect();
+      const colOf = (x) => Math.round((x - pr.left) / (colW + colGap));
+      const br = block.getBoundingClientRect();
+      const figCol = colOf(br.left);
+      if (figCol < 1) continue;                    // first column: nothing before it to fill
+      if (br.top - pr.top > FIT_TOP_EPS) continue; // sits mid-column, so it never bumped
+      // End of the flow immediately before this figure. Bounded to the content since the
+      // PREVIOUS figure so the sweep stays O(content), not O(content x figures).
+      let last = null;
+      try {
+        const range = document.createRange();
+        if (startAfter) range.setStartAfter(startAfter);
+        else range.setStart(contentRoot, 0);
+        range.setEndBefore(block);
+        const rects = range.getClientRects();
+        for (let r = rects.length - 1; r >= 0; r--) {
+          if (rects[r].width > 0.5 && rects[r].height > 0.5) { last = rects[r]; break; }
+        }
+      } catch (e) { continue; } // detached/backwards range — leave this figure alone
+      if (!last || colOf(last.left) !== figCol - 1) continue; // flow didn't end in the prev column
+      const slack = colH - (last.bottom - pr.top);
+      if (slack < floor) continue;                 // too tight to leave a readable image
+      const er = el.getBoundingClientRect();
+      // Reserve everything that rides along with the image. getBoundingClientRect is the
+      // BORDER box, so (block - image) covers <figcaption> and padding but NOT the figure's
+      // `margin: 1em 0` — those must be added explicitly or we under-reserve by ~2em, the
+      // figure still doesn't fit, and we'd have shrunk the image for nothing (measured: waste
+      // went UP 1839->2183px while images got smaller — a pure loss).
+      const bs = getComputedStyle(block);
+      const margins = (parseFloat(bs.marginTop) || 0) + (parseFloat(bs.marginBottom) || 0);
+      const overhead = Math.max(0, br.height - er.height) + margins;
+      const target = Math.floor(slack - overhead - 4);     // 4px breathing room
+      // Gate the FLOOR on `target` — the height the image will actually end up at — not on
+      // `slack`. `target` is always smaller (it pays the figcaption + margins), so checking
+      // slack alone let the fractional floor be violated on any column taller than ~686px,
+      // i.e. an ordinary desktop window: a 312px slack minus 66px overhead yielded a 242px
+      // image, 29% of the column, when FIT_MIN_FRAC promises 35%.
+      if (target < floor || target >= er.height) continue; // unusable, or already fits
+      attempts++;
+      el.setAttribute('data-obr-fit', el.style.maxHeight || ''); // remember the author's value
+      el.style.maxHeight = target + 'px';
+      void pagesEl.offsetWidth; // reflow so the next figure measures against the new flow
+      // VERIFY OR REVERT. A shrink is only worth it if the figure actually moved up into the
+      // slack; subpixel/line-height rounding or a margin that didn't collapse as predicted can
+      // leave it bumped anyway. Reverting then guarantees the pass is never a pure loss — it
+      // either wins a page or changes nothing, and it can never silently shrink an image for
+      // no benefit. This self-correction is what makes the whole sweep safe to run blind.
+      const moved = Math.round((block.getBoundingClientRect().left - pagesEl.getBoundingClientRect().left)
+        / (colW + colGap)) === figCol - 1;
+      if (!moved) {
+        el.style.maxHeight = el.getAttribute('data-obr-fit') || '';
+        el.removeAttribute('data-obr-fit');
+        void pagesEl.offsetWidth;
+        continue;
+      }
     }
   }
 
@@ -1242,18 +1391,25 @@
     // would distort the blank-page detection below.
     if (colophonEl && colophonEl.parentNode) colophonEl.remove();
     void pagesEl.offsetWidth; // force reflow before measuring
+    // Shrink any figure that bumped to a new column back into the slack it left behind, so
+    // the column count below (and the colophon fit, and the anchor restore) all measure the
+    // CORRECTED flow. Runs after the colophon removal so a back-cover page never skews it.
+    fitTallFigures(colW, colGap, colH);
     const total = pagesEl.scrollWidth;
     totalColumns = Math.max(1, Math.round((total + colGap) / (colW + colGap)));
     contentColumns = totalColumns;
     // Back-cover colophon: appended INTO the column flow (break-before → its own column,
-    // sized to exactly one page), so it fills the final spread's blank page when the
-    // content columns don't divide evenly into spreads — and forms its own back-cover
-    // spread one flip past the end when they do. Gated to substantial articles with at
-    // least two content spreads: the moment must be earned, and a one-spread piece would
-    // surface it with zero interaction.
+    // sized to exactly one page), so it FILLS the final spread's already-blank page.
+    // Gated to substantial articles with at least two content spreads: the moment must be
+    // earned, and a one-spread piece would surface it with zero interaction.
+    // ONLY append when it FITS the last content spread's already-blank page — never when it
+    // would push onto a fresh spread with a blank facing page (the "546 words → blank right
+    // page" report; see _colophonFitsLastSpread). When it's skipped, the engagement chip on
+    // close still carries the ask (one channel at a time), so nothing is lost but the blank.
     const contentRoot = pagesEl.querySelector('.obr-content');
     if (contentRoot && settings.colophon !== false && articleWords >= COLOPHON_MIN_WORDS
-        && Math.ceil(contentColumns / pagesPerSpread) >= 2) {
+        && Math.ceil(contentColumns / pagesPerSpread) >= 2
+        && OBR._colophonFitsLastSpread(contentColumns, pagesPerSpread)) {
       const colo = ensureColophonEl();
       colo.style.height = colH + 'px';
       contentRoot.appendChild(colo);
@@ -1732,18 +1888,37 @@
   /* ---------------------------------------------------------------- open/close */
   // opts.trigger === 'auto': opened by the auto-open sentinel (no gesture) — show the
   // transient "Auto-opened" chip with its escape hatch.
+  // RE-ENTRANCY GUARD. `active` is only set at the very END of openInner, after ~5 awaits
+  // (settings, saved pick, position/engage/lifetime), so for that whole window `if (active)`
+  // guards nothing. A second trigger in the window used to start a RIVAL open, and since each
+  // open does `++openGen`, the newcomer CANCELLED the in-flight one at its next gen check. Mash
+  // the shortcut because nothing has appeared yet and you cancel every attempt in turn — the
+  // reader only opens once you stop pressing. That is the "shortcut sometimes doesn't work /
+  // takes several tries" report; a debug-timing trace showed 4x "start" with a single completed
+  // run. First trigger wins, extra triggers are ignored until it finishes. close() can still
+  // cancel an in-flight open via openGen — that direction is deliberate and still works.
+  let opening = false;
   async function open(opts) {
+    if (active || opening) return;
+    opening = true;
+    try { await openInner(opts); } finally { opening = false; }
+  }
+
+  async function openInner(opts) {
     if (active) return;
     const trigger = opts && opts.trigger;
     const gen = ++openGen; // claim this open; abort below if a newer open()/close() supersedes us
+    const t = OBR._timer ? OBR._timer('[OBR reader]') : null; // local debug timing (see settings.js)
     settings = await OBR.loadSettings();
     if (gen !== openGen) return;
+    if (t) t.mark('settings');
     if (OBR.closeGallery) OBR.closeGallery({ suppress: false }); // ensure image mode isn't also showing (defensive — not a user dismissal)
     build();
     applyStylesheet();
     overlay.className = 'obr-overlay ' + resolveTheme();
     updateColumnsBtn();
     updateImagesBadge();
+    if (t) t.mark('build');
 
     // Choose the content source. An explicit text selection wins — read EXACTLY
     // what's highlighted (gated by the readSelection setting). Otherwise the whole
@@ -1780,8 +1955,10 @@
       posKey = OBR.positionKey ? OBR.positionKey() : '';
       extractionSuspect = wholeExtractionSuspect(lastArticle); // only auto-nag when it looks wrong
     }
+    if (t) t.mark('extract'); // clone + Readability (+ loadPick storage read on the saved-pick path)
     renderContent(lastArticle);
     updatePickHint();
+    if (t) t.mark('render');
 
     // Resume where the user last left off in this article (null if never read or
     // storage unavailable). Held as a fraction; layout() re-anchors it through the
@@ -1803,6 +1980,7 @@
     priorFin = !!(entry && entry.fin);
     engageState = engage || {};
     lifetimeStats = lifetime || {};
+    if (t) t.mark('resume'); // per-article position + engagement/lifetime storage reads
 
     savedScrollY = window.scrollY;
     host.style.display = '';
@@ -1814,7 +1992,7 @@
     openedByAuto = trigger === 'auto';
     if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
     showChrome(); // show controls briefly, then auto-hide
-    requestAnimationFrame(() => layout(false));
+    requestAnimationFrame(() => { layout(false); if (t) { t.mark('layout'); t.flush('src=' + contentSource); } });
     watchMedia(); // re-paginate once late-loading images / fonts settle
     if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
     OBR._opensCompleted = (OBR._opensCompleted || 0) + 1; // test hook: full inits that ran to completion
@@ -1852,6 +2030,18 @@
   OBR.open = open;
   OBR.close = close;
   OBR.toggle = toggle;
+
+  // Debug-mode state snapshot (see settings.js `debugTiming`). The SW reads this on every
+  // trigger, which is what makes a FAILED trigger explainable instead of silent: `active` says
+  // whether a toggle will open or close, `opening` catches a wedged in-flight open, and
+  // `hostShown` catches "it opened but you can't see it" (the host hidden by a stale close).
+  OBR._diagReader = function () {
+    return {
+      active: active, opening: opening, gen: openGen, built: built,
+      spread: currentSpread, cols: totalColumns,
+      hostShown: !!(host && host.style.display !== 'none'),
+    };
+  };
 
   /* ---------------------------------------------------------------- events */
   let resizeTimer;

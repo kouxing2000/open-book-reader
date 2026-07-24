@@ -172,13 +172,31 @@
     .obr-pages a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
     .obr-pages img, .obr-pages figure, .obr-pages video, .obr-pages svg, .obr-pages iframe, .obr-pages table { max-width: 100%; height: auto; break-inside: avoid; }
     .obr-pages figure { margin: 1em 0; }
-    .obr-pages img { display: block; margin: 0 auto; border-radius: 4px; }
-    /* Cap media to (just under) one column's height so a tall portrait image or
-       embed scales down to fit a single page instead of being clipped at the
-       column boundary. --obr-colh is set per layout(); the 3em leaves room for a
-       figure caption so the whole figure stays on one page. */
+    /* width:auto RELEASES a legacy <img width="220"> attribute. Readability strips the width
+       attribute only on TABLE/TH/TD/HR/PRE (DEPRECATED_SIZE_ATTRIBUTE_ELEMS) and strips the style
+       attribute everywhere, but an IMG's own width/height attributes survive untouched — so a
+       forum/BBS post that ships <img width="220"> pinned a 1200px-wide photo to 220px (40% of the
+       column) with the rest of the line wasted, however wide the reader was. An author rule beats
+       an HTML presentational hint, so this frees it; max-width:100% above still bounds it to the
+       column, and width:auto resolves to the NATURAL width, so a genuinely small image is never
+       upscaled. (height:auto on the rule above already did the same for the height attribute.) */
+    .obr-pages img { display: block; margin: 0 auto; border-radius: 4px; width: auto; }
+    /* Media height ceiling, as a FRACTION of one column (--obr-colh is set per layout()).
+       This is the coarse BACKSTOP only — the precise fix is reader.js's fitTallFigures(),
+       which shrinks each figure that actually bumped to the exact slack it left behind.
+       DON'T RAISE IT expecting the pass to compensate — that was tried and MEASURED as wrong.
+       A higher ceiling leaves tall images too big to fit ANY realistic column slack, so the
+       pass declines them (its readability floor) and goes inert exactly when it is needed:
+       at 0.80/0.88 a sparse fixture kept 3 big blanks / 1022px wasted with ZERO figures
+       fitted, while 0.72 fitted one and dropped to 1 blank / 775px. Same story on every
+       image-heavy fixture (0.72 reached 8 columns; 0.88 stayed at 10). The ceiling has to
+       stay low enough that a capped image can still fit a typical slack.
+       Keep it a fraction, never a fixed inset (a minus-3em inset still left a near-full-height
+       image unable to fit beside any text). --obr-imgcap is a variable so the value can be
+       swept and MEASURED rather than guessed — see the pagination Gotcha in CLAUDE.md. */
+    .obr-pages { --obr-imgcap: 0.72; }
     .obr-pages img, .obr-pages video, .obr-pages svg, .obr-pages iframe {
-      max-height: calc(var(--obr-colh, 82vh) - 3em); object-fit: contain;
+      max-height: calc(var(--obr-colh, 82vh) * var(--obr-imgcap, .72)); object-fit: contain;
     }
     .obr-pages blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid rgba(127,127,127,.4); opacity: .85; font-style: italic; }
     .obr-pages pre, .obr-pages code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .85em; }

@@ -16,6 +16,7 @@ const TYPES = {
   '.css': 'text/css',
   '.js': 'text/javascript',
   '.png': 'image/png',
+  '.svg': 'image/svg+xml', // without this an .svg fixture is served as text/plain and never renders
 };
 
 http

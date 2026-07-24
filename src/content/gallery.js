@@ -1746,9 +1746,21 @@
   /* -------------------------------------------------- open / close */
   // opts.trigger === 'auto': opened by the auto-open sentinel (no gesture) — show the
   // transient "Auto-opened" chip with its escape hatch.
+  // Same re-entrancy guard as reader.js open(): `active` is only set after the settings /
+  // per-site layout pref / hidden-pattern awaits, so a second trigger inside that window used to
+  // start a rival open. Here it would double-build and double-collect rather than cancel (the
+  // gallery has no openGen), which is just as bad. First trigger wins; extras are ignored.
+  let opening = false;
   async function open(opts) {
+    if (active || opening) return;
+    opening = true;
+    try { await openInner(opts); } finally { opening = false; }
+  }
+
+  async function openInner(opts) {
     if (active) return;
     const trigger = opts && opts.trigger;
+    const t = OBR._timer ? OBR._timer('[OBR gallery]') : null; // local debug timing (see settings.js)
     settings = await OBR.loadSettings();
     // Per-site layout memory: a host reopens in the layout (+ column count) you left it in. Wall
     // is the default; a site only opens Ordered if it was remembered that way.
@@ -1761,6 +1773,7 @@
     // Per-site image filter (hidden patterns). Fresh filter state each open.
     revealHidden = false; lastHide = null;
     try { hiddenPatterns = OBR.loadHidden ? await OBR.loadHidden(galleryHost) : []; } catch (e) { hiddenPatterns = []; }
+    if (t) t.mark('settings'); // settings + per-site layout/filter storage reads
     if (OBR.close) OBR.close({ suppress: false }); // ensure the text reader isn't also showing (defensive — not a user dismissal)
     build();
     applyStylesheet();
@@ -1777,9 +1790,12 @@
     active = true;
     openedByAuto = trigger === 'auto';
     if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
-    render();
+    if (t) t.mark('build');
+    render();        // collect() scans the DOM for images, then lays out the grid
+    if (t) t.mark('render');
     startWatching(); // pick up late/lazy/inserted images without user action
     maybePreload();  // if the grid is shorter than the viewport, pull one chunk now
+    if (t) { t.mark('watch'); t.flush('imgs=' + (images ? images.length : 0)); }
     if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
   }
   // Records a USER-initiated dismissal into the shared auto-open suppression set —
@@ -1807,6 +1823,11 @@
   function toggle() { active ? close() : open(); }
 
   OBR.openGallery = open;
+
+  // Debug-mode state snapshot — the gallery half of OBR._diagReader (see reader.js).
+  OBR._diagGallery = function () {
+    return { active: active, opening: opening, built: built };
+  };
   OBR.closeGallery = close;
   OBR.toggleGallery = toggle;
 

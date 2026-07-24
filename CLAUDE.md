@@ -317,9 +317,13 @@ page renders — "The End" + words + accumulated reading time, an optional per-d
 and a QUIET footer ask ("Enjoying…? ★ Rate · Send feedback ✕" — equal siblings, deliberately NO
 "enjoying it? yes/no" pre-screen, that's soft review-gating). `layout()` appends it INTO the
 column flow (`break-before: column`, sized to one page) AFTER measuring the content alone, so it
-fills the final spread's blank page when the count doesn't divide evenly, else becomes its own
-back-cover spread one flip past the end — it never covers text, never auto-navigates, fades in
-once (reduced-motion: instant). (2) **Engagement chip** (reuses the auto-chip shell CSS): shown
+fills the final spread's ALREADY-blank page. It is appended ONLY when it fits that spare page —
+the pure `OBR._colophonFitsLastSpread(contentColumns, pagesPerSpread)` gate: content must NOT
+divide evenly into spreads (an even column count at 2-up would push the colophon onto a fresh
+spread with a blank facing page — the "546 words → blank page" report — re-introducing the very
+blanks pagination fights; single-page mode has no facing page, so it always fits). When it's
+skipped, the engagement chip on close still carries the ask (one channel at a time). It never
+covers text, never auto-navigates, fades in once (reduced-motion: instant). (2) **Engagement chip** (reuses the auto-chip shell CSS): shown
 only by `_maybeEngageAsk` on a USER-initiated close (reader or gallery; `suppress:false` paths
 never ask), gated by the pure `_shouldAskEngage`: ≥5 opens across ≥2 distinct days, max 2 asks
 lifetime ≥90 days apart, skipped entirely once the colophon ask has reached the user (one channel
@@ -367,6 +371,42 @@ user's optional email for a repliable report; absent on a mailto → a reply goe
    apply" cause.
 
 No lint config. Final visual verification is manual in the browser.
+
+**Debug timing — "why is opening slow?"** (`settings.js`: `OBR.debugTiming` / `OBR._timer` / the
+`OBR._debug` flag). A LOCAL-ONLY, off-by-default diagnostic: the flag lives in
+`chrome.storage.local` (`obr_debug` — never synced, never in Options), and when on the SW +
+reader + gallery log per-phase `performance.now()` deltas to the console. It STREAMS each phase as
+it completes (a `… start` line, then one line per phase, then a `… done  …  total=Nms` summary) —
+NOT a single end-of-run line — specifically so a mid-load HANG is localizable: the last streamed
+line is the last phase that finished, so the stall is in whatever runs next (order: reader =
+settings→build→extract→render→resume→layout; gallery = settings→build→render→watch; sw =
+probe→inject→dispatch). A summary-only design would print nothing at all on a hang. A MISSING
+`… start` line means the stall is before the timer ran (e.g. the SW never woke — the cold-start /
+orphan cases). Enable from a console where `OBR` exists (`OBR.debugTiming(true)`; `(false)` off) — persisted in
+storage, so it's then on everywhere. EASIEST path: the **Options page** (it loads settings.js into
+its own window, so `OBR` is in that page's main world — F12 → Console → run it, no context switch).
+`OBR` is NOT in a normal article page's default console (content scripts run in an ISOLATED world —
+use the Console context dropdown, or just enable from Options). Where the lines show: `[OBR reader]`/
+`[OBR gallery]` log to the ARTICLE page's console; `[OBR sw]` logs to the service-worker console
+(chrome://extensions → service worker → Inspect). **Purely local — nothing is ever
+sent anywhere; keep it that way** (shipping numbers off-device would flip the "collects nothing"
+Web Store disclosure, the same reason the report page carries no telemetry). The SW reads the
+in-memory `OBR._debug` (hydrated at `importScripts` + kept fresh by the `storage.onChanged`
+`local`/`obr_debug` branch) so the normal path adds NO per-invoke storage read, and it hands the
+resolved flag into the `open()`/`openGallery()` dispatch so a cold first invoke still times itself.
+`OBR._timer` snapshots the flag at creation and no-ops every `mark`/`flush` when off, so
+instrumented call sites cost ~nothing in the normal path. The SW additionally traces every TRIGGER
+entry point via `swLog()` (toolbar icon / keyboard command / context menu, plus the reasons a
+trigger silently does nothing: no tab, restricted page, hidden `tab.url`, injection failure) — the
+answer to "did my click even reach the worker?". Each line carries **`swAge`** = `performance.now()`
+in the worker, i.e. ms since IT started: `swAge` under ~200ms means that trigger COLD-STARTED the
+worker (MV3 evicts it after ~30s idle), which is the usual reason a first press feels dead and the
+next is instant; a large `swAge` rules cold start out. Independent of debug mode, `invokeReader`
+shows a **"working" badge** on the toolbar icon (`showWorking`/`clearWorking`, `chrome.action`, no
+permission needed) — the only feedback surface available while the slow part is the worker boot +
+injecting ~430KB, i.e. before any content script exists to draw an in-page toast. It is DELAYED by
+`BADGE_DELAY_MS` so a normal fast open never flashes it, and cleared in a `finally` so it can never
+stick.
 
 ## Tests
 
@@ -482,6 +522,22 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   with fake churn. The listed row grants no access — a toggle-off entry is Chrome's history, not a
   permission. The Site access hint says exactly that so nobody reaches for the nuke; keep it. (Fine
   to explain the mechanic to someone who explicitly asks in a support reply — never ship it as UI advice.)
+- **Incognito is SPANNING — one worker, one storage — so never write a reading trace there.**
+  The manifest declares no `incognito` key, so Chrome's default `"spanning"` applies: a SINGLE
+  service worker and a SINGLE `chrome.storage` serve normal and incognito windows alike (`"split"`
+  would give incognito its own worker + ephemeral storage, but it is opt-in and we don't take it).
+  Consequences: `swAge`/`boot` readings pool across both window types; and a content script CANNOT
+  tell which kind of tab it is in — only the SW can, via `tab.incognito`, which it passes into the
+  dispatch to set `OBR._incognito`. That flag gates `skipPassiveWrite()` in `settings.js`, which
+  makes `savePosition` / `addReadingTime` / `markPositionFinished` / `bumpLifetime` / `bumpUsage`
+  no-ops. Without it, reading in incognito persisted `obr_positions` — which stores
+  **origin+pathname, i.e. browsing history** — plus lifetime/usage totals into `storage.local`,
+  which OUTLIVES the incognito session: a durable on-disk trace of private browsing, against the
+  whole point. Reads still work (resuming a position saved earlier creates no new trace) and
+  DELIBERATE writes (theme, font, saved picks, dismissing the rating ask) still persist — only the
+  automatic "what you were reading" bookkeeping is suppressed. Keep any NEW passive per-page write
+  behind `skipPassiveWrite()`. Note the extension must also be explicitly enabled in incognito by
+  the user; when it isn't, no trigger reaches the worker at all (the trace shows NO `trigger:` line).
 - **Do NOT add the `tabs` permission.** The restricted-page guard reads `tab.url` and works without it:
   executing a keyboard shortcut grants `activeTab`, which makes `tab.url` available via
   `chrome.tabs.query`. Adding `tabs` broadens permissions for nothing and is a Web Store review flag.
@@ -529,3 +585,63 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
 - Listeners (`keydown` capture, `resize`) attach once at injection and persist for the tab's lifetime;
   `close()` only hides the host (inert when `!active`). Don't add re-attach logic without also handling
   the double-injection guard.
+- **Tall images force blank pages — fixed per-FIGURE, not by the CSS cap alone.** A portrait image
+  (a phone screenshot, a scan) taller than the space left in its column can't share that column under
+  `break-inside: avoid` (`reader.style.js`), so it bumps to the next one and strands the remainder blank
+  — the "left page ends after two paragraphs, right page is just the image" report. The CSS
+  `max-height: calc(--obr-colh * var(--obr-imgcap))` ceiling is only the coarse BACKSTOP: it is a global
+  penalty for a LOCAL collision (it shrinks images that never collide) and can't fit a figure to the
+  exact slack. The real fix is `reader.js`'s **`fitTallFigures()`**, run inside `layout()` right before
+  the `totalColumns` measure so pagination, the colophon fit and the anchor restore all see corrected
+  geometry. It measurably cuts BOTH column count and stranded blank tails on
+  `tests/fixtures/tall-figures.html` — re-measure there rather than trusting any number quoted here,
+  since the values move with font metrics, viewport height and Chromium version.
+  Load-bearing details, each probe-verified — change none of them casually:
+  - The multicol fragmenter can't be asked "space remaining before element X", so slack is measured
+    POST-layout. A block fragmented across a column break has a USELESS union `getBoundingClientRect`
+    (measured 1168px across a 544px column) — find the flow end with a **Range's per-fragment
+    `getClientRects()`**, whose last rect is the true end. Range start is the PREVIOUS figure, keeping
+    the sweep O(content) instead of O(content x figures).
+  - Measure everything RELATIVE to `pagesEl`'s rect; that cancels the horizontal `translateX`
+    (verified identical at `translateX(0)` and `translateX(-3744px)`).
+  - Reserve the figure's **margins** explicitly: `getBoundingClientRect` is the BORDER box, so
+    `block - image` covers `<figcaption>` but NOT `margin: 1em 0`. Missing them under-reserves ~2em, the
+    figure still bumps, and you've shrunk the image for nothing — the measured result was total waste
+    going UP while images got smaller, a pure loss. Then **verify-or-revert**: after each shrink, confirm the figure actually moved up a
+    column, else restore it. That is what makes the pass never a net loss.
+  - A readability **FLOOR, not a ceiling** (`FIT_MIN_PX` / `FIT_MIN_FRAC`): when the slack is too small
+    to leave a usable image, keep the blank — a postage-stamp screenshot is worse. So it stays partial
+    by nature, but on a principled floor. Gate the floor on the RESULTING IMAGE HEIGHT (`target`),
+    NEVER on `slack`: `target` is always smaller (it pays figcaption + margins), so gating `slack`
+    lets the fractional floor be violated on any ordinary tall desktop window.
+  - **Do NOT raise `--obr-imgcap` expecting the pass to compensate** — tried and measured as wrong. A
+    higher ceiling leaves images too tall to fit ANY realistic slack, so the pass declines them (its
+    floor) and goes inert exactly when it is needed, leaving MORE blanks than the lower cap. Sweep the
+    variable and re-measure if you revisit it; don't reason about it from the armchair.
+  - `OBR._fitPass = false` is the test seam that A/Bs the pass; `reader.spec.js` asserts the blank-tail
+    SIGNAL (and idempotence across relayouts), never the inline styles.
+- **NEVER put a backtick in `reader.style.js` — the whole stylesheet is one JS template literal.**
+  `OBR._readerCSS()` returns the entire reader CSS as a backticked string, so a stray backtick
+  inside a *CSS comment* (writing a property or attribute name in prose) closes the string early
+  and the file dies with `SyntaxError: Invalid or unexpected token`. The symptom is remote from the
+  cause: the file simply never defines `_readerCSS`, and the reader throws
+  `OBR._readerCSS is not a function` from `applyStylesheet()`. This has bitten three times — write
+  such names as plain words (`the style attribute`, `minus-3em`), never quoted with backticks.
+  Guarded by the `every shipped script parses` test in `packaging.spec.js` (`node --check` over
+  `git ls-files src/**/*.js`), which is the fast-fail nothing else in the suite provided.
+- **An `<img width>`/`height` ATTRIBUTE survives extraction and pins images small.** Readability
+  strips `style` everywhere and strips `width`/`height` only on `TABLE/TH/TD/HR/PRE`
+  (`DEPRECATED_SIZE_ATTRIBUTE_ELEMS`) — an `IMG`'s own size attributes pass through untouched. A
+  forum/BBS post shipping `<img width="220">` therefore rendered a 1200px-wide photo at 220px, 40%
+  of the column, with the rest of the line wasted at any reader width (measured; a `<td width>`
+  wrapper does not help since only the TD is cleaned). Fixed in `reader.style.js` with
+  `.obr-pages img { width: auto }` — an author rule outranks an HTML presentational hint, while
+  `max-width: 100%` still bounds it to the column and `auto` resolves to the NATURAL width, so a
+  genuinely small image is never upscaled (verified: 90x60 source with `width="200"` stays 90x60).
+- **No text-wrap-around-image in the reader — CSS `float` and multi-column don't cooperate.** The reader
+  paginates with CSS multi-column, and a float in multicol rises to the TOP of a column and DETACHES from
+  its source paragraph: on a "numbered items each with a screenshot" page every image clusters away from
+  its story (measured: all text piled into one column, all images into another), and a tall near-full-width
+  image additionally hits multicol fragmentation (its figure rect SPANS both columns — measured 1021px
+  across a 544px column). Float-wrap works only in single-column flow, which this reader is not — so the
+  blank-page fix is the height cap above, NOT wrapping.

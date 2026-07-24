@@ -31,6 +31,90 @@
   OBR.STORE_URL = 'https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca';
   OBR.STORE_REVIEWS_URL = OBR.STORE_URL + '/reviews';
 
+  /* ----------------------------------------------------- debug timing (LOCAL only)
+   * A maintainer/field diagnostic for "why is opening slow?". OFF by default and invisible
+   * to normal users: the flag lives in chrome.storage.LOCAL (never synced, never shown in
+   * Options), and when on the reader/gallery/SW log per-phase performance.now() deltas to the
+   * console. PURELY local — nothing is ever sent anywhere, so the "collects nothing" Web Store
+   * disclosure stays true. Enable from any extension console (the service worker's, or the
+   * page's content-script context):
+   *   OBR.debugTiming(true)    // persists; reload the page so the inject phase is captured too
+   *   OBR.debugTiming(false)   // off
+   * then reproduce and read the `[OBR ...] ... total=Nms` lines. Field flow: enable in the SW
+   * console (chrome://extensions -> service worker -> Inspect), reload the page, reproduce,
+   * copy the console lines. */
+  /* INCOGNITO: never write a passive record of what was read.
+   * The manifest declares no `incognito` key, so Chrome's default "spanning" mode applies —
+   * ONE service worker and ONE chrome.storage shared by normal and incognito windows. A content
+   * script cannot tell which kind of tab it is in, so the SW (which can, via `tab.incognito`)
+   * sets this on every dispatch. When true, the passive records of WHAT and HOW LONG you read —
+   * obr_positions (which carries origin+pathname, i.e. browsing history), obr_lifetime, obr_usage
+   * — are skipped, because chrome.storage.local outlives the incognito session and would leave a
+   * durable on-disk trace of private browsing. Reads still work (resuming from a position saved
+   * earlier in a normal window creates no new trace), and DELIBERATE preference writes (theme,
+   * font, saved picks, dismissing the rating ask) still persist — the user chose those. Only the
+   * automatic "here is what you were reading" bookkeeping is suppressed. */
+  OBR._incognito = false;
+  const skipPassiveWrite = () => OBR._incognito === true;
+  // Exported so passive writers OUTSIDE this file (e.g. the reader's colophon-impression
+  // counter) gate on the same predicate instead of re-testing the flag by hand.
+  OBR._skipPassiveWrite = skipPassiveWrite;
+
+  OBR._debug = false;
+  OBR.debugTiming = function (on) {
+    OBR._debug = on !== false; // debugTiming() with no argument turns it ON
+    try { chrome.storage.local.set({ obr_debug: OBR._debug }, function () { void chrome.runtime.lastError; }); } catch (e) { /* storage unavailable — in-memory only */ }
+    try { console.info('[OBR] debug timing ' + (OBR._debug ? 'ON' : 'off')); } catch (e) { /* */ }
+    return OBR._debug;
+  };
+  // Hydrate the in-memory flag from storage on load. Async, so the very first COLD open may
+  // still miss it page-side — background.js hands the resolved flag into the open() dispatch
+  // to cover exactly that gap. No DOM touched, so this is safe under importScripts in the SW.
+  OBR._debugReady = false; // true once the async hydration below has settled
+  try {
+    chrome.storage.local.get('obr_debug', function (d) {
+      void chrome.runtime.lastError;
+      if (d && d.obr_debug) OBR._debug = true;
+      OBR._debugReady = true;
+      // The SW buffers any trace emitted before this resolves and flushes it here — otherwise
+      // the trigger that COLD-STARTED the worker (the headline case) would log nothing, because
+      // the queued event and this storage callback are both in flight at once.
+      try { if (OBR._onDebugReady) OBR._onDebugReady(); } catch (e2) { /* */ }
+    });
+  } catch (e) { OBR._debugReady = true; /* storage unavailable (e.g. test main world) — stays off */ }
+  // A lightweight phase timer. Cheap when debug is off: it snapshots `_debug` at creation and
+  // every mark()/flush() no-ops, so instrumented call sites cost ~nothing in the normal path.
+  //   const t = OBR._timer('[OBR reader]'); ... t.mark('extract'); ... t.flush('src=whole');
+  // STREAMS each phase AS IT COMPLETES, not just a summary at the end — this is deliberate: if a
+  // load HANGS mid-way, a summary-only line would never print and you'd never learn which phase
+  // stuck. With streaming, the LAST line you see is the last phase that finished, so the stall is
+  // in whatever runs next (phase order: reader = settings->build->extract->render->resume->layout;
+  // gallery = settings->build->render->watch; sw = probe->inject->dispatch). A missing FIRST line
+  // ('… start' absent) means the hang is before the timer even ran (e.g. the SW never woke).
+  OBR._timer = function (label) {
+    var on = !!OBR._debug;
+    var lbl = label || '[OBR timing]';
+    var t0 = on ? performance.now() : 0;
+    var last = t0;
+    var parts = [];
+    if (on) { try { console.info(lbl + ' start'); } catch (e) { /* */ } }
+    return {
+      on: on,
+      mark: function (name) {
+        if (!on) return;
+        var n = performance.now();
+        var dt = Math.round(n - last);
+        parts.push(name + '=' + dt + 'ms');
+        try { console.info(lbl + '   ' + name + ' ' + dt + 'ms'); } catch (e) { /* */ } // stream now, so a later hang still leaves this behind
+        last = n;
+      },
+      flush: function (extra) {
+        if (!on) return;
+        try { console.info(lbl + ' done  ' + parts.join(' ') + (extra ? '  ' + extra : '') + '  total=' + Math.round(performance.now() - t0) + 'ms'); } catch (e) { /* */ }
+      },
+    };
+  };
+
   OBR.DEFAULTS = {
     fontSize: 19,          // px
     theme: 'paper',        // 'auto' | 'paper' | 'light' | 'dark'. 'auto' follows the OS
@@ -691,6 +775,7 @@
   // A merge-update, NOT a replace: the entry also carries the reading-time fields
   // (`ms`, `fin`), which a replace-write would silently drop.
   OBR.savePosition = function (key, fraction, now) {
+    if (skipPassiveWrite()) return Promise.resolve(false); // incognito: no reading trace on disk
     if (!key || typeof fraction !== 'number') return Promise.resolve(false);
     const f = Math.max(0, Math.min(1, fraction));
     return positionsStore.update(key, (e) => Object.assign({}, e, { f }), now);
@@ -699,6 +784,7 @@
   // Add a session's active reading time to the article's entry. Capped per article (24h)
   // as a sanity backstop — the caller already pauses on tab-hide and caps idle gaps.
   OBR.addReadingTime = function (key, deltaMs, now) {
+    if (skipPassiveWrite()) return Promise.resolve(false); // incognito: no reading trace on disk
     if (!key || !(deltaMs > 0)) return Promise.resolve(false);
     return positionsStore.update(key,
       (e) => Object.assign({}, e, { ms: Math.min((e.ms || 0) + Math.round(deltaMs), 86400000) }), now);
@@ -710,6 +796,7 @@
   // STORED flag. The reader's in-memory copy can be stale (e.g. "Use full page" rebuilds
   // its per-article state), and trusting it would double-count.
   OBR.markPositionFinished = function (key, now) {
+    if (skipPassiveWrite()) return Promise.resolve(false); // incognito: no reading trace on disk
     if (!key) return Promise.resolve(false);
     let fresh = false;
     return positionsStore.update(key, (e) => {
@@ -917,7 +1004,7 @@
   const lifetimeStore = makeObjStore(localArea, OBR.LIFETIME_KEY);
   OBR.loadLifetime = lifetimeStore.load;
   // Add deltas to the device totals: { articles?, ms? }.
-  OBR.bumpLifetime = (delta) => lifetimeStore.patch((p) => ({
+  OBR.bumpLifetime = (delta) => skipPassiveWrite() ? Promise.resolve(false) : lifetimeStore.patch((p) => ({
     articles: (p.articles || 0) + ((delta && delta.articles) || 0),
     ms: (p.ms || 0) + ((delta && delta.ms) || 0),
   }));
@@ -925,7 +1012,7 @@
   const usageStore = makeObjStore(localArea, OBR.USAGE_KEY);
   OBR.loadUsage = usageStore.load;
   // Count one reader/gallery open; `days` counts DISTINCT days (regularity signal).
-  OBR.bumpUsage = (now) => usageStore.patch((p) => {
+  OBR.bumpUsage = (now) => skipPassiveWrite() ? Promise.resolve(false) : usageStore.patch((p) => {
     const day = new Date(typeof now === 'number' ? now : Date.now()).toISOString().slice(0, 10);
     return { opens: (p.opens || 0) + 1, days: (p.days || 0) + (day === p.lastDay ? 0 : 1), lastDay: day };
   });
@@ -1190,6 +1277,10 @@
   // counters, applies the pure policy, records the ask BEFORE showing (an ignored ask
   // must still count toward the cap, or an ignoring user would be asked forever).
   OBR._maybeEngageAsk = function (now) {
+    // Incognito: suppress the ask ENTIRELY. Gating only the write would show the chip and
+    // never record it, so it would reappear on every close; and obr_engage is SYNC storage,
+    // so recording it would push incognito-derived state to every device the user owns.
+    if (skipPassiveWrite()) return Promise.resolve(false);
     const ts = typeof now === 'number' ? now : Date.now();
     try {
       return Promise.all([OBR.loadUsage(), OBR.loadEngage()]).then(([usage, engage]) => {
