@@ -11,6 +11,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Blank pages after a tall image are largely gone.** A portrait screenshot or scan that couldn't
+  fit the space left in its column used to jump to the next page and leave the rest of the previous
+  one empty — "two paragraphs on the left, just a picture on the right". Tall figures are now fitted
+  into the space they would have stranded, so the reading flow stays continuous. When the leftover
+  space is too small to leave a readable image, the image is left at a comfortable size rather than
+  shrunk to a stamp.
+- **The back cover no longer opens a blank spread of its own.** On articles whose text happened to
+  fill the last two-page spread exactly, the closing page pushed itself onto a fresh spread and left
+  the facing page empty. It now appears only when it can fill a page that was already blank.
+- **Images pinned small by the page's own markup now use the full column.** Forum and BBS posts that
+  ship a high-resolution photo tagged as a small thumbnail rendered at a fraction of the column width
+  with the rest of the line wasted; they now scale to the reading column. Genuinely small images are
+  still never blown up.
+- **The keyboard shortcut and toolbar icon no longer feel dead when pressed twice.** Pressing again
+  because nothing had appeared yet cancelled the open that was already in progress, so the reader
+  only appeared once you stopped pressing. The first press now wins and extra presses are ignored
+  until it finishes.
+- **Reading in an Incognito window no longer leaves anything behind.** Reading positions, reading
+  time, and the counters behind the occasional "Enjoying it?" note are no longer recorded from a
+  private window, where they would have outlived the session. Settings you deliberately change
+  (theme, font, saved picks) still save as usual.
+- **No more red "Errors" badge on the extensions card** after clicking the toolbar icon on a page
+  the extension can't open, such as `chrome://` pages or the Web Store.
+
+### Changed
+- **Very tall images are now capped a little shorter** so they can share a page with text instead of
+  taking one to themselves — measured to produce fewer blank pages overall.
+- **A slow open now shows a brief "working" badge** on the toolbar icon, so a page that takes a
+  moment to open no longer looks like nothing happened.
+
 ## [1.7.0] - 2026-07-20
 
 ### Added
