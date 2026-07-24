@@ -17,6 +17,9 @@ store-assets/
 
 # Scratch notes — never committed
 TODO.md
+# screenshots pasted into TODO.md — personal dev notes, keep out of the public repo
+# ANCHORED (/image/), or it would also swallow a future site/image/ or store/image/ asset dir
+/image/
 REFACTOR-PLAN.md
 /.deleted
 
