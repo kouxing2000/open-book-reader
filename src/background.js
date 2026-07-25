@@ -77,11 +77,17 @@ function swLogArgs(args) {
   return [tag].concat(Array.prototype.slice.call(args));
 }
 
-/* A "working on it" badge on the toolbar icon. The slow part of a cold open is the worker boot +
- * injecting ~430KB of content scripts — all BEFORE any content script exists to draw an in-page
- * toast, so the feedback has to come from the worker. chrome.action badges need no permission and
- * work on any tab. DELAYED (see BADGE_DELAY_MS) so a normal fast open never flashes it; only an
- * open slow enough to look broken gets a visible signal. */
+/* A "working on it" badge on the toolbar icon. Injecting the content scripts happens BEFORE any
+ * content script exists to draw an in-page toast, so that feedback has to come from the worker.
+ * chrome.action badges need no permission and work on any tab. DELAYED (see BADGE_DELAY_MS) so a
+ * normal fast open never flashes it; only an open slow enough to look broken gets a visible signal.
+ *
+ * ACCEPTED LIMITATION — this badge covers the INJECTION only, never the worker's own cold start,
+ * which is the dominant cost of a slow open. showWorking() is called from invokeReader, which runs
+ * from a listener, and Chrome dispatches no listener until top-level evaluation has finished — so
+ * the silent phase is precisely the phase nothing can paint. Closed WONTFIX 2026-07-24; the
+ * measured evidence and every rejected alternative (default_popup, an alarms keepalive) are in
+ * docs/background-worker.md — read that before re-opening it. */
 const BADGE_DELAY_MS = 350;
 const badgeTimers = new Map();
 function showWorking(tabId) {

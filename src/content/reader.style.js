@@ -193,7 +193,7 @@
        stay low enough that a capped image can still fit a typical slack.
        Keep it a fraction, never a fixed inset (a minus-3em inset still left a near-full-height
        image unable to fit beside any text). --obr-imgcap is a variable so the value can be
-       swept and MEASURED rather than guessed — see the pagination Gotcha in CLAUDE.md. */
+       swept and MEASURED rather than guessed — see the tall-images gotcha in docs/reader.md. */
     .obr-pages { --obr-imgcap: 0.72; }
     .obr-pages img, .obr-pages video, .obr-pages svg, .obr-pages iframe {
       max-height: calc(var(--obr-colh, 82vh) * var(--obr-imgcap, .72)); object-fit: contain;

@@ -1241,7 +1241,7 @@
    *    image, the blank is left alone. A postage-stamp screenshot is worse than a blank half
    *    page. This is why the fix stays "partial by nature" — but on a principled floor.
    * Reworking this is layout-heavy: re-verify with real-Chromium screenshots AND rect
-   * measurement (see the pagination Gotcha in CLAUDE.md), never by eye alone. */
+   * measurement (see the tall-images gotcha in docs/reader.md), never by eye alone. */
   const FIT_MIN_PX = 240;     // never leave an image shorter than this...
   const FIT_MIN_FRAC = 0.35;  // ...nor shorter than this fraction of the column
   const FIT_TOP_EPS = 40;     // "starts at the column top" tolerance == it bumped

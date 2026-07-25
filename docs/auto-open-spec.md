@@ -1,9 +1,47 @@
 # Auto-open — spec & implementation plan
 
 Status: IMPLEMENTED (2026-07-16) — kept as the design record (decisions + rationale);
-the living architecture summary is in CLAUDE.md, tests in `tests/auto-open.spec.js`.
+the living architecture summary is §0 below, tests in `tests/auto-open.spec.js`.
 Shipped in 1.6.0. The permission-release behaviour below (2026-07) ships in v1.7.0:
 its §10 items 5b/5c and the dashboard privacy-tab update (§9) gated that release.
+
+## 0. As-built summary
+
+> AUTHORITATIVE for what the code does today. Sections 1-12 below are the original
+> design doc — still the reference for *why*, but written before implementation.
+
+**Auto-open — per-site, opt-in, strict** (`sentinel.js` + `background.js`; full spec:
+§1-12 below). A `siteRules` entry may carry `auto: true`: the SW then keeps ONE
+registered content script (`syncSentinelRegistration()`, id `obr-sentinel`, `js:
+[settings.js, sentinel.js]`, `persistAcrossSessions`, matches = union of `originsForRule()` over
+auto rules filtered by `permissions.contains`) so content pages on that site (forum topics, manga
+chapters) open with zero clicks while list/search pages stay untouched. The sentinel runs a
+**strict-bias ladder** on every probe of a settle window (document_idle + ~1s/2.5s/5s, re-armed on
+SPA URL change via popstate/hashchange + a MutationObserver href compare): (0) suppression set +
+visibility + no-live-overlay check → (1) `matchSiteRuleEx` must return a rule with `auto:true` →
+(2) JSON-LD **list-type veto** (`CollectionPage`/`ItemList`/`SearchResultsPage`/`ProfilePage`,
+TOP-LEVEL nodes only — types nested under `itemListElement`/`item` never count, or Google's
+carousel markup on category pages would neuter the veto; exact `@type` equality only, else
+`BreadcrumbList` — schema.org's ItemList subtype on every news article — vetoes the web; an
+article-ish top-level type alongside suspends the veto but NEVER lowers thresholds; `og:type` has
+no role) → (3) content gate (text: `_proseStats().words >= autoTextMinWords` AND one block `>=
+autoAnchorWords` — the anchor is what rejects an index of long topic titles; images: ≥
+`autoGalleryMin` `<img>`s with decoded size OR lazy-evidence + layout box ≥ 120px — lazy manga
+pages have decoded nothing at probe time). Pass → `obr-auto-open` message → the SW **re-validates
+against fresh settings** (never trusts page state) → `invokeReader(…, {auto:true})` →
+`OBR.open({trigger:'auto'})` + the "Auto-opened" chip (`OBR._showAutoChip`, its own shadow host;
+Stop clears only the `auto` flag via `OBR.setRuleAuto`). A **user-initiated** `close()` (Esc/✕/
+toolbar) records `origin+pathname+search` (query matters: phpBB routes every topic through one
+pathname) into the shared in-page `OBR._autoSuppressed` set; internal closes (mode switch, cross-
+close) pass `{suppress:false}`. **Permissions: zero manifest delta** — per-origin
+`permissions.request` subsets of the already-optional `<all_urls>`; `originsForRule` → `[]` means
+"can't auto-open" (load-bearing: one invalid pattern rejects the whole registration; valid-but-
+ungranted patterns register fine and silently never inject). The enable flow (context-menu
+`obr-rule-auto` → permission popup with `reason=auto-open`, or the options checkbox) also
+`executeScript`s the sentinel into the CURRENT tab — registration only affects future document
+loads, the SPA gap — and re-arms with a one-shot flag: a qualifying page opens immediately, a
+non-qualifying one (enabled from a list page) shows an "Auto-open is on" confirmation chip instead
+of wrongly opening.
 
 ## 1. Problem
 
@@ -407,9 +445,9 @@ exactly the two signals the sentinel consumes; the real-tab behavior rides §10.
 
 ## 9. Docs & copy
 
-- `CLAUDE.md`: architecture blurb (sentinel + registration sync) and two gotchas —
-  registration sync must stay serialized (same `onInstalled`+`onStartup` double-fire as the
-  context menu), and prose stats now live in `settings.js`.
+- Architecture blurb (sentinel + registration sync): §0 above. The registration-sync gotcha
+  (same `onInstalled`+`onStartup` double-fire as the context menu) lives in
+  `docs/background-worker.md`; the prose-stats-live-in-`settings.js` gotcha is in `CLAUDE.md`.
 - `README.md`: feature bullet + privacy sentence ("auto-open runs only on sites you enable").
 - `site/` landing + privacy page: same disclosure.
 - Store listing source of truth (`.meta/LISTING.md` + localized descriptions): feature line.
