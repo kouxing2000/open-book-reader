@@ -150,6 +150,15 @@ npx playwright install chromium                # first run only
 - **Harness caveat**: headless Playwright can't click the real toolbar icon (no `activeTab`), so tests
   inject the content scripts the same way/order as `background.js` and exercise the unmodified engine;
   only the ~2 lines of gesture→inject wiring are uncovered. `chrome.storage.sync` is shimmed in-page.
+- **Two macOS-only harness hangs, both handled in `tests/fixtures.js` — don't re-diagnose them, and don't
+  "fix" them by reinstalling browsers or moving Playwright versions (Linux CI is green on the same one).**
+  (1) `Tearing down "context" exceeded the test timeout` on EVERY test: Chromium ignores Playwright's
+  graceful SIGTERM and never exits (reproduced with a bare `spawn` + kill, across three bundled builds —
+  it dies only on SIGKILL), so `context.close()` never settles. The fixture bounds the close, then
+  hard-kills by the context's unique `--user-data-dir`. (2) A bare 30s timeout with no stack in any test
+  taking the `serviceWorker` fixture: evaluating in an MV3 worker Chrome hasn't started does not throw,
+  it HANGS forever. The fixture starts the worker first (load a page in the extension's own origin,
+  fire one throwaway evaluate, load again) and only hands it over once it answers.
 
 `npm run test:manual` (`tests/manual-site-proxy.mjs`) runs the real engine against real-site DOM: it
 fetches a page server-side, strips CSP + its `<script>` tags (freezing the SSR DOM), injects
