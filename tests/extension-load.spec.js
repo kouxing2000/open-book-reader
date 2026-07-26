@@ -238,14 +238,17 @@ test('enabling auto-open (the menu-click path) writes the rule and registers the
     try {
       await new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteRules: [] } }, res));
       enableAutoOpen('example.com', { id: 999999 }); // bogus tab id: injectSentinelNow just no-ops (caught)
-      // enableAutoOpen is fire-and-forget — poll until the rule lands.
-      let rule = null;
-      for (let i = 0; i < 40 && !rule; i++) {
+      // enableAutoOpen is fire-and-forget AND lands its two effects — the stored rule and the
+      // sentinel registration — as separate async steps. Poll until BOTH are in, or whichever
+      // finishes second races the assertions below (observed: the rule present, registration
+      // still empty, so `matches` came back undefined).
+      let rule = null, regged = [];
+      for (let i = 0; i < 40 && !(rule && regged.length); i++) {
         await new Promise((res) => setTimeout(res, 50));
         const s = await new Promise((res) => chrome.storage.sync.get('obr_settings', (d) => res(d.obr_settings || {})));
         rule = (s.siteRules || []).find((x) => x.match === 'example.com') || null;
+        regged = await chrome.scripting.getRegisteredContentScripts({ ids: ['obr-sentinel'] });
       }
-      const regged = await chrome.scripting.getRegisteredContentScripts({ ids: ['obr-sentinel'] });
       return { rule, matches: regged[0] && regged[0].matches.slice().sort() };
     } finally {
       chrome.permissions.contains = realContains;
