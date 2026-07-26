@@ -317,6 +317,118 @@ test('the soft curl turn floats a transient leaf, then settles to the plain-flip
   expect(after.indicator).toBe(mid.indicator);
 });
 
+// Regression test for "the page turn sometimes takes the wrong image". A turn is drawn from
+// CLONES of the strip, and a cloned <img> does not inherit the original's loaded state — with
+// nothing to size it from it lays out at 0, the clone re-breaks every column after it
+// (column-fill: auto), and panel N stops being page N. The snapshot therefore PINS every
+// replaced element to an inline px box measured off the live strip, which is what makes the
+// clone's layout independent of load state.
+//
+// The pin must be an INLINE STYLE: `.obr-pages img` sets `width: auto`/`height: auto` as author
+// rules, which outrank width/height ATTRIBUTES — an attribute-based version of this measures
+// 0x0 in real Chromium and would leave the bug in place while looking fixed.
+test('a turn clone pins its media to the live boxes, so it paginates identically', async ({ page }) => {
+  // late-image-article's <img> carries NO width/height of its own (and is deliberately slow),
+  // which is the real-world shape — tall-figures would prove less, because its markup already
+  // dimensions every figure. It is also the harder case: the image is 40x1400, so the reader's
+  // max-height cap is what decides the final box the pin has to reproduce.
+  await page.goto('/late-image-article.html', { waitUntil: 'load' });
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'curl' }));
+  await openReader(page);
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press('ArrowRight');
+  const r = await page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const live = root.querySelector('.obr-pages:not(.obr-leaf-pages)');
+    const clone = root.querySelector('.obr-flip-layer .obr-leaf-pages');
+    if (!live || !clone) return null;
+    const liveImgs = [...live.querySelectorAll('img')];
+    const cloneImgs = [...clone.querySelectorAll('img')];
+    return {
+      imgs: liveImgs.length,
+      pinned: cloneImgs.filter((im) => im.style.width && im.style.height).length,
+      matched: cloneImgs.filter((im, i) => liveImgs[i] && Math.abs(
+        parseFloat(im.style.height) - liveImgs[i].getBoundingClientRect().height) < 0.5).length,
+      liveW: live.scrollWidth,
+      cloneW: clone.scrollWidth,
+      desyncs: globalThis.OBR._diagReader().flipDesyncs,
+    };
+  });
+
+  expect(r).not.toBeNull();
+  expect(r.imgs).toBeGreaterThan(0);      // the fixture really does carry images
+  expect(r.pinned).toBe(r.imgs);          // every cloned image has an explicit box...
+  expect(r.matched).toBe(r.imgs);         // ...and it is the live strip's box
+  expect(r.cloneW).toBe(r.liveW);         // so the two paginate to the same column count
+  expect(r.desyncs).toBe(0);              // and the engine agrees nothing drifted
+});
+
+// The guard of last resort, driven through the only thing that reproduces a re-paginating
+// clone: a snapshot whose media collapse (OBR._pinPass seam, same shape as OBR._fitPass —
+// and note it pins to ZERO rather than skipping, because a merely un-pinned clone re-fetches
+// from cache and sizes itself fine). This test is the point of the seam: TWO successive
+// versions of this guard shipped INERT because nothing in the suite could reach them, each
+// looking correct in review. With the media collapsed the clone's columns re-break, and the
+// turn must refuse to animate rather than show a page the reader never asked for.
+test('a snapshot whose media collapse is caught by the guard, which refuses to animate it', async ({ page }) => {
+  await gotoTallFigures(page);   // many images == a clone that really does re-paginate
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'curl' }));
+  await page.evaluate(() => { globalThis.OBR._pinPass = false; });
+  await openReader(page);
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(200);
+
+  await page.keyboard.press('ArrowRight');
+  const r = await page.evaluate(() => ({
+    diag: globalThis.OBR._diagReader(),
+    layers: document.getElementById('obr-host').shadowRoot.querySelectorAll('.obr-flip-layer').length,
+    tx: document.getElementById('obr-host').shadowRoot.querySelector('.obr-pages').style.transform,
+  }));
+
+  expect(r.diag.flipDesyncs).toBeGreaterThan(0);            // the guard actually ran...
+  expect(r.diag.lastFlipDesync.kind).toBe('clone-repaginated');
+  expect(r.diag.lastFlipDesync.why).toBeTruthy();           // ...and named the divergence
+  expect(r.layers).toBe(0);                                 // overlay dropped, no wrong page
+  expect(r.tx).toContain('translateX(-');                   // the real strip still turned
+});
+
+// The other half of the same bug: a reflow the engine never subscribed to (a font face that
+// swaps in after fonts.ready already resolved) leaves totalColumns/totalSpreads describing a
+// layout the strip no longer has, so the turn's index math targets the wrong columns. Growing
+// the content behind the engine's back reproduces exactly that state; the next turn must
+// notice and re-measure BEFORE computing its target.
+test('a reflow the engine never heard about is detected and healed before the next turn', async ({ page }) => {
+  await openReader(page);
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(150);
+  const before = await readState(page);
+  expect(await page.evaluate(() => globalThis.OBR._diagReader().flipDesyncs)).toBe(0);
+
+  await page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const filler = document.createElement('p');
+    filler.textContent = 'lorem ipsum dolor sit amet '.repeat(400);
+    root.querySelector('.obr-content').appendChild(filler);
+  });
+  // Nothing told the engine, so its cached count is now a lie — the precondition of the bug.
+  expect((await readState(page)).totalColumns).toBe(before.totalColumns);
+
+  await page.keyboard.press('ArrowRight');
+  const diag = await page.evaluate(() => globalThis.OBR._diagReader());
+  const after = await readState(page);
+
+  expect(diag.flipDesyncs).toBeGreaterThan(0);                     // detector fired...
+  expect(after.totalColumns).toBeGreaterThan(before.totalColumns); // ...and it re-measured
+  // Deliberately NOT asserting lastFlipDesync.kind: the same flip() continues into
+  // flipOverlayValid, which may record a later desync of its own and overwrite it. The
+  // re-measure above is the behaviour that matters, and only the stale-pagination path
+  // produces it.
+});
+
 // Regression test for the leaf-size bug: the turning leaf and the laid-page overlay must
 // each span a FULL page (half the paper, full height) — NOT just the smaller text/viewport
 // area. offsetWidth/offsetHeight read the layout box, so they ignore the rotation transform.

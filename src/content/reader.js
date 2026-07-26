@@ -1474,12 +1474,88 @@
     }
   }
 
+  /* ------------------------------------------------- page-turn desync detector
+   * A turn is drawn from CLONES of the strip, positioned by index math (column k sits at
+   * k * stride). That is only true while the cached pagination still describes the live
+   * strip and the clones paginate exactly like it — and both can silently stop being true.
+   * These counters make that visible instead of leaving it as an unreproducible "the flip
+   * sometimes shows the wrong page" report: read them from any console via
+   * OBR._diagReader(), or turn on OBR.debugTiming(true) to get a console line at the
+   * moment it happens. Purely local — a counter and a console warning, nothing is sent
+   * anywhere (the "collects nothing" disclosure stays true). */
+  let flipDesyncs = 0, lastFlipDesync = null;
+
+  // What the strip's media looked like at the moment a desync fired — the difference between
+  // "it happened again" and knowing WHY. These counts separate the causes we know of:
+  // an image with no intrinsic size cannot be laid out by a CLONE before its bytes arrive
+  // (buildFlipSnapshot's pin exists to make that irrelevant), and a FAILED one is worse still —
+  // the live strip shows alt text or a broken-image icon while a fresh clone is still
+  // re-fetching and reserves nothing, so the two disagree by exactly that box. Only ever
+  // computed when a desync has already been detected, so it costs nothing in the normal path.
+  function mediaCensus() {
+    if (!pagesEl) return {};
+    const imgs = pagesEl.querySelectorAll('img');
+    let failed = 0;
+    for (let i = 0; i < imgs.length; i++) if (imgs[i].complete && !imgs[i].naturalWidth) failed++;
+    // `unpinned` is the count that can actually explain a desync now: replaced elements whose
+    // box depends on load state, which buildFlipSnapshot does NOT pin and sanitizeContentHTML
+    // does NOT strip. (It strips script/style/noscript/iframe/form, so those cannot appear —
+    // an earlier draft of this line listed iframe, which could never have counted one.)
+    return {
+      imgs: imgs.length, failed: failed,
+      vids: pagesEl.querySelectorAll('video').length,
+      unpinned: pagesEl.querySelectorAll('object, embed, canvas, audio').length,
+    };
+  }
+
+  function noteFlipDesync(kind, detail) {
+    flipDesyncs++;
+    lastFlipDesync = Object.assign({ kind: kind, spread: currentSpread, cols: totalColumns },
+      mediaCensus(), detail || {});
+    if (OBR._debug) {
+      // Serialize INTO the message. A second console argument renders as "[object Object]" in
+      // chrome://extensions' Errors page and in any copied console line — which threw away
+      // every number this function had just collected, the one thing a field report needs.
+      try { console.warn('[OBR reader] page-turn desync: ' + kind + ' ' + JSON.stringify(lastFlipDesync)); } catch (e) { /* console unavailable */ }
+    }
+  }
+
+  // The column count the strip ACTUALLY has right now, measured off the live DOM. layout()
+  // caches it in totalColumns, but the browser re-flows the multicol strip on its own
+  // whenever the content changes size — a late image, a font face that swaps in AFTER
+  // fonts.ready already resolved, the colophon rewriting its own text — and some of those
+  // reflows arrive with no event we subscribe to. One scrollWidth read; the turn forces
+  // layout in pageGeom() a moment later anyway, so on a settled strip this is ~free.
+  function liveColumnCount() {
+    if (!pagesEl || !(colW + colGap)) return totalColumns;
+    return Math.max(1, Math.round((pagesEl.scrollWidth + colGap) / (colW + colGap)));
+  }
+
   function flip(dir) {
     tickRead(); // a page turn is the strongest "still reading" signal for the time clock
-    // Flush any queued late-media re-pagination first, so we turn from the CURRENT page
-    // count — not a stale one measured before a slow image finished (which can reject a
-    // valid turn near the end, or land it on the wrong page).
-    if (mediaTimer && !activeFlip) { clearTimeout(mediaTimer); mediaTimer = null; runMediaRelayout(); }
+    // Never turn from a STALE pagination. Two things desync the cached column count from the
+    // live strip: a re-layout we queued but haven't run yet, and a reflow nothing told us
+    // about. Either leaves totalColumns/totalSpreads (and so the target spread, and the
+    // columns the turn clones) describing a layout the strip no longer has. Measuring the
+    // live count catches BOTH, including the reflows we have no listener for.
+    // endActiveFlip() runs before layout(true) on purpose: the old guard skipped the re-measure
+    // whenever a turn was in flight, which made the SECOND tap of a fast double-flip the one
+    // that went wrong. beginFlip would have aborted that turn a moment later regardless.
+    const live = liveColumnCount();
+    // Only count it when NOTHING told us — with a relayout already queued, the browser has
+    // reflowed and we simply have not re-measured yet, which is routine for the whole 80ms
+    // debounce and would drown the one signal this counter exists to carry.
+    if (!mediaTimer && live !== totalColumns) noteFlipDesync('stale-pagination', { live: live });
+    if (mediaTimer || live !== totalColumns) {
+      clearTimeout(mediaTimer); mediaTimer = null;
+      endActiveFlip();
+      if (active && built) layout(true);   // the same guard runMediaRelayout applies
+      // layout() parks the strip at `transition: none` until its own rAF restores it, so the
+      // plain-slide path below would JUMP instead of sliding on every turn that re-measures.
+      // Flush the re-anchored transform first, or restoring the transition here would animate
+      // that re-anchor retroactively.
+      if (pagesEl) { void pagesEl.offsetWidth; pagesEl.style.transition = ''; }
+    }
     const next = currentSpread + dir;
     if (next < 0 || next >= totalSpreads) return;
     restoreFraction = null; // user is navigating — stop re-anchoring to the resume point
@@ -1522,17 +1598,153 @@
     return { padX, padY, spineX, pageW: paper.width - spineX, paperW: paper.width, paperH: paper.height };
   }
 
-  // A clone of the real strip, frozen and shifted so a clip window reveals chosen columns.
-  // tx aligns the columns horizontally; ty pushes the text down by the page's top margin so
-  // the panel (sized to the full paper page) shows the text with its margins, like a real page.
+  /* ONE snapshot of the strip per turn, with every replaced element PINNED to the box the
+   * live strip is rendering; each panel is a copy of it (a curl turn needs 19).
+   *
+   *   A cloned <img> does NOT inherit the original's loaded state. It re-runs source
+   *   selection, and unless the bytes are still in the browser's list of available images it
+   *   lays out at 0 until they arrive. `.obr-pages img` is `height: auto` and `column-fill:
+   *   auto`, so one collapsed image shortens its column and re-breaks every column after it:
+   *   the clone paginates differently from the strip it impersonates, panel N stops being
+   *   page N, and the turn animates a page the reader never asked for. That is the "the flip
+   *   sometimes takes the wrong image" report, intermittent because it depends on whether a
+   *   given image's bytes happen to still be available when the turn is built.
+   *
+   * The pin is an INLINE px box, and it has to be: width/height ATTRIBUTES do nothing here.
+   * reader.style.js sets `width: auto` (:183, deliberately, to release legacy <img width>)
+   * and `height: auto` (:173) as AUTHOR rules, which outrank the attributes' presentational
+   * hint — leaving only `aspect-ratio`, and a ratio cannot size a replaced element when
+   * neither side is definite. Measured in real Chromium: an un-loaded <img> under those exact
+   * rules is 0x0 whether or not it carries width/height attributes. Inline styles DO outrank
+   * them, so pinning is the mechanism that actually works, and it also leaves the live
+   * strip's own rendering untouched — only the throwaway snapshot is pinned.
+   * Read every box first, then write, so the pin costs one layout flush and not one per
+   * element. box-sizing is border-box, so the rect IS the box to pin. A zero box (an image
+   * still loading in the LIVE strip) is pinned as zero on purpose — the clone must match what
+   * the reader is looking at, not what the image will eventually become.
+   * This is also why the snapshot exists at all: it is the measure-once point. Cloning
+   * pagesEl directly per panel would be equally coherent (a turn is one synchronous task, so
+   * the tree cannot change mid-turn) but would re-measure for all 19. */
+  let flipSnapshot = null;
+  function buildFlipSnapshot() {
+    const media = pagesEl.querySelectorAll('img, video');
+    const boxes = [];
+    for (let i = 0; i < media.length; i++) {
+      const r = media[i].getBoundingClientRect();
+      boxes.push({ w: r.width, h: r.height });
+    }
+    const snap = pagesEl.cloneNode(true);
+    snap.classList.add('obr-leaf-pages');      // keep .obr-pages too (it carries the styling)
+    snap.style.transition = 'none';
+    snap.style.willChange = 'auto';            // don't spawn a compositor layer per clone
+    // Seam (same shape as OBR._fitPass), and the reason it PINS TO ZERO rather than skipping:
+    // merely omitting the pin does not reproduce the bug in a test, because the clone re-fetches
+    // from the browser's available-images list and sizes itself perfectly well. Zero IS what a
+    // clone lays out as when those bytes are NOT available — the real failure — so this is the
+    // only way to drive flipOverlayValid deterministically. Two guards in a row shipped INERT
+    // because nothing in the suite could reach them; now one does. It cannot be reached from the
+    // page: content scripts run in an isolated world, so no site (or its devtools console) can see
+    // OBR, and only the exact boolean false activates it. Worst case, a turn skips its animation.
+    const collapse = OBR._pinPass === false;
+    const cloned = snap.querySelectorAll('img, video');
+    for (let i = 0; i < cloned.length && i < boxes.length; i++) {
+      cloned[i].style.width = (collapse ? 0 : boxes[i].w) + 'px';
+      cloned[i].style.height = (collapse ? 0 : boxes[i].h) + 'px';
+    }
+    return snap;
+  }
+
+  // A panel's copy of the turn's pinned snapshot, shifted so its clip window reveals chosen
+  // columns. tx aligns the columns horizontally; ty pushes the text down by the page's top
+  // margin so the panel (sized to the full paper page) shows the text with its margins.
   function makePagesClone(tx, ty) {
-    const clone = pagesEl.cloneNode(true);
-    clone.classList.add('obr-leaf-pages');     // keep .obr-pages too (it carries the styling)
-    clone.style.transition = 'none';
-    clone.style.willChange = 'auto';           // don't spawn a compositor layer per clone
+    if (!flipSnapshot) flipSnapshot = buildFlipSnapshot(); // beginFlip always takes it first
+    const clone = flipSnapshot.cloneNode(true);
     clone.style.transform = `translateX(${tx}px)`;
     if (ty) clone.style.top = ty + 'px';
     return clone;
+  }
+
+  /* Do the columns this turn ANIMATES carry the same content in both flows?
+   *
+   * Note what is NOT asked: whether the flows agree everywhere. A divergence past the last
+   * animated column cannot be put on screen by this turn, and treating it as a wrong page
+   * costs the animation for nothing — observed in the field (one image, correctly sized,
+   * nothing failed, and the curl silently stopped happening on that site).
+   *
+   * Note also what is NOT used: equal scrollWidth. It is tempting as an O(1) whole-flow test,
+   * but it is NOT proof of equal column boundaries. scrollWidth is quantised to whole columns,
+   * so a divergence smaller than the slack left in the final column shifts every subsequent
+   * column's content while the column COUNT — and therefore scrollWidth — stays identical. In
+   * a measured sweep, roughly 1 layout in 6 landed in that hole with 30-40 blocks displaced,
+   * which is precisely the bug this guard exists to catch. The numbers are still reported for
+   * diagnostics; they just do not get a vote.
+   *
+   * So: compare WHERE each leaf block actually sits, on both sides, directly. No inference —
+   * "same column, same offset down the page" IS the property the panels depend on.
+   *
+   * Two traps this shape exists to avoid, both of which produced an inert guard before:
+   *  - Do NOT walk `.obr-content > *`. Readability wraps the whole article in a single
+   *    <div id="readability-page-1">, so that list is [h1, byline, wrapper, colophon] — and a
+   *    block fragmented across columns has an offsetHeight that SATURATES at the fragmentainer
+   *    height (measured: 748 against a clientHeight of 748, unchanged whether the clone
+   *    paginates to 8 columns or 4). Comparing those compares three constants.
+   *  - Do NOT infer boundaries from equal heights. Only blocks that fit inside one column
+   *    report an honest height, and those carry the least pagination information.
+   * Positions are measured relative to each strip's OWN rect, which cancels both the live
+   * strip's translateX and the clone's translateX/top — the same trick fitTallFigures uses. */
+  const FLOW_LEAVES = 'p, h1, h2, h3, h4, h5, h6, figure, img, li, blockquote, pre, table, hr';
+  function flowMatchesThrough(clone, lastCol) {
+    const a = pagesEl.querySelectorAll(FLOW_LEAVES);
+    const b = clone.querySelectorAll(FLOW_LEAVES);
+    if (!a.length || a.length !== b.length) {
+      return { ok: false, why: 'leaves ' + a.length + 'vs' + b.length };
+    }
+    const pitch = colW + colGap;
+    if (!(pitch > 0)) return { ok: false, why: 'no pitch' };
+    const ao = pagesEl.getBoundingClientRect(), bo = clone.getBoundingClientRect();
+    for (let i = 0; i < a.length; i++) {
+      const ar = a[i].getBoundingClientRect();
+      const ac = Math.round((ar.left - ao.left) / pitch);
+      // Past the pages this turn can show — skip rather than stop, so one out-of-flow block
+      // (the picker/selection path keeps authored inline styles) cannot end the walk early.
+      if (ac > lastCol) continue;
+      const br = b[i].getBoundingClientRect();
+      const bc = Math.round((br.left - bo.left) / pitch);
+      if (ac === bc && Math.abs((ar.top - ao.top) - (br.top - bo.top)) < 1) continue;
+      const cls = String(a[i].className || '').split(' ')[0];
+      return { ok: false, why: i + ':' + a[i].tagName.toLowerCase() + (cls ? '.' + cls : '')
+        + ' col' + ac + 'vs' + bc + ' dy' + Math.round((br.top - bo.top) - (ar.top - ao.top)) };
+    }
+    return { ok: true };
+  }
+
+  // Drop the overlay when the snapshot cannot be trusted for the pages it is about to show,
+  // and let the plain jump stand — the strip was already snapped to the destination, so the
+  // turn simply becomes instant. A missing animation is a far smaller bug than a wrong page.
+  function flipOverlayValid(layer, src, next) {
+    const probe = layer.querySelector('.obr-leaf-pages');
+    if (!probe) return true;
+    const lastCol = (Math.max(src, next) + 1) * pagesPerSpread - 1;
+    const m = flowMatchesThrough(probe, lastCol);
+    if (m.ok) return true;
+    noteFlipDesync('clone-repaginated',
+      { lastCol: lastCol, why: m.why, liveW: pagesEl.scrollWidth, cloneW: probe.scrollWidth });
+    return false;
+  }
+
+  // Drop an overlay we've decided not to animate. activeFlip was never set (the caller bails
+  // before assigning it), so endActiveFlip() wouldn't run its tail — restore the strip's
+  // transition here, or the plain slide stays frozen at `none` for the rest of the session.
+  // The strip is already at the destination and the transform is already flushed (by
+  // flipOverlayValid's scrollWidth read), so nothing animates retroactively.
+  function abortFlipOverlay(layer) {
+    layer.remove();
+    flipSnapshot = null;
+    // Flush the destination transform BEFORE restoring the transition, explicitly rather than
+    // relying on the guard above having read layout — otherwise a future guard that
+    // short-circuits without measuring would make this snap animate retroactively.
+    if (pagesEl) { void pagesEl.offsetWidth; pagesEl.style.transition = ''; }
   }
 
   // One face of the turning leaf: a clipped clone plus a shading overlay (returned so its
@@ -1570,6 +1782,10 @@
     // gives the paper-relative spine, page width/height, and the margins.
     const stride = pagesPerSpread * (colW + colGap);
     const g = pageGeom();
+
+    // One frozen, media-pinned copy of the strip; every panel below is a copy of it, so the
+    // whole turn is one coherent snapshot that cannot re-paginate under itself.
+    flipSnapshot = buildFlipSnapshot();
 
     // The flip layer covers the WHOLE paper (margins included).
     const layer = document.createElement('div');
@@ -1637,6 +1853,8 @@
 
     layer.appendChild(leaf);         // staticBox already in layer (beginFlip); leaf lays on top
     paperEl.appendChild(layer);      // LAST child → real pagesEl stays first for querySelector
+    // Bail to an instant turn rather than animate a page the reader never asked for.
+    if (!flipOverlayValid(layer, src, next)) { abortFlipOverlay(layer); return; }
 
     // Animate (WAAPI — reliable finish hook + clean cancel for re-entrancy).
     const dur = settings.transitionMs;
@@ -1738,6 +1956,8 @@
 
     layer.appendChild(leaf);         // staticBox already in layer (beginFlip); leaf lays on top
     paperEl.appendChild(layer);
+    // Bail to an instant turn rather than animate a page the reader never asked for.
+    if (!flipOverlayValid(layer, src, next)) { abortFlipOverlay(layer); return; }
 
     const dur = CURL_DURATION(settings.transitionMs);
     const fromA = fwd ? 0 : -180;
@@ -1784,6 +2004,7 @@
   // to the destination when the flip began, so there is nothing to re-settle — just remove
   // the transient overlay and restore the strip's normal transition.
   function endActiveFlip() {
+    flipSnapshot = null;             // drop the frozen strip copy this turn was built from
     if (!activeFlip) return;
     const f = activeFlip;
     activeFlip = null;
@@ -1816,6 +2037,8 @@
     mediaTimer = setTimeout(() => { mediaTimer = null; runMediaRelayout(); }, 80);
   }
 
+  function onFontsLoadingDone() { if (active && built) scheduleMediaRelayout(); }
+
   function watchMedia() {
     pagesEl.querySelectorAll('img').forEach((img) => {
       if (img.complete && img.naturalHeight !== 0) return; // already sized
@@ -1824,6 +2047,15 @@
     });
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => { if (active && built) scheduleMediaRelayout(); });
+      // fonts.ready resolves ONCE, for the faces pending at that moment. A face first
+      // requested later — the bold or italic cut of the reader's stack, only fetched when a
+      // glyph run needing it is laid out — swaps in afterwards and re-breaks every column
+      // with no other signal, leaving totalColumns stale. `loadingdone` fires for EVERY
+      // batch, so it covers those. It fires for the HOST page's fonts too, hence the
+      // active/built gate — and it must stay a NAMED function, because the dedupe that makes
+      // the repeated addEventListener across opens a no-op needs a stable reference (an
+      // inline arrow would subscribe again on every open).
+      try { document.fonts.addEventListener('loadingdone', onFontsLoadingDone); } catch (e) { /* older FontFaceSet */ }
     }
   }
 
@@ -1907,6 +2139,10 @@
   async function openInner(opts) {
     if (active) return;
     const trigger = opts && opts.trigger;
+    // The page-turn diagnostics describe the article being read, and `why` carries tag/class
+    // strings lifted from its DOM — leaving them set would report the PREVIOUS article (on a
+    // different site) as if it were this one.
+    flipDesyncs = 0; lastFlipDesync = null;
     const gen = ++openGen; // claim this open; abort below if a newer open()/close() supersedes us
     const t = OBR._timer ? OBR._timer('[OBR reader]') : null; // local debug timing (see settings.js)
     settings = await OBR.loadSettings();
@@ -2035,11 +2271,14 @@
   // trigger, which is what makes a FAILED trigger explainable instead of silent: `active` says
   // whether a toggle will open or close, `opening` catches a wedged in-flight open, and
   // `hostShown` catches "it opened but you can't see it" (the host hidden by a stale close).
+  // flipDesyncs/lastFlipDesync answer the other unreproducible report — "the page turn
+  // sometimes shows the wrong page" — with a number instead of a maybe (see noteFlipDesync).
   OBR._diagReader = function () {
     return {
       active: active, opening: opening, gen: openGen, built: built,
       spread: currentSpread, cols: totalColumns,
       hostShown: !!(host && host.style.display !== 'none'),
+      flipDesyncs: flipDesyncs, lastFlipDesync: lastFlipDesync,
     };
   };
 

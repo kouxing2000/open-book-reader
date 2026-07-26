@@ -42,6 +42,83 @@ bleeds over the destination back face — a "two pages in the middle" double-ima
 **transform-heavy and easy to get subtly wrong — verify with a real-Chromium screenshot capture, and
 MEASURE element rects (`offsetWidth`/`getBoundingClientRect`) before blaming a transform**.
 
+### The turn must draw the page it claims to (the "wrong image" class)
+
+Every panel is positioned by index math — column *k* sits at `k * stride` — which is only true
+while **(1)** the cached pagination still describes the live strip and **(2)** the clones paginate
+exactly like it. Both stop being true on their own, and when they do the turn animates content from
+somewhere else in the article: the long-running "the flip sometimes takes the wrong image" report.
+
+- **(1) Stale pagination.** The browser re-flows the multicol strip whenever content changes size,
+  and only some of those reflows announce themselves. `watchMedia()` hears `img` load/error and
+  `document.fonts.ready` — but `ready` resolves ONCE, for the faces pending at that moment, so a
+  bold/italic cut first requested when its glyph run is laid out swaps in later and re-breaks every
+  column silently (hence the `loadingdone` listener beside it). `flip()` therefore does not trust
+  `mediaTimer`: it compares `liveColumnCount()` (measured off `scrollWidth`) against `totalColumns`
+  and re-runs `layout(true)` on any disagreement — one cheap read, and `pageGeom()` forces layout a
+  moment later anyway. `endActiveFlip()` runs before that `layout(true)` on purpose: the old
+  `!activeFlip` guard skipped the re-measure whenever a turn was in flight, which made the SECOND
+  tap of a fast double-flip the one that went wrong.
+- **(2) A clone that re-paginates.** A cloned `<img>` does **not** inherit the original's loaded
+  state — it re-runs source selection, and with nothing to size it from it lays out at 0 until the
+  bytes arrive. With `.obr-pages img { height: auto }` and `column-fill: auto`, one collapsed image
+  shortens its column and re-breaks every column after it, so panel *N* stops being page *N*. So
+  `buildFlipSnapshot()` takes one snapshot per turn and **pins every `img`/`video` to an inline px
+  box measured off the live strip**, making the clone's layout independent of load state. Read every
+  box first, then write, so it costs one layout flush; `box-sizing` is border-box, so the rect *is*
+  the box. A zero box (an image still loading in the LIVE strip) is pinned as zero deliberately —
+  the clone must match what the reader is looking at. Pinning the throwaway snapshot rather than the
+  live strip is what keeps the reader's own rendering untouched, and the snapshot is also the
+  measure-once point: cloning `pagesEl` per panel would be equally coherent (a turn is one
+  synchronous task, so the tree cannot change mid-turn) but would re-measure for all 19.
+
+  > **The pin MUST be an inline style — `width`/`height` attributes do nothing here.** It is tempting
+  > to "fix it at the source" by stamping attributes from `naturalWidth`/`naturalHeight`, so any
+  > future clone sizes itself. That does not work in this codebase: `reader.style.js` sets
+  > `width: auto` (`:183`, deliberately, to release legacy `<img width>`) and `height: auto` (`:173`)
+  > as AUTHOR rules, which outrank the attributes' presentational hint. Only `aspect-ratio` survives,
+  > and a ratio cannot size a replaced element when neither side is definite. Measured in real
+  > Chromium under exactly those rules, an un-loaded `<img>`: **`0x0` with the attributes, `0x0`
+  > without them**, `40x1400` once `width: auto` is dropped. An attribute-based version looks like a
+  > root-cause fix, tests green on "the attributes were written", and leaves the bug fully in place.
+
+Both are then **verified rather than assumed**. `flipOverlayValid()` asks the narrow question — do
+the columns this turn ANIMATES carry the same content in both flows? — because a divergence past the
+last animated column cannot be put on screen, and treating it as a wrong page costs the animation for
+nothing (observed in the field: one correctly-sized image, nothing failed, and the curl silently
+stopped happening on that site). `flowMatchesThrough()` answers it by comparing, for each leaf block
+up to that column, **where it actually sits on both sides** — same column index, same offset down the
+page, each measured relative to its own strip's rect so both transforms cancel. That is the property
+the panels depend on, tested directly. When the answer is no, `abortFlipOverlay()` drops the overlay
+and lets the (already-correct) instant jump stand — a missing animation is a far smaller bug than a
+wrong page, but it is not free either. This one guard is the whole safety net for anything still
+carrying a load-dependent box that the pin does not cover, which is cheaper than growing per-element
+machinery — and `mediaCensus().unpinned` counts exactly those: `object`, `embed`, `canvas`, `audio`.
+(Not `iframe` or `form` — `sanitizeContentHTML` strips both, so they can never be in the flow.)
+
+> **Two ways to write this guard that LOOK right and detect nothing. Both were written, and both
+> passed review, before either was found inert.**
+> - *Equal `scrollWidth` as a fast path.* It is quantised to whole columns, so a divergence smaller
+>   than the slack in the final column shifts every subsequent column while the column *count* stays
+>   identical — measured, ~1 layout in 6 lands in that hole with 30-40 blocks displaced.
+> - *Comparing `.obr-content > *` heights.* Readability wraps the whole article in one
+>   `<div id="readability-page-1">`, so that list is `[h1, byline, wrapper, colophon]` — and a block
+>   fragmented across columns has an `offsetHeight` that **saturates at the fragmentainer height**.
+>   Measured on `/tall-figures.html`: live and a clone with *half* the column count both report
+>   `[36, 26, 748]` against a `clientHeight` of 748. The walk compared three constants and returned
+>   "fine" for every animated range.
+>
+> The lesson is not "avoid those two". It is that a guard nothing can reach looks identical to a guard
+> that works. **`OBR._pinPass = false`** (same shape as `OBR._fitPass`) exists for exactly this: it
+> pins the snapshot's media to ZERO — the real failure — so the suite drives `flipOverlayValid` for
+> real. It pins to zero rather than skipping because a merely un-pinned clone re-fetches from cache
+> and sizes itself perfectly well, detecting nothing. The test is red against an inert guard; verify
+> that, not just that it passes.
+
+Every detection increments `flipDesyncs` / `lastFlipDesync`, surfaced through `OBR._diagReader()`
+and warned to the console under `OBR.debugTiming(true)` — so the next field report is a number
+instead of a maybe. Purely local, nothing is sent anywhere.
+
 ## Print / Save as PDF
 
 **Print / Save as PDF** (`reader.js`: `OBR.printReader` + the pure, testable `OBR._buildPrintDoc`): the
