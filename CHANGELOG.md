@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-07-29
+
 ### Changed
 - **The Chrome Web Store listing now says what the extension actually does, in every language.**
   The title carried one keyword ("Reader View") and the summary never mentioned the image
@@ -277,7 +279,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.2
 [1.7.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.1
 [1.7.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.0
 [1.6.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.6.0
