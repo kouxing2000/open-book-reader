@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The Chrome Web Store listing now says what the extension actually does, in every language.**
+  The title carried one keyword ("Reader View") and the summary never mentioned the image
+  gallery's real audience, even though the Ordered layout was built for webtoons, manga, and
+  step-by-step guides. Titles and summaries across all eight languages now name the two-page
+  book reading, the gallery, and the webtoon/manga reading it supports. Nothing about the
+  extension's behaviour changes — this is store copy only.
+- **The extension is now labelled simply "Open Book" inside the browser.** The store title has
+  to carry search keywords and got longer; a `short_name` keeps the toolbar tooltip and the
+  `chrome://extensions` entry short and readable instead of showing the full keyword string.
+
 ## [1.7.1] - 2026-07-24
 
 ### Fixed
