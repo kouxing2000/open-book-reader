@@ -8,7 +8,8 @@
 //   1. Every locale has EXACTLY en's key set (no missing / no extra keys).
 //   2. Each entry's `placeholders` block matches en's for that key (same shape).
 //   3. Every $TOKEN$ in en's message appears in each translation (no dropped slot).
-//   4. extName present; extSummary <= 132 chars (the Web Store summary hard limit).
+//   4. extName present and <= 75 chars (the manifest `name` hard limit, which is what the
+//      Web Store enforces); extSummary <= 132 chars (the Web Store summary hard limit).
 //   5. Coverage: every key REFERENCED anywhere in src/ exists in the en catalog, so it can't
 //      render as a raw key / blank. References checked: OBR.t('key') and
 //      chrome.i18n.getMessage('key') in .js, the data-i18n / data-i18n-placeholder /
@@ -24,6 +25,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOCALES = join(ROOT, '_locales');
 const SUMMARY_MAX = 132;
+// Chrome's manifest `name` limit, enforced by the Web Store at upload. Titles here are
+// ASO-tuned and get longer over time (keywords earn their place by measurement — see
+// `npm run ranking`), so the ceiling needs a guard rather than a habit of staying short.
+const TITLE_MAX = 75;
 const problems = [];
 const fail = (m) => problems.push(m);
 
@@ -75,6 +80,9 @@ for (const loc of locales) {
     }
   }
   if (!cat.extName?.message) fail(`[${loc}] extName missing/empty`);
+  if (cat.extName?.message && len(cat.extName.message) > TITLE_MAX) {
+    fail(`[${loc}] extName is ${len(cat.extName.message)} chars (max ${TITLE_MAX})`);
+  }
   if (cat.extSummary?.message && len(cat.extSummary.message) > SUMMARY_MAX) {
     fail(`[${loc}] extSummary is ${len(cat.extSummary.message)} chars (max ${SUMMARY_MAX})`);
   }

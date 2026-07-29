@@ -31,8 +31,17 @@ helper, the packaging allowlist, the test-harness shim). Adding a language is no
 1. **Pick the locale code** = the `_locales` folder name (BCP-47 with `_`, e.g. `pt_BR`, `zh_TW`).
 2. **Translate the catalog:** copy `_locales/en/messages.json` → `_locales/<loc>/messages.json` and translate every `message` (a few hundred keys — sizeable, not a quick edit); a subagent per language works well (one file each, no conflicts).
 3. **ASO title/summary (NOT a literal translation):**
-   - `extName` = keep the `Open Book — ` brand + that language's real "reader mode" search term (de `Lesemodus`, es `Modo Lectura`, fr `Mode Lecture`, ja `リーダーモード`, ru `Режим чтения`, pt_BR `Modo de Leitura`, zh_CN `阅读模式`).
-   - `extSummary` ≤ **132 chars** for that locale (verify — Romance/Cyrillic run long).
+   - `extName` = keep the `Open Book — ` brand, then 2-3 keywords, ≤ **75 chars**. **Pick them
+     by measurement, not translation:** `npm run ranking` prints, per locale, how many
+     extensions compete for a term and where we sit. Target terms whose result page is NOT
+     full (<10 results) — those are winnable. Skip head terms (`reader mode`, `reader view`
+     and their translations): they return a full page everywhere and we rank for none of them
+     even when the exact words are in the title, so they are install-gated, not title-gated.
+   - `extSummary` ≤ **132 chars** for that locale (verify — Romance/Cyrillic run long). The
+     store indexes this text too, not just the title (we rank #1 for German `Bildergalerie`,
+     which is absent from the German title) — so put the long-tail vocabulary here (webtoon,
+     manga, gallery, download) rather than bloating the name.
+   - Both limits are enforced by `npm run verify:locales` (runs as `pretest`).
 4. **Detailed description:** translate `.meta/LISTING.md`'s Description into `.meta/listings/<loc>.txt` (keep the 22 bullets, the GitHub URL, and the keyboard shortcuts verbatim; weave the local reader-mode terms; ASO, not literal).
 5. **Verify:** `npm run verify:locales` (parity, placeholders, tokens, char limits, src/manifest coverage). Then `npm test` — it runs the verify as `pretest` AND exercises the localized UI. **Read the exit code / full summary, never a `tail`.**
 6. **Eyeball it:** `./scripts/test-locale.sh <loc>` launches an isolated Chrome for Testing in that language with the extension + a test article (check `de`/`ru` for toolbar overflow — long words).

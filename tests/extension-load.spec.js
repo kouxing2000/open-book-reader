@@ -45,9 +45,17 @@ test('Chrome loads the shipped manifest (name + minimal install permissions)', a
   expect(manifest.minimum_chrome_version).toBe('102');
 
   // The resolved English (default-locale) store name lives in the messages catalog.
+  // Assert the INVARIANTS, not the exact copy: the title is ASO-tuned and gets
+  // rewritten whenever `npm run ranking` says a keyword is winnable, so pinning the
+  // literal string only guarantees this test breaks on every marketing edit while
+  // catching no bug. What must hold is that the catalog resolves at all (a broken
+  // __MSG_extName__ ships an extension literally named "__MSG_extName__") and that
+  // the name stays inside the store's hard 75-character limit.
   await page.goto(`chrome-extension://${extensionId}/_locales/en/messages.json`);
   const messages = JSON.parse(await page.locator('body').innerText());
-  expect(messages.extName.message).toBe('Open Book — Reader View');
+  expect(messages.extName.message).toMatch(/^Open Book\b/);
+  expect(messages.extName.message.length).toBeLessThanOrEqual(75);
+  expect(messages.extSummary.message.length).toBeLessThanOrEqual(132);
 });
 
 // Regression: onInstalled and onStartup BOTH fire in one worker activation when Chrome

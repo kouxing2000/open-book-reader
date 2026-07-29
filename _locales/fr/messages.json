@@ -1,9 +1,9 @@
 {
   "extName": {
-    "message": "Open Book — Mode Lecture"
+    "message": "Open Book — Mode Lecture, Vue Lecture & Galerie d'Images"
   },
   "extSummary": {
-    "message": "Mode lecture sans distraction : tout article comme un livre à deux pages. Galerie d’images incluse. Privé, open source."
+    "message": "Lisez les articles comme un livre à deux pages. Galerie d'images pour webtoons et mangas. Privé, open source."
   },
 
   "readerBtnFontSmallerTitle": { "message": "Réduire la police (−)" },

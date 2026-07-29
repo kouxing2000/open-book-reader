@@ -1,9 +1,9 @@
 {
   "extName": {
-    "message": "Open Book — 阅读模式"
+    "message": "Open Book — 阅读模式、阅读视图、图片画廊"
   },
   "extSummary": {
-    "message": "专注无干扰的阅读模式:把文章变成双页书,用方向键翻页阅读。附带图片库。注重隐私,开源。"
+    "message": "把网页文章变成可翻页的双页书。图片画廊支持条漫、漫画和图片批量下载。完全本地,开源免费。"
   },
 
   "readerBtnFontSmallerTitle": { "message": "缩小字体 (−)" },

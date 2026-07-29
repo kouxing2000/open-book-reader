@@ -1,9 +1,9 @@
 {
   "extName": {
-    "message": "Open Book — Lesemodus"
+    "message": "Open Book — Lesemodus, Leseansicht & Bildergalerie"
   },
   "extSummary": {
-    "message": "Ablenkungsfreier Lesemodus: Artikel als zweiseitiges Buch lesen, mit Pfeiltasten blättern. Plus Bildergalerie. Privat, quelloffen."
+    "message": "Artikel als zweiseitiges Buch lesen, mit Pfeiltasten blättern. Bildergalerie für Webtoons und Manga. Privat, quelloffen."
   },
 
   "readerBtnFontSmallerTitle": { "message": "Kleinere Schrift (−)" },

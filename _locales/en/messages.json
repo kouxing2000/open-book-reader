@@ -1,11 +1,11 @@
 {
   "extName": {
-    "message": "Open Book — Reader View",
-    "description": "Extension name — the Chrome Web Store title AND the label in the toolbar / chrome://extensions. For each locale, localize with that language's 'reader mode' search term for ASO, keeping the 'Open Book' brand (e.g. de: 'Open Book — Lesemodus', es: 'Open Book — Modo Lectura')."
+    "message": "Open Book — Two-Page Reader View & Image Gallery",
+    "description": "Extension name — the Chrome Web Store title AND the label in the toolbar / chrome://extensions. HARD max 75 chars. Keep the 'Open Book' brand, then 2-3 keywords for that language. Pick them by MEASUREMENT, not translation: run `npm run ranking` and target terms whose result page is NOT full (<10 results) — those are winnable. Do NOT spend title space on head terms like 'reader view'/'reader mode'; we rank for neither despite 'Reader View' having been in this title, so they are install-gated, not title-gated."
   },
   "extSummary": {
-    "message": "Distraction-free reader mode: read articles as a two-page book you flip with arrows. Plus an image gallery. Private, open source.",
-    "description": "Store short description / summary shown under the title. HARD max 132 characters — verify each locale's translation stays under the limit."
+    "message": "Read articles as a two-page book you flip with arrows. Image gallery for webtoons, manga, photos. Private, open source.",
+    "description": "Store short description / summary shown under the title. HARD max 132 characters — verify each locale's translation stays under the limit. The store INDEXES this text, not just the title (proof: we rank #1 for German 'Bildergalerie', which is not in the German title), so long-tail vocabulary — webtoon, manga, gallery, download — belongs here rather than bloating the name."
   },
 
   "readerBtnFontSmallerTitle": { "message": "Smaller font (−)" },

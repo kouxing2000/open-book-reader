@@ -36,6 +36,9 @@ see `docs/auto-open-spec.md`).
 
 ```
 manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage, contextMenus)
+                     `name` is the ASO-tuned store title (long, keyword-bearing); `short_name`
+                     ("Open Book", ≤12 chars) is what Chrome shows where space is tight —
+                     toolbar, chrome://extensions. Keep it, or the store title leaks into the UI.
 src/background.js    service worker — the only always-loaded script; injects the engine on gesture
 src/content/
   settings.js        shared globalThis.OBR namespace + DEFAULTS + load/saveSettings (storage.sync)
@@ -173,7 +176,16 @@ npm run package          # zip the allowlist (manifest.json + icons/ + src/) →
 npm run deploy           # upload via Web Store API (publishes unless AUTO_PUBLISH=false)
 npm run bump -- minor    # bump manifest+package version in lock-step, commit + tag vX.Y.Z
 npm run screenshots      # render store images → store-assets/ (gitignored)
+npm run ranking          # store-search rank per keyword/locale → metrics/ (gitignored)
 ```
+
+- **Measuring an ASO/title change** → `npm run ranking` before and after, and read
+  `scripts/check-store-ranking.mjs`'s header first. It documents the trap that already cost
+  one bogus "we're absent from search" conclusion: parse rank from `data-item-id`, never from
+  the result URL (our slug contains `%E2%80%94`, the encoded em dash, which naive character
+  classes silently skip), and always cross-check the raw body for the extension id — a parser
+  that yields empty on an unmatched shape looks exactly like a genuine absence. The script
+  fails loudly on that mismatch instead of reporting a clean zero.
 
 - **Tag-driven CI release** (`.github/workflows/release.yml`): `npm run bump -- minor` (or
   `patch`/`major`/`X.Y.Z`), then `git push --follow-tags`. Pushing a `v*` tag runs the suite, packages,
@@ -196,7 +208,10 @@ npm run screenshots      # render store images → store-assets/ (gitignored)
   Confirm ownership with `GET /chromewebstore/v1.1/items/<id>?projection=DRAFT` (200 = owns it). The
   full publish runbook is kept in the maintainer's private `~/.claude` config, not this repo.
 - **Packaging is allowlist-based** (`SHIP_FILES`/`SHIP_DIRS` in `package-extension.js`): only
-  `manifest.json`, `icons/`, `src/` ship — dev files can't leak. `READABILITY-LICENSE.md` and
+  `manifest.json`, `icons/`, `src/`, `_locales/` ship — dev files can't leak. `_locales/` is
+  load-bearing, not optional: every `__MSG_*__` in the manifest (name, description, command
+  descriptions) resolves from it, so the store title/summary are PACKAGE data — there is no
+  dashboard field for them and only a release can change them. `READABILITY-LICENSE.md` and
   `QRCODE-LICENSE.md` ship too (both live under `src/content/`, and the licenses require the notice
   beside the vendored code).
 - **Privacy-practices gate**: adding a new permission blocks `publish` until you write its
