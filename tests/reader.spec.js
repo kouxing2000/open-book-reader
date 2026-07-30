@@ -227,10 +227,13 @@ test('a click in the edge band does not turn the page while text is selected', a
    The default viewport (1280px) gives 2 columns/spread, so these run the book path. */
 const flipLayers = (page) => page.locator('#obr-host >> .obr-flip-layer').count();
 
+// The turn is deliberately slowed so the synchronously-built leaf reliably outlives the query
+// round-trip even under load — a fast default turn can finish before count() runs. Every wait
+// downstream is expressed as a MULTIPLE of this, never as a flat millisecond number.
+const TURN_MS = 1200;
+
 test('the book page-turn floats a transient leaf and then cleans it up', async ({ page }) => {
-  // Slow the turn so the (synchronously-built) leaf reliably outlives the query round-trip
-  // even under load — otherwise a fast default turn can finish before count() runs.
-  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'book', transitionMs: 1200 }));
+  await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'book', transitionMs: ms }), TURN_MS);
   await openReader(page);
   // Let the late font/image relayout fire first — layout() ends any in-flight turn, so flipping
   // before it settles would legitimately abort the leaf we're about to assert on.
@@ -239,7 +242,12 @@ test('the book page-turn floats a transient leaf and then cleans it up', async (
 
   await page.keyboard.press('ArrowRight');
   expect(await flipLayers(page)).toBe(1);            // built synchronously in the flip handler
-  await expect.poll(() => flipLayers(page), { timeout: 3000 }).toBe(0); // torn down when it finishes
+  // Teardown fires when the turn ENDS, so this budget has to scale with TURN_MS. It was a flat
+  // 3000ms — only 2.5x the transition this same test slows down to 1200ms — which held locally
+  // but failed on the first attempt AND the retry on a loaded CI runner, blocking the v1.7.2
+  // release (2026-07-29). A leaf that genuinely leaks is NEVER removed, so a generous ceiling
+  // costs no sensitivity: this still fails closed on the bug it exists to catch.
+  await expect.poll(() => flipLayers(page), { timeout: TURN_MS * 6 }).toBe(0);
 });
 
 test('the book turn settles to the exact same state as the plain flip (additive overlay)', async ({ page }) => {
