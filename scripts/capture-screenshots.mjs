@@ -10,68 +10,16 @@
  *   HEADED=true node scripts/capture-screenshots.mjs
  */
 import { chromium } from '@playwright/test';
-import http from 'http';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { ROOT, OUT, serveFixtures, inject, wait, preparePage } from './lib/capture-harness.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-const FIXTURES = path.join(ROOT, 'tests', 'fixtures');
-const CONTENT = path.join(ROOT, 'src', 'content');
-const OUT = path.join(ROOT, 'store-assets');
 const W = 1280, H = 800;
 const PORT = 5177;
 
-const CONTENT_FILES = ['settings.js', 'readability.js', 'reader.style.js', 'reader.js', 'zip.js', 'gallery.js'].map((f) =>
-  path.join(CONTENT, f)
-);
-
-// chrome.storage.sync shim (localStorage-backed) for the injected main-world scripts.
-function storageShim() {
-  const KEY = '__obr_shot_store';
-  const read = () => JSON.parse(localStorage.getItem(KEY) || '{}');
-  globalThis.chrome = globalThis.chrome || {};
-  globalThis.chrome.storage = {
-    sync: {
-      get: (keys, cb) => {
-        const all = read();
-        const list = keys == null ? Object.keys(all) : Array.isArray(keys) ? keys : [keys];
-        const out = {};
-        for (const k of list) if (k in all) out[k] = all[k];
-        cb(out);
-      },
-      set: (items, cb) => {
-        localStorage.setItem(KEY, JSON.stringify({ ...read(), ...items }));
-        if (cb) cb();
-      },
-    },
-    onChanged: { addListener: () => {} },
-  };
-}
-
-function serveFixtures() {
-  const TYPES = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.js': 'text/javascript' };
-  return http
-    .createServer((req, res) => {
-      const rel = (decodeURIComponent((req.url || '/').split('?')[0]) || '/').replace(/^\/+/, '') || 'demo-article.html';
-      const file = path.join(FIXTURES, rel);
-      if (!file.startsWith(FIXTURES) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
-        res.writeHead(404).end('not found');
-        return;
-      }
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'text/plain' });
-      fs.createReadStream(file).pipe(res);
-    })
-    .listen(PORT);
-}
-
-async function inject(page) {
-  for (const f of CONTENT_FILES) await page.addScriptTag({ path: f });
-}
-
-const wait = (page, ms) => page.evaluate((d) => new Promise((r) => setTimeout(r, d)), ms);
+// The capture harness (page prep, fixture server, script injection, wait) lives in
+// lib/capture-harness.mjs. Get the page from preparePage() — never construct one by hand.
 
 // Compose a 1280x800 before/after hero from two full-viewport screenshots (PNG buffers):
 // a cluttered source page on the left, the Open Book Reader result on the right.
@@ -118,7 +66,7 @@ async function composeBeforeAfter(page, beforeBuf, afterBuf, out, opts) {
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  const server = serveFixtures();
+  const server = serveFixtures(PORT);
   const base = `http://localhost:${PORT}`;
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obr-shots-'));
   const headed = process.env.HEADED === 'true';
@@ -136,8 +84,7 @@ async function main() {
   if (!sw) sw = await ctx.waitForEvent('serviceworker');
   const extId = sw.url().split('/')[2];
 
-  const page = ctx.pages()[0] || (await ctx.newPage());
-  await page.addInitScript(storageShim);
+  const page = await preparePage(ctx);
 
   const shots = [];
   const snap = async (name) => {
@@ -240,6 +187,63 @@ async function main() {
   await wait(page, 300);
   await page.locator('.tile').screenshot({ path: path.join(OUT, 'promo-440x280.png') });
   shots.push('promo-440x280.png');
+
+  // 7) Video thumbnail — 1280x720, the poster frame for promo-video.mp4.
+  //
+  // This is NOT a YouTube-browse asset: it is what the store's media carousel and Product
+  // Hunt show before anyone presses play. Left to YouTube's auto-pick it would choose from
+  // three frames of a video whose opening beat is a deliberately ad-choked page, so the
+  // store tile would advertise clutter. It lives here rather than in its own script because
+  // this is the stills script and it already owns the screenshot -> data-URI -> HTML card
+  // -> screenshot composer that the caption band needs.
+  //
+  // 16:9, so the viewport changes here; nothing pins it (no recordVideo in this script).
+  // NOTE: it is NOT restored — this must stay the LAST beat, or any store shot appended
+  // after it comes out 1280x720 and the Web Store rejects it.
+  await page.setViewportSize({ width: 1280, height: 720 });
+  // Park the cursor away from the topbar. Shot 02 above deliberately left it at (640, 8),
+  // and scheduleHideChrome() does not arm the hide timer while the pointer is over the
+  // controls — so inheriting that position could keep the toolbar up through the wait below.
+  await page.mouse.move(640, 700);
+  await page.goto(`${base}/demo-article.html`);
+  await page.evaluate(() => globalThis.localStorage.setItem('__obr_shot_store', JSON.stringify({
+    obr_settings: { maxBookWidth: 980, theme: 'paper', columns: 2, fontSize: 26, lineHeight: 1.72 },
+  })));
+  await inject(page);
+  await page.evaluate(() => globalThis.OBR.open());
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  // The mouse is never moved here, so the reader's controls auto-hide and the frame is
+  // pure book — no toolbar. (Shot 02 above deliberately does the opposite.)
+  await wait(page, 2400);
+  const thumbBuf = await page.screenshot();
+  fs.writeFileSync(path.join(OUT, 'thumbnail-clean.png'), thumbBuf);
+  shots.push('thumbnail-clean.png');
+
+  // Captioned variant. Small-size legibility is the whole job of a thumbnail: an untexted
+  // page reads as generic once the carousel shrinks it. Reuses the tagline already on the
+  // promo tile rather than inventing new marketing copy.
+  await page.setContent(`<!doctype html><meta charset="utf-8">
+    <style>
+      html,body{margin:0;width:1280px;height:720px;overflow:hidden}
+      .wrap{position:relative;width:1280px;height:720px}
+      .shot{width:100%;height:100%;object-fit:cover;display:block}
+      .band{position:absolute;left:0;right:0;bottom:0;height:190px;
+        background:linear-gradient(to top,rgba(46,38,26,.94) 0%,rgba(46,38,26,.88) 58%,rgba(46,38,26,0) 100%);
+        display:flex;align-items:flex-end;justify-content:center;padding-bottom:58px}
+      h1{margin:0;font-family:Georgia,"Songti SC",serif;font-size:56px;font-weight:600;
+        color:#f4ead6;letter-spacing:.3px;text-align:center;text-shadow:0 2px 10px rgba(0,0,0,.35)}
+    </style>
+    <div class="wrap">
+      <img class="shot" src="data:image/png;base64,${thumbBuf.toString('base64')}">
+      <div class="band"><h1>Read the web like an open book</h1></div>
+    </div>`);
+  // Await DECODE, not just load: setContent resolves on 'load', which guarantees
+  // img.complete but not that the ~190KB data-URI has been rastered into the frame the
+  // screenshot grabs. Losing that race yields a caption band over an empty page.
+  await page.evaluate(() => Promise.all([...document.images].map((i) => i.decode().catch(() => {}))));
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.screenshot({ path: path.join(OUT, 'thumbnail-text.png') });
+  shots.push('thumbnail-text.png');
 
   await ctx.close();
   fs.rmSync(userDataDir, { recursive: true, force: true });

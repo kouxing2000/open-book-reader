@@ -27,7 +27,8 @@
     "deploy": "node scripts/deploy-to-store.js",
     "release": "npm run package && npm run deploy",
     "metrics": "node scripts/track-metrics.mjs",
-  "ranking": "node scripts/check-store-ranking.mjs"
+    "ranking": "node scripts/check-store-ranking.mjs",
+    "promo": "node scripts/capture-promo.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

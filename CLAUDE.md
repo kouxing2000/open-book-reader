@@ -175,9 +175,20 @@ no-SSR / paywalled page returns an empty snapshot — not a bug.)
 npm run package          # zip the allowlist (manifest.json + icons/ + src/) → dist.zip
 npm run deploy           # upload via Web Store API (publishes unless AUTO_PUBLISH=false)
 npm run bump -- minor    # bump manifest+package version in lock-step, commit + tag vX.Y.Z
-npm run screenshots      # render store images → store-assets/ (gitignored)
+npm run screenshots      # store images + the 1280x720 video thumbnails → store-assets/ (gitignored)
+npm run promo            # promo video + flip mp4/gif, from ONE recording → store-assets/
 npm run ranking          # store-search rank per keyword/locale → metrics/ (gitignored)
 ```
+
+- **Marketing-asset capture** (`npm run screenshots` / `npm run promo`) drives the REAL unpacked
+  extension through Playwright — never a mockup. Both share `scripts/lib/capture-harness.mjs`;
+  get the page from its `preparePage(ctx)` and never build one by hand, because that is what
+  applies the `chrome.storage` **and `chrome.i18n`** shims. Without the i18n shim the injected
+  main-world scripts have no `chrome.i18n`, so `OBR.t()` echoes the raw key and any asset
+  showing the reader's toolbar renders `readerBtnThemeLabel` / `readerPageIndicator` as visible
+  text — it has already shipped that way once. `npm run promo` cuts all three video artifacts
+  out of a single recording, so the storyboard's forward-then-back flips are also what makes
+  the GIF loop seamlessly; don't split them back apart.
 
 - **Measuring an ASO/title change** → `npm run ranking` before and after, and read
   `scripts/check-store-ranking.mjs`'s header first. It documents the trap that already cost
