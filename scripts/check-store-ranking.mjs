@@ -61,14 +61,20 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
 
 // Keywords worth tracking per locale: the terms in our title, plus the category
 // head terms we do NOT hold, so a title change shows up as movement either way.
+//
+// KEEP THE BETS IN HERE. The 2026-07-29 retitle was placed on three specific
+// uncontested terms — de `Leseansicht`, pt-BR `leitura sem distração`, ja `縦読み` —
+// and two of them were missing from this list, so the before/after diff could not
+// see the very outcome the change was made for. If you tune the listing for a term,
+// add it here in the same edit or the experiment is unmeasurable.
 const KEYWORDS = {
   en: ['open book reader', 'reader view', 'reader mode', 'reading mode', 'two page reader', 'book reader', 'image gallery'],
   de: ['Lesemodus', 'Leseansicht', 'Bildergalerie'],
   es: ['Modo Lectura', 'Vista de Lectura', 'Galería de Imágenes'],
   fr: ['Mode Lecture', 'Lecture Simplifiée', "Galerie d'Images"],
-  'pt-BR': ['Modo de Leitura', 'Modo Leitor', 'Galeria de Imagens'],
+  'pt-BR': ['Modo de Leitura', 'Modo Leitor', 'Galeria de Imagens', 'leitura sem distração'],
   ru: ['Режим чтения', 'читалка', 'галерея изображений'],
-  ja: ['リーダーモード', 'リーダービュー', '画像ギャラリー'],
+  ja: ['リーダーモード', 'リーダービュー', '画像ギャラリー', '縦読み'],
   'zh-CN': ['阅读模式', '阅读器', '阅读视图', '图片画廊'],
 };
 
