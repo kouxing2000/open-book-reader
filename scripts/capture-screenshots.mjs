@@ -13,7 +13,7 @@ import { chromium } from '@playwright/test';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { ROOT, OUT, serveFixtures, inject, wait, preparePage } from './lib/capture-harness.mjs';
+import { ROOT, OUT, serveFixtures, inject, wait, preparePage, closeCapture } from './lib/capture-harness.mjs';
 
 const W = 1280, H = 800;
 const PORT = 5177;
@@ -73,7 +73,12 @@ async function main() {
   const args = [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`];
   if (!headed) args.push('--headless=new');
 
-  const ctx = await chromium.launchPersistentContext(userDataDir, {
+  // try/finally so a failure part-way through the shot list still releases the fixture
+  // port and the temp profile — a leaked port is what makes the NEXT run die on EADDRINUSE.
+  let ctx = null;
+  let closed = false;
+  try {
+  ctx = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
     args,
     viewport: { width: W, height: H },
@@ -246,11 +251,15 @@ async function main() {
   shots.push('thumbnail-text.png');
 
   await ctx.close();
-  fs.rmSync(userDataDir, { recursive: true, force: true });
-  server.close();
+  closed = true;
 
   console.log(`\nCaptured ${shots.length} screenshots -> ${path.relative(ROOT, OUT)}/`);
   shots.forEach((s) => console.log('  ' + s));
+  } finally {
+    // Port FIRST: it must never be held hostage to a browser that won't exit.
+    server.close();
+    await closeCapture(ctx, closed, [userDataDir]);
+  }
 }
 
 main().catch((e) => {

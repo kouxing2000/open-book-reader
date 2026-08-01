@@ -12,6 +12,7 @@
 // zip supplies OBR._buildZip for the gallery's ZIP download. Reordering breaks the engine.
 
 import http from 'http';
+import { execFileSync } from 'node:child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -129,3 +130,46 @@ export async function inject(page) {
 
 /** Wait on the PAGE's clock, so the pause lands in the recorded video's timeline. */
 export const wait = (page, ms) => page.evaluate((d) => new Promise((r) => setTimeout(r, d)), ms);
+
+// SIGKILL anything still holding this run's unique --user-data-dir. Mirrors
+// tests/fixtures.js's killByProfile; the dir is a fresh mkdtemp path, so it cannot match
+// another run, let alone another program.
+function killByProfile(dir) {
+  let out = '';
+  try { out = execFileSync('ps', ['-axww', '-o', 'pid=,command='], { encoding: 'utf8' }); }
+  catch { return; } // no ps — nothing safe to do here
+  for (const line of out.split('\n')) {
+    if (line.indexOf(dir) === -1) continue;
+    const pid = parseInt(line, 10);
+    if (pid > 0) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+  }
+}
+
+/**
+ * Tear a capture context down WITHOUT letting it hang the cleanup behind it.
+ *
+ * tests/fixtures.js documents (reproduced on macOS across three bundled Chromium builds,
+ * and below Playwright with a bare spawn) that Chromium ignores the graceful SIGTERM and
+ * never exits, so `context.close()` never settles. A `finally` that simply awaits close()
+ * therefore never reaches the lines after it — leaking exactly the temp dirs it was added
+ * to remove, and hanging instead of exiting. So: bound the close, then hard-kill by
+ * profile dir, then remove the dirs with retries (signal delivery is instant, process
+ * teardown is not, and Chromium may still be flushing the profile — without retries an
+ * ENOTEMPTY/EBUSY race throws out of `finally` and REPLACES the real error).
+ *
+ * @param {import('playwright-core').BrowserContext|null} ctx
+ * @param {boolean} alreadyClosed  skip the close (the caller closed it to finalize a video)
+ * @param {string[]} dirs          temp dirs to remove; the first is the browser profile
+ */
+export async function closeCapture(ctx, alreadyClosed, dirs) {
+  if (ctx && !alreadyClosed) {
+    await Promise.race([
+      ctx.close().catch(() => {}),
+      new Promise((r) => setTimeout(r, 1500)),
+    ]);
+  }
+  if (dirs[0]) killByProfile(dirs[0]);
+  for (const d of dirs) {
+    if (d) fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}

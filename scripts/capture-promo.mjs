@@ -33,7 +33,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { ROOT, OUT, serveFixtures, inject, wait, preparePage } from './lib/capture-harness.mjs';
+import { ROOT, OUT, serveFixtures, inject, wait, preparePage, closeCapture } from './lib/capture-harness.mjs';
 
 const OUT_VIDEO = path.join(OUT, 'promo-video.mp4');
 const OUT_FLIP_MP4 = path.join(OUT, 'promo-flip.mp4');
@@ -98,7 +98,14 @@ async function main() {
   const args = [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`];
   if (process.env.HEADED !== 'true') args.push('--headless=new');
 
-  const ctx = await chromium.launchPersistentContext(userDataDir, {
+  // Everything below runs inside try/finally: the four ffmpeg calls happen AFTER the
+  // browser closes, so without this an ffmpeg failure would leak both temp dirs (one
+  // holding the raw multi-MB .webm) and leave the fixture port bound — which is exactly
+  // what makes the NEXT run die on EADDRINUSE.
+  let ctx = null;
+  let closed = false;
+  try {
+  ctx = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
     args,
     viewport: { width: W, height: H },
@@ -151,8 +158,15 @@ async function main() {
 
   // ---- 4. the second mode -------------------------------------------------------
   await page.goto(`${base}/demo-gallery-cluttered.html`);
+  // Wait for the images to actually BE there, not just for a timer. galleryImgEntry()
+  // drops images that aren't `complete` and carry no lazy attribute, so opening the
+  // gallery on a blind timer records a half-empty wall — into a marketing asset, with
+  // no error. capture-screenshots.mjs already gates the same fixture this way.
+  await page.waitForFunction(
+    () => document.images.length >= 12 && Array.from(document.images).every((i) => i.complete)
+  );
   await page.evaluate(() => document.fonts && document.fonts.ready);
-  await wait(page, 1200);           // the cluttered image page first
+  await wait(page, 900);            // the cluttered image page first
   await inject(page);               // scripts are per-page; re-inject after navigation
   await page.evaluate(() => globalThis.OBR.openGallery());
   await wait(page, 2000);
@@ -167,9 +181,8 @@ async function main() {
 
   const video = page.video();
   await ctx.close();                // finalizes the .webm — must precede video.path()
+  closed = true;
   const webm = await video.path();
-  server.close();
-  fs.rmSync(userDataDir, { recursive: true, force: true });
 
   const ff = (a) => execFileSync('ffmpeg', a, { stdio: ['ignore', 'ignore', 'inherit'] });
   const at = (t) => Math.max(0, (t - recStart) / 1000);
@@ -193,12 +206,16 @@ async function main() {
   ff(['-y', '-ss', String(fss), '-t', String(fdur), '-i', webm, '-i', palette,
       '-lavfi', `${vf} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=3`, '-loop', '0', OUT_FLIP_GIF]);
 
-  fs.rmSync(videoDir, { recursive: true, force: true });
   const mb = (p) => (fs.statSync(p).size / 1048576).toFixed(1);
   console.log(`\n${flips} flips each way · ${((tEnd - t0) / 1000).toFixed(1)}s storyboard · silent · ${W}x${H}`);
   console.log(`  video -> ${path.relative(ROOT, OUT_VIDEO)}     (${mb(OUT_VIDEO)} MB)`);
   console.log(`  flip  -> ${path.relative(ROOT, OUT_FLIP_MP4)}  (${mb(OUT_FLIP_MP4)} MB)`);
   console.log(`  gif   -> ${path.relative(ROOT, OUT_FLIP_GIF)}  (${mb(OUT_FLIP_GIF)} MB)`);
+  } finally {
+    // Port FIRST: it must never be held hostage to a browser that won't exit.
+    server.close();
+    await closeCapture(ctx, closed, [userDataDir, videoDir]);
+  }
 }
 
 main().catch((e) => {

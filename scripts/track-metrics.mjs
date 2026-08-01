@@ -13,9 +13,8 @@
 //
 // Usage:
 //   node scripts/track-metrics.mjs          # scrape + append today's row
-//   node scripts/track-metrics.mjs --debug  # also print the rendered header text
+//   node scripts/track-metrics.mjs --debug  # also print the scoped text corpus
 
-import { chromium } from '@playwright/test';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,28 +50,68 @@ function parseCount(s) {
   return Math.round(n * mult);
 }
 
-const browser = await chromium.launch();
-try {
-  const page = await browser.newPage();
-  await page.goto(STORE_URL, { waitUntil: 'networkidle', timeout: 60000 });
+// The listing is SERVER-RENDERED: users, version, rating and the ratings count are all in
+// the raw HTML, which is why check-store-ranking.mjs reads the same store with plain fetch.
+// This used to boot headless Chromium for a pure data-read — seconds of browser startup per
+// run, on a script meant to be run repeatedly.
+//
+// Read by STABLE TEXT anchors ("N users", "x out of 5", "N ratings"), never by class name:
+// the markup is obfuscated and its class names rotate on every Google rebuild.
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+  + '(KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
-  // Scope to the listing header so we don't pick up "related extensions" stats.
-  // The DOM uses hashed class names, so we read by structure: the first heading
-  // matching the extension name, then the surrounding header block's text.
-  const header = await page.evaluate(() => {
-    const name = document.querySelector('h1')?.innerText || '';
-    // The header section contains the rating + user count near the H1.
-    const h1 = document.querySelector('h1');
-    let scope = h1;
-    for (let i = 0; i < 6 && scope?.parentElement; i++) scope = scope.parentElement;
-    return { name, text: (scope || document.body).innerText };
-  });
+// Node's fetch has no body timeout, so a stalled store response would hang this forever.
+const res = await fetch(`${STORE_URL}?hl=en`, {
+  headers: { 'User-Agent': UA }, redirect: 'follow', signal: AbortSignal.timeout(60_000),
+});
+if (!res.ok) {
+  console.error(`[track-metrics] store page returned HTTP ${res.status} — not writing a row`);
+  process.exit(1);
+}
+const html = await res.text();
 
-  if (DEBUG) {
-    console.log('--- header text ---\n' + header.text + '\n-------------------');
-  }
+// LIVENESS GUARD — the check that makes an empty parse honest.
+// The store answers HTTP 200 for a nonexistent or delisted ID: a bogus 32-char ID returns
+// 200 and a ~510KB page redirected to /detail/empty-title/<id>. Without a guard every
+// extract comes back empty and we append `<date>,,,,<ver>,not-shown-yet` — BYTE-IDENTICAL
+// to the legitimate "below the display threshold" row already in this CSV. A takedown, a
+// suspension, an ID typo, or an interstitial would record "still below threshold" forever,
+// flatlining the trend at the exact moment it should scream.
+//
+// NOT `html.includes(EXT_ID)` — measured, that passes on the bogus page too (the id is
+// echoed in the redirected URL). The VERSION FIELD is the real discriminator: absent on
+// the empty-title page, present on any live listing. Same marker chrome-public.mjs uses
+// for exactly this decision.
+const liveVersion = (html.match(/>Version<\/div>\s*<div[^>]*>\s*([^<]+?)\s*</i) || [])[1]?.trim();
+if (!liveVersion) {
+  console.error(`[track-metrics] no Version field for ${EXT_ID} — delisted, wrong ID, or an interstitial. Not writing a row.`);
+  process.exit(1);
+}
 
-  const t = header.text;
+// Strip <script> AND <style> before the tags: innerText excluded both, and this page
+// carries ~450KB of CSS — leaving it in makes the searched corpus ~40x larger than the
+// visible text and lets declarations like `user-select:none` match /users?\b/.
+//
+// Then cut at the first boundary marker between the main item and the "Related" carousel.
+// The carousel renders ~20 more "out of 5" scores belonging to OTHER extensions; a sibling
+// script recorded a neighbour's rating for weeks exactly this way. Scoping the corpus makes
+// that structural rather than a first-match race we happen to keep winning.
+const stripped = html
+  .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/\s+/g, ' ');
+const bounds = [/Learn more about results and reviews/i, /\bRelated\b/]
+  .map((re) => stripped.search(re))
+  .filter((i) => i >= 0);
+const t = bounds.length ? stripped.slice(0, Math.min(...bounds)) : stripped;
+
+if (DEBUG) {
+  console.log(`--- scoped corpus (${t.length} of ${stripped.length} chars) ---\n`
+    + t.slice(0, 1200) + '\n----------------------------');
+}
+
+{
   // "No ratings" means the listing shows a placeholder "0 out of 5" — record it as
   // empty (no rating yet), not a literal 0/5 score.
   const hasRatings = !/No ratings/i.test(t);
@@ -86,7 +125,7 @@ try {
     users: parseCount(usersRaw) ?? '',
     rating: ratingRaw || '',
     ratingCount: parseCount(ratingCountRaw) ?? '',
-    version: manifest.version || '',
+    version: liveVersion || manifest.version || '', // the LIVE one — local may be ahead of review
     usersRaw: usersRaw || 'not-shown-yet', // empty user count = below store display threshold
   };
 
@@ -103,6 +142,4 @@ try {
   writeFileSync(OUT, lines.join('\n') + '\n');
 
   console.log(`[track-metrics] ${date}  users=${row.users || '(not shown yet)'}  rating=${row.rating || 'n/a'}  ratings=${row.ratingCount || 0}`);
-} finally {
-  await browser.close();
 }
