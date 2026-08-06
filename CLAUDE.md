@@ -206,6 +206,12 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
   CI re-verifies the tag matches `manifest.json`. Repo secrets:
   `CHROME_EXTENSION_ID`/`CLIENT_ID`/`CLIENT_SECRET`/`REFRESH_TOKEN` (account-scoped — only the
   extension ID differs per extension).
+- **A tag push runs the workflow file from THAT TAG's tree, not from `master`.** So a guard added to
+  `release.yml` today protects nothing on an older tag that gets re-pushed or moved — every existing
+  `v*` tag carries its own copy of the workflow as it was when that tag was cut. Consequence: before
+  moving or re-pushing any `v*` tag, `gh workflow disable "Release to Chrome Web Store"` first (and
+  re-enable after); editing `master`'s workflow is not a substitute. `master` is also protected by two
+  zero-bypass rulesets (`deletion` + `non_fast_forward`) on the default branch and on `refs/tags/v*`.
 - **Local deploy** uses `.env.chrome-webstore` (gitignored; copy from `.env.chrome-webstore.example`,
   then `npm run get-token`). Local keeps `AUTO_PUBLISH=false`; only CI publishes.
 - **Publisher + release account** (the source of a long 1.1.0 release outage): this extension is published
