@@ -23,6 +23,10 @@ TODO.md
 REFACTOR-PLAN.md
 /.deleted
 
+# Raw user-feedback emails staged for triage — third-party PII (reporter addresses, names,
+# message bodies). Never belongs in a public repo (RULE #1); triage reads them locally.
+.feedback/
+
 # Internal portfolio/marketing metadata + store metrics — kept locally, not published (RULE #1).
 # `.meta` is a gitignored symlink to off-repo private storage; the entry has NO trailing slash
 # so it matches the symlink itself (a symlink is not a directory) and can never be committed.
