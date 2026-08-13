@@ -158,6 +158,8 @@
   "welcomeRate": { "message": "Valorar ★" },
 
   "actionTitle": { "message": "Open Book — Modo Lectura (Alt+B)" },
+  "actionCannotRunHere": { "message": "Open Book Reader no puede funcionar en esta página: el navegador bloquea las extensiones aquí. Pruébalo en una página de artículo." },
+  "actionReloadNeeded": { "message": "Recarga esta página para usar Open Book Reader: la extensión se actualizó mientras esta pestaña estaba abierta." },
   "cmdToggleReader": { "message": "Alternar lector (texto)" },
   "cmdToggleGallery": { "message": "Alternar galería de imágenes" },
   "welcomeTitle": { "message": "Todo listo" },

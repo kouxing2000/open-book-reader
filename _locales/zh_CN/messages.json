@@ -158,6 +158,8 @@
   "welcomeRate": { "message": "评分 ★" },
 
   "actionTitle": { "message": "Open Book — 阅读模式 (Alt+B)" },
+  "actionCannotRunHere": { "message": "浏览器在此页面禁用了扩展，Open Book Reader 无法运行。请在文章页面上试试。" },
+  "actionReloadNeeded": { "message": "请重新加载此页面以使用 Open Book Reader（标签页打开期间扩展已更新）。" },
   "cmdToggleReader": { "message": "切换阅读器(文本)" },
   "cmdToggleGallery": { "message": "切换图库" },
   "welcomeTitle": { "message": "一切就绪" },

@@ -158,6 +158,8 @@
   "welcomeRate": { "message": "Оценить ★" },
 
   "actionTitle": { "message": "Open Book — Режим чтения (Alt+B)" },
+  "actionCannotRunHere": { "message": "Open Book Reader не работает на этой странице: браузер здесь блокирует расширения. Попробуйте на странице со статьёй." },
+  "actionReloadNeeded": { "message": "Обновите эту страницу, чтобы использовать Open Book Reader: расширение обновилось, пока эта вкладка была открыта." },
   "cmdToggleReader": { "message": "Переключить режим чтения (текст)" },
   "cmdToggleGallery": { "message": "Переключить галерею изображений" },
   "welcomeTitle": { "message": "Всё готово" },

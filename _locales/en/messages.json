@@ -160,6 +160,8 @@
   "welcomeRate": { "message": "Rate ★" },
 
   "actionTitle": { "message": "Open Book — Reader View (Alt+B)" },
+  "actionCannotRunHere": { "message": "Open Book Reader can't run on this page — the browser blocks extensions here. Try it on an article page." },
+  "actionReloadNeeded": { "message": "Reload this page to use Open Book Reader — the extension was updated while this tab was open." },
   "cmdToggleReader": { "message": "Toggle reader (text)" },
   "cmdToggleGallery": { "message": "Toggle image gallery" },
   "welcomeTitle": { "message": "You're all set" },

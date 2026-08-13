@@ -158,6 +158,8 @@
   "welcomeRate": { "message": "Bewerten ★" },
 
   "actionTitle": { "message": "Open Book — Lesemodus (Alt+B)" },
+  "actionCannotRunHere": { "message": "Open Book Reader kann auf dieser Seite nicht laufen – der Browser blockiert hier Erweiterungen. Probiere es auf einer Artikelseite." },
+  "actionReloadNeeded": { "message": "Lade diese Seite neu, um Open Book Reader zu verwenden – die Erweiterung wurde aktualisiert, während dieser Tab offen war." },
   "cmdToggleReader": { "message": "Lesemodus umschalten (Text)" },
   "cmdToggleGallery": { "message": "Bildergalerie umschalten" },
   "welcomeTitle": { "message": "Alles bereit" },

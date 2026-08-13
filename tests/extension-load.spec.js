@@ -357,3 +357,80 @@ test('stopAutoOpen clears the auto flag, keeps the mode, and releases the site g
   // …and only THAT site's origins are handed back; the untouched rule keeps its grant.
   expect(out.removed).toEqual([{ origins: ['*://stopme.test/*', '*://www.stopme.test/*'] }]);
 });
+
+
+// The two ways a trigger does NOTHING from the user's seat. Each also logs a console.warn, but
+// that lands in a console no ordinary user opens — so without a badge a dead click is all they
+// get, which is indistinguishable from a broken extension.
+test('a blocked page gets a "!" badge + tooltip, and Chrome retires it on navigation', async ({ page, serviceWorker }) => {
+  // Learn the tab id from the navigation itself. tabs.query({active, currentWindow}) hands
+  // back a DIFFERENT tab here (the fixture's worker-wake page leaves another window focused),
+  // and querying by URL needs the `tabs` permission this extension deliberately doesn't hold —
+  // so the badge would land on a tab Playwright cannot navigate, and every assertion about what
+  // a navigation does to it would be vacuous.
+  await serviceWorker.evaluate(() => {
+    globalThis.__navTab = null;
+    chrome.tabs.onUpdated.addListener((id, info) => { if (info && info.status === 'loading') globalThis.__navTab = id; });
+  });
+  await page.goto('/');
+  const tabId = await serviceWorker.evaluate(() => globalThis.__navTab);
+  expect(tabId, 'the test must act on the tab Playwright drives').toBeTruthy();
+
+  const shown = await serviceWorker.evaluate(async (id) => {
+    await invokeReader(id, 'chrome://settings/', 'auto', {}); // the URL guard's early return
+    return { text: await chrome.action.getBadgeText({ tabId: id }), title: await chrome.action.getTitle({ tabId: id }) };
+  }, tabId);
+  expect(shown.text).toBe('!');
+  expect(shown.title).toContain("can't run on this page"); // the tooltip carries the message
+
+  // The tooltip must resolve from the CATALOG, not from the English fallback baked into
+  // background.js: the two strings are identical, so a typo'd key would read correctly here
+  // while silently shipping English to the other seven locales. Resolve the key the code uses.
+  const resolved = await serviceWorker.evaluate(() => ({
+    blocked: chrome.i18n.getMessage(FAILURE_TEXT.blocked[0]),
+    reload: chrome.i18n.getMessage(FAILURE_TEXT.reload[0]),
+  }));
+  expect(resolved.blocked).not.toBe('');
+  expect(resolved.reload).not.toBe('');
+
+  // The state expires on its own. background.js registers NO tabs.onUpdated listener to clear
+  // it (that listener would wake the worker on every navigation in every tab); it relies on
+  // Chrome dropping tab-specific badge text + title when the tab does a cross-document
+  // navigation. That is the load-bearing assumption, so pin BOTH halves of it here.
+  //   1. a same-document (SPA) navigation must NOT clear it — the diagnosis is still true…
+  await page.evaluate(() => history.pushState({}, '', '/?spa=1'));
+  await page.waitForTimeout(300);
+  expect(await serviceWorker.evaluate((id) => chrome.action.getBadgeText({ tabId: id }), tabId)).toBe('!');
+  //   2. …and a real navigation must, tooltip included.
+  await page.goto('/article.html');
+  await expect.poll(() => serviceWorker.evaluate((id) => chrome.action.getBadgeText({ tabId: id }), tabId)).toBe('');
+  const title = await serviceWorker.evaluate((id) => chrome.action.getTitle({ tabId: id }), tabId);
+  expect(title).not.toContain("can't run on this page");
+  expect(title).not.toBe(''); // back to the extension's own tooltip, not a blank one
+
+  // Auto-open has nobody waiting on a click, so it stays console-only.
+  const auto = await serviceWorker.evaluate(async (id) => {
+    await invokeReader(id, 'chrome://settings/', 'auto', { auto: true });
+    return chrome.action.getBadgeText({ tabId: id });
+  }, tabId);
+  expect(auto).toBe('');
+});
+
+test('an orphaned engine gets the "reload this page" state, not another dead click', async ({ page, serviceWorker }) => {
+  await page.goto('/');
+  const out = await serviceWorker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const real = chrome.scripting.executeScript;
+    // Content scripts surviving a previous extension instance can't be staged headlessly, so
+    // stub the page PROBE to report what that state looks like — engine loaded, extension
+    // context dead. Everything after the probe (skip injection, dispatch into a corpse) is the
+    // real code path, and it is exactly the silent no-op the user cannot diagnose unaided.
+    chrome.scripting.executeScript = async () => [{ result: { engine: true, gallery: false, ctxAlive: false, reader: null, gal: null } }];
+    try {
+      await invokeReader(tab.id, 'http://localhost:5099/article.html', 'auto', {});
+    } finally { chrome.scripting.executeScript = real; }
+    return { text: await chrome.action.getBadgeText({ tabId: tab.id }), title: await chrome.action.getTitle({ tabId: tab.id }) };
+  });
+  expect(out.text).toBe('!');
+  expect(out.title).toContain('Reload this page');
+});

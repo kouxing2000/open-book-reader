@@ -81,6 +81,34 @@ it, and cleared in a `finally` on every exit path. (Not an absolute guarantee: i
 evicted mid-timer the `finally` never runs, which is why auto-open skips the badge entirely — see
 the `invokeReader` comment in `background.js`.)
 
+## The two FAILURE states (badge `!` + tooltip)
+
+A trigger that cannot run at all gets the same surface, in red: `showFailure(tabId, state)` sets a
+one-glyph `!` badge and puts the whole message in the **tooltip** (Chrome shows ~4 badge
+characters). `chrome.action` is the only surface that survives these failures — on a restricted page
+nothing of ours can be injected, so an in-page toast is impossible exactly where it is needed most.
+Two states, keyed in `FAILURE_TEXT` (i18n key + English fallback, read like `src/permission.js`):
+
+- **`blocked`** — `actionCannotRunHere`. The page forbids injection: the `chrome|edge|about|…:` URL
+  guard, plus its backstop in the `catch` (a restricted tab reports no `tab.url` to a worker holding
+  no host access, so the guard short-circuits and `executeScript` throws).
+- **`reload`** — `actionReloadNeeded`. The orphaned engine (`st.engine && !st.ctxAlive`): only a page
+  reload can replace content scripts left over from a previous extension instance.
+
+Three structural rules, each of which the code would be wrong without:
+
+- `runInvoke` RETURNS the state; `invokeReader` paints it. That keeps one call site per state, lets
+  the URL guard's early return reach the same painter, and — critically — runs the paint *after*
+  `runInvoke`'s `finally { clearWorking() }`, which would otherwise wipe the badge it just set.
+- **Gesture only.** Same `!(opts && opts.auto)` rule as `showWorking`: an auto-open has nobody
+  waiting on a click. Its `console.warn` still fires.
+- **Nothing clears it, deliberately.** Chrome drops tab-specific badge text AND title on a
+  cross-document navigation (reloads included), and does NOT on a same-document one — which is
+  exactly the wanted behaviour, since neither state can be fixed without a real load. A
+  `tabs.onUpdated` listener to do this by hand is redundant AND is the one thing that would wake
+  this worker on every navigation in every tab. Both halves are pinned by
+  `tests/extension-load.spec.js`; if a future Chrome stops clearing, that test goes red.
+
 ## ACCEPTED LIMITATION — a cold start shows nothing (WONTFIX, closed 2026-07-24)
 
 The badge covers the INJECTION only, never the worker's own boot before it. `showWorking()` is

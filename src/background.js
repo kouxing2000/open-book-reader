@@ -105,6 +105,48 @@ function clearWorking(tabId) {
   try { chrome.action.setBadgeText({ tabId, text: '' }, () => void chrome.runtime.lastError); } catch (e) { /* */ }
 }
 
+/* ------------------------------------------------------------ failure states
+ * The two ways a trigger can do NOTHING from the user's seat: the page forbids injection
+ * ('blocked'), or the page carries an orphaned engine that only a reload can replace
+ * ('reload'). Both used to report to the service-worker console alone, so all the user saw
+ * was a dead click — indistinguishable from a broken extension.
+ *
+ * Painted on the ACTION (badge + tooltip) because that is the only surface that survives the
+ * failure: on a restricted page we cannot inject anything, so an in-page toast is impossible
+ * exactly where it is most needed, while chrome.action needs no permission and works on any
+ * tab. The badge is one glyph (Chrome shows ~4 characters) — the TOOLTIP carries the message. */
+const FAILURE_BADGE = '!';
+const FAILURE_COLOR = '#c5221f'; // red; must not read as the '...' working badge (#7c6cff)
+// Key + English fallback, read the way src/permission.js reads its strings: a missing catalog
+// entry still says something usable instead of surfacing a bare key.
+const FAILURE_TEXT = {
+  blocked: ['actionCannotRunHere',
+    "Open Book Reader can't run on this page — the browser blocks extensions here. Try it on an article page."],
+  reload: ['actionReloadNeeded',
+    'Reload this page to use Open Book Reader — the extension was updated while this tab was open.'],
+};
+function i18nOr(key, fallback) {
+  try { return (chrome.i18n && chrome.i18n.getMessage(key)) || fallback; } catch (e) { return fallback; }
+}
+
+/* NOTHING CLEARS THIS STATE, on purpose. Chrome drops tab-specific badge text AND title on a
+ * cross-document navigation of that tab (reloads included), so the '!' expires exactly when
+ * its diagnosis does, with no listener of ours — and a tabs.onUpdated listener is the one
+ * thing that would wake this worker on every navigation in every tab, which for an on-demand
+ * extension is a real cost for nothing. Same-document (SPA) navigation does NOT clear it, and
+ * must not: neither state can be fixed without a real load, so the message stays true. Both
+ * halves are pinned by a test in tests/extension-load.spec.js — if a future Chrome stops
+ * clearing, that test goes red and this comment is the thing to revisit. */
+function showFailure(tabId, state) {
+  const msg = FAILURE_TEXT[state];
+  if (!msg) return;
+  try {
+    chrome.action.setBadgeBackgroundColor({ tabId, color: FAILURE_COLOR }, () => void chrome.runtime.lastError);
+    chrome.action.setBadgeText({ tabId, text: FAILURE_BADGE }, () => void chrome.runtime.lastError);
+    chrome.action.setTitle({ tabId, title: i18nOr(msg[0], msg[1]) }, () => void chrome.runtime.lastError);
+  } catch (e) { /* tab gone */ }
+}
+
 // mode: 'text' (reader), 'images' (masonry gallery), or 'auto' (toolbar icon —
 // pick the mode by how many images the page has; see the func below).
 // opts.auto: the auto-open sentinel triggered this (no gesture): dispatch calls
@@ -113,10 +155,22 @@ function clearWorking(tabId) {
 // "Auto-opened" chip.
 async function invokeReader(tabId, url, mode, opts) {
   if (!tabId) { swLog('invokeReader: NO TAB ID — nothing to inject into'); return; }
+  const failure = await runInvoke(tabId, url, mode, opts);
+  if (!failure) return;
+  // Show the state only for a real user GESTURE — an auto-open has nobody waiting on a click,
+  // so an unprompted error badge there is wrong (the console.warn still fires either way).
+  // And only HERE, after runInvoke's `finally` has cleared the working badge: setting it any
+  // earlier would hand the cleanup the very state it is meant to leave behind.
+  if (!(opts && opts.auto)) showFailure(tabId, failure);
+}
+
+// The actual work. Returns the user-visible failure state ('blocked' | 'reload'), or null when
+// the trigger landed — invokeReader above owns painting it, so each state has ONE call site.
+async function runInvoke(tabId, url, mode, opts) {
   // Don't try to inject into restricted pages.
   if (url && /^(chrome|edge|about|chrome-extension|edge-extension|view-source):/i.test(url)) {
     swLog('invokeReader: restricted page, skipping —', url);
-    return;
+    return 'blocked';
   }
   swLog('invokeReader: mode=' + mode, 'tab=' + tabId, 'url=' + (url ? 'visible' : 'HIDDEN (restricted or no activeTab yet)'));
 
@@ -125,6 +179,7 @@ async function invokeReader(tabId, url, mode, opts) {
   // adds NO per-invoke storage read (which would slow the very thing we're measuring).
   const dbg = !!OBR._debug;
   const t = dbg && OBR._timer ? OBR._timer('[OBR sw]') : null;
+  let failure = null; // 'reload' / 'blocked' — returned to the caller, which paints it
 
   // Only for a real user gesture: an auto-open has no one waiting on a click, so a badge
   // there would appear unprompted (and could stick if the worker is evicted mid-timer).
@@ -168,6 +223,7 @@ async function invokeReader(tabId, url, mode, opts) {
         + 'extension instance (chrome.runtime.id is undefined). Injection is skipped and every '
         + 'dispatch is a no-op. RELOAD THE PAGE — re-injection cannot fix this '
         + '(the double-injection guards block it).');
+      failure = 'reload'; // …and say the same thing on the toolbar, where the user will see it
     }
     if (!st.engine) {
       await chrome.scripting.executeScript({ target: { tabId }, files: FILES });
@@ -234,9 +290,13 @@ async function invokeReader(tabId, url, mode, opts) {
     // already follow). This is the backstop; the guard is the fast path.
     console.warn('[OpenBookReader] cannot open on this page:', (err && err.message) || err);
     swLog('invokeReader FAILED:', (err && err.message) || err);
+    // Same user-facing state as the URL guard above — this IS that guard's miss (and any other
+    // page we simply cannot inject into). The guard is the fast path; this is the backstop.
+    failure = 'blocked';
   } finally {
     clearWorking(tabId); // never leave a stuck badge, on success or failure
   }
+  return failure;
 }
 
 chrome.action.onClicked.addListener((tab) => {

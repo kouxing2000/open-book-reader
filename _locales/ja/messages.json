@@ -158,6 +158,8 @@
   "welcomeRate": { "message": "評価 ★" },
 
   "actionTitle": { "message": "Open Book — リーダーモード (Alt+B)" },
+  "actionCannotRunHere": { "message": "このページでは Open Book Reader を利用できません。ブラウザが拡張機能をブロックしています。記事ページでお試しください。" },
+  "actionReloadNeeded": { "message": "このページを再読み込みすると Open Book Reader を利用できます。タブを開いたまま拡張機能が更新されました。" },
   "cmdToggleReader": { "message": "リーダーの切り替え（テキスト）" },
   "cmdToggleGallery": { "message": "画像ギャラリーの切り替え" },
   "welcomeTitle": { "message": "準備完了" },
