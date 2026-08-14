@@ -448,7 +448,9 @@
     :host { all: initial; }
     * { box-sizing: border-box; }
     .wrap {
-      position: fixed; inset: 0; z-index: 2147483646;
+      /* CSS maximum — see the note in reader.style.js: one below it loses to any site layer
+         that takes the max, and the gallery then opens invisibly. */
+      position: fixed; inset: 0; z-index: 2147483647;
       background: #0d0d0f; color: #e8e8ea;
       font: 14px/1.4 -apple-system, system-ui, "PingFang SC", sans-serif;
       display: flex; flex-direction: column;

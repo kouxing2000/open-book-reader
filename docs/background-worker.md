@@ -109,6 +109,37 @@ Three structural rules, each of which the code would be wrong without:
   this worker on every navigation in every tab. Both halves are pinned by
   `tests/extension-load.spec.js`; if a future Chrome stops clearing, that test goes red.
 
+**The badge cannot be the only channel** — it is invisible to anyone who has not PINNED the icon
+(an unpinned extension lives behind the puzzle menu) and its message needs a hover nobody performs.
+So each state also gets a surface that survives that, chosen by what the page permits:
+
+| state | page | second surface |
+| --- | --- | --- |
+| `blocked` | nothing of ours can run | `action.setPopup` armed for THAT TAB → `src/blocked.html`, so the click has an answer; plus that page opened once per profile as a tab (`obr_blocked_seen`) |
+| `reload` | a normal page — the probe just ran there | `showReloadNotice()` injects `src/content/notice.js` and draws an in-page banner with a **Reload page** button: unmissable, and one click fixes it |
+
+`setPopup` is per-tab on purpose: a manifest `default_popup` is mutually exclusive with
+`action.onClicked` and would end one-click-to-read everywhere (the WONTFIX below). Chrome clears a
+tab-specific popup on navigation exactly as it clears the badge — **verified, and pinned by test**,
+because if it ever stopped, a restricted tab would keep the popup after navigating to a real
+article and the icon would never open the reader there again.
+
+`notice.js` is injected ALONE for the reload case and carries two hard constraints, both from the
+orphaned world it runs in: no `chrome.*` (every call there throws) and no `chrome.i18n`, so the
+worker resolves the strings and passes them as `args`.
+
+## Reporting a page that doesn't work
+
+`OBR.reportBroken()` opens the bundled `src/report.html` with diagnostics in the URL fragment. Every
+in-overlay entry point (the reader's ⚠ Report, the gallery's, the colophon's) needs a reader that
+opened AND is visible — precisely what a broken site denies. So the context menu carries
+**`obr-report-page`**, which runs entirely in the worker: no content script, no injection, so it
+still works when the overlay is covered, deleted, or never drawn. It calls the shared
+`openReportPage()`, which builds the meta via `OBR._buildReportMeta({ pageUrl })` — the `pageUrl`
+override exists because inside the worker `location` is the worker's own `chrome-extension://` URL.
+The reader's paint verdict (`OBR._paintCheck`, see `docs/reader.md`) rides along in `meta.failure`,
+so a report names the element that covered the reader instead of needing a reproduction.
+
 ## ACCEPTED LIMITATION — a cold start shows nothing (WONTFIX, closed 2026-07-24)
 
 The badge covers the INJECTION only, never the worker's own boot before it. `showWorking()` is

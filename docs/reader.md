@@ -152,6 +152,32 @@ positions persist to `chrome.storage.LOCAL` (NOT sync — per-device, can be man
 sync quota) as one bounded, LRU-pruned map `obr_positions` keyed by `origin+pathname`. No new
 permission — `storage` already covers `storage.local`.
 
+## Did the reader actually APPEAR? (the paint check)
+
+`active` is a claim about our own state, not about the screen — and two page behaviours make it a
+lie, both indistinguishable from a dead trigger and neither fixable by reloading. `paintCheck()`
+(reader.js) tests the claim against what is PAINTED: `elementFromPoint` at the middle of the
+viewport, which returns the shadow HOST for anything inside our root. It runs ~400ms after opening
+(late enough for layout and for a lazy widget to insert itself) and again whenever the host is
+removed. The verdict lands on `OBR._paintCheck` and rides into a report as `meta.failure`, so "it
+doesn't work on this site" arrives naming the cause.
+
+- **Covered.** The overlay takes the CSS-maximum z-index (`reader.style.js`) so it beats any site
+  layer already on the page — at an equal z-index our host wins, being appended later. What it
+  CANNOT beat is a layer inserted *after* we open, or the top layer (an open `<dialog>`, a
+  fullscreen element), which outranks every z-index. Those get `{state:'covered', by:'<el> z=…'}`
+  and the `notice.js` banner, which is itself appended last and so is visible even then.
+- **Host removed.** A framework that rebuilds the children of `<html>` deletes our host. The
+  retained reference still owns the shadow root, the paginated content and the position, so the
+  watcher re-appends it — a recovery, not a re-open. **Once**: a page that wipes on a schedule
+  would otherwise become an endless duel, so a second removal reports instead.
+
+The watcher is `childList` on `documentElement` only, never `subtree` — our host is a direct child,
+so that one mutation list is the whole surface, and it stays blind to everything the page does
+inside `<body>`. `tests/silent-failure.spec.js` drives both against `tests/fixtures/hostile-page.html`,
+a normal article that takes one hostile trait per `?mode=` — the file to extend when a new "it
+doesn't work on this site" report arrives.
+
 ## Content override — when extraction picks the wrong block
 
 **Content override — when extraction picks the WRONG block** (`reader.js`, plus pick storage in

@@ -21,6 +21,7 @@ export const CONTENT_FILES = [
   path.join(CONTENT, 'reader.style.js'),
   path.join(CONTENT, 'qrcode.js'),   // vendored QR encoder (print branding); loads before reader.js
   path.join(CONTENT, 'reader.js'),
+  path.join(CONTENT, 'notice.js'), // OBR._notice — the page-level banner reader.js falls back to
 ];
 
 // Image-gallery mode needs settings + zip (for ZIP downloads) + gallery.

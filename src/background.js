@@ -24,8 +24,13 @@ const FILES = [
   'src/content/qrcode.js',       // vendored qrcode-generator (MIT); the print branding QR
   'src/content/reader.js',       // text engine; exposes OBR.toggle()
   'src/content/zip.js',          // OBR._buildZip (used by gallery's ZIP download)
-  'src/content/gallery.js'       // image-gallery mode; exposes OBR.toggleGallery()
+  'src/content/gallery.js',      // image-gallery mode; exposes OBR.toggleGallery()
+  'src/content/notice.js'        // OBR._notice — the page-level banner (reader.js paint check)
 ];
+
+// The banner alone, for a page where the ENGINE cannot be trusted to draw anything (an orphaned
+// isolated world). Self-contained by design — see the constraints at the top of notice.js.
+const NOTICE_FILES = ['src/content/notice.js'];
 
 /* Trigger tracing (only when OBR.debugTiming(true) — see settings.js). Answers "did my click
  * even reach the worker?", which is the question a silent first trigger raises. `swAge` is
@@ -144,7 +149,61 @@ function showFailure(tabId, state) {
     chrome.action.setBadgeBackgroundColor({ tabId, color: FAILURE_COLOR }, () => void chrome.runtime.lastError);
     chrome.action.setBadgeText({ tabId, text: FAILURE_BADGE }, () => void chrome.runtime.lastError);
     chrome.action.setTitle({ tabId, title: i18nOr(msg[0], msg[1]) }, () => void chrome.runtime.lastError);
+    // The badge is invisible to anyone who has not PINNED the icon (an unpinned extension lives
+    // behind the puzzle menu), and its message needs a hover to read. So each state also gets a
+    // surface that survives that: a click target here, and — where the page allows drawing at
+    // all — the in-page banner below.
+    if (state === 'blocked') armBlockedPopup(tabId);
   } catch (e) { /* tab gone */ }
+}
+
+/* A popup armed for ONE TAB. Clicking the icon there opens a small bundled page instead of
+ * firing action.onClicked, so the dead click gets an answer — while every other tab keeps the
+ * direct one-click-to-read path (a manifest `default_popup` would end that everywhere, which is
+ * why the global popup was rejected: docs/background-worker.md). Chrome drops the per-tab popup
+ * on navigation exactly as it drops the badge, so nothing here needs cleaning up (verified;
+ * tests/extension-load.spec.js pins it — if it ever stopped, a restricted tab would keep a popup
+ * after navigating to a real article and the icon would never open the reader again). */
+function armBlockedPopup(tabId) {
+  try {
+    chrome.action.setPopup({ tabId, popup: 'src/blocked.html' }, () => void chrome.runtime.lastError);
+  } catch (e) { /* tab gone */ }
+  // First time ever, open the explanation instead of waiting to be found: the badge may be
+  // hidden and the popup needs a click nobody knows to make. Once per profile, never again.
+  try {
+    chrome.storage.local.get('obr_blocked_seen', (d) => {
+      void chrome.runtime.lastError;
+      if (d && d.obr_blocked_seen) return;
+      chrome.storage.local.set({ obr_blocked_seen: 1 }, () => void chrome.runtime.lastError);
+      try { chrome.tabs.create({ url: chrome.runtime.getURL('src/blocked.html') + '?first=1' }); } catch (e) { /* */ }
+    });
+  } catch (e) { /* storage unavailable — the popup still explains it */ }
+}
+
+/* The orphaned-engine case, where the badge is the weakest possible answer: the page is a normal
+ * one we CAN draw on (the probe just ran there), and the fix is a single click. So inject the
+ * banner and offer the reload. notice.js is injected on its own — the engine files would hit
+ * their own double-injection guards, and everything in that world's chrome.* is dead anyway. */
+async function showReloadNotice(tabId) {
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: NOTICE_FILES });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      // Strings are resolved HERE: chrome.i18n is part of the same invalidated context on that
+      // page, so the injected function must not look anything up.
+      func: (text, reload, dismiss) => {
+        const O = globalThis.OBR;
+        if (O && O._notice) O._notice({ text, actions: [{ label: reload, act: 'reload' }, { label: dismiss, act: 'dismiss' }] });
+      },
+      args: [
+        i18nOr('noticeReload', 'Open Book Reader was updated. Reload this page to use it here.'),
+        i18nOr('noticeReloadBtn', 'Reload page'),
+        i18nOr('noticeDismiss', 'Dismiss'),
+      ],
+    });
+  } catch (e) {
+    console.warn('[OpenBookReader] could not show the reload notice:', (e && e.message) || e);
+  }
 }
 
 // mode: 'text' (reader), 'images' (masonry gallery), or 'auto' (toolbar icon —
@@ -161,7 +220,9 @@ async function invokeReader(tabId, url, mode, opts) {
   // so an unprompted error badge there is wrong (the console.warn still fires either way).
   // And only HERE, after runInvoke's `finally` has cleared the working badge: setting it any
   // earlier would hand the cleanup the very state it is meant to leave behind.
-  if (!(opts && opts.auto)) showFailure(tabId, failure);
+  if (opts && opts.auto) return;
+  showFailure(tabId, failure);
+  if (failure === 'reload') showReloadNotice(tabId); // …and say it IN the page, where it is unmissable
 }
 
 // The actual work. Returns the user-visible failure state ('blocked' | 'reload'), or null when
@@ -367,6 +428,22 @@ function openOptionsPrefill(pattern) {
   } catch (e) { openPage(); }
 }
 
+/* Open the bundled report page with diagnostics in the URL #fragment (an extension page of our
+ * own, so the fragment never leaves the device; nothing is sent until the user submits from it).
+ * Takes EITHER a meta object a content script already built (the ⚠ Report relay) or a ctx to
+ * build one from here — the context-menu entry has no content script to ask, and importScripts
+ * has already given this worker the same shared builder. `pageUrl` must be passed in that case:
+ * inside the worker `location` is the worker's own chrome-extension:// URL. */
+function openReportPage(metaOrCtx) {
+  const m = metaOrCtx || {};
+  // A ctx carries `source`; a built meta carries `reportSource`. Only the former needs building.
+  const meta = m.reportSource ? m : OBR._buildReportMeta(m);
+  try {
+    const frag = encodeURIComponent(JSON.stringify(meta));
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/report.html') + '#' + frag });
+  } catch (e) { console.warn('[OpenBookReader] could not open the report page:', (e && e.message) || e); }
+}
+
 // The migrated siteRules from storage (a fresh array; [] on any failure). Used by
 // createMenus() to tailor the menu to the current site's saved state.
 function getSiteRules() {
@@ -468,6 +545,11 @@ function createMenus() {
     }
     // Footer — a jump to the full options page (scoped to this site), always available.
     await add({ id: 'obr-sep-opts', parentId: 'obr-open', type: 'separator', contexts: ctx });
+    // "This page doesn't work" — the ONLY report path that survives the failures worth
+    // reporting. Every in-overlay ⚠ Report button needs a reader that opened and is visible,
+    // which is precisely what a broken site denies; this one needs no content script at all,
+    // so it still works when the overlay is covered, deleted, or never drawn.
+    await add({ id: 'obr-report-page', parentId: 'obr-open', title: OBR.t('ctxReportPage'), contexts: ctx });
     await add({ id: 'obr-open-options', parentId: 'obr-open', title: OBR.t('ctxOptions'), contexts: ctx });
   }).catch((e) => {
     // Swallow so a failed build can't poison the chain for the next one — but say so.
@@ -687,6 +769,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   // The gesture-only actions don't need a rule host.
   if (act.do === 'open') return void invokeReader(tab.id, tab.url, act.mode, { incognito: tab.incognito });
   if (act.do === 'stop-auto') return stopAutoOpen(src);
+  if (act.do === 'report') return openReportPage({ source: 'context-menu', mode: 'none', pageUrl: src });
   if (act.do === 'auto-url') return void openOptionsPrefill(OBR._pathPatternForUrl(src));
   // Host-scoped actions. Gate on a parseable URL before normalizing: OBR.normalizeHost is lenient
   // (treats a non-URL as a bare host), so a garbage source would otherwise write a bogus rule.
@@ -957,10 +1040,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // bundled report page (first-party, offline) with the diagnostics in the URL #fragment (which
   // never leaves the device — it's the extension's own page). The page offers email or a web form.
   if (msg.type === 'obr-open-report') {
-    try {
-      const frag = encodeURIComponent(JSON.stringify(msg.meta || {}));
-      chrome.tabs.create({ url: chrome.runtime.getURL('src/report.html') + '#' + frag });
-    } catch (e) { /* */ }
+    openReportPage(msg.meta || {});
     sendResponse({ ok: true });
     return true;
   }

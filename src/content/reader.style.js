@@ -16,7 +16,13 @@
     :host { all: initial; }
     * { box-sizing: border-box; }
     .obr-overlay {
-      position: fixed; inset: 0; z-index: 2147483646;
+      /* The CSS MAXIMUM, deliberately — one below it (the old value) loses to every cookie
+         banner, chat widget and sticky ad frame that takes the maximum, and the reader then
+         opens correctly and invisibly, which is indistinguishable from a dead trigger and
+         cannot be fixed by reloading. At an equal z-index this still wins: the host is
+         appended when the reader opens, i.e. later in the document than the page's own
+         furniture. tests/silent-failure.spec.js pins it. */
+      position: fixed; inset: 0; z-index: 2147483647;
       display: flex; flex-direction: column; align-items: center;
       font-family: ${FONT_STACKS.sans}; animation: obr-fade .22s ease;
     }

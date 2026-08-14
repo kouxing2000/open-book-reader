@@ -271,11 +271,15 @@
   // (no query/hash) so session tokens can't leak even into a user-reviewed draft.
   OBR._buildReportMeta = function (ctx) {
     ctx = ctx || {};
+    // ctx.pageUrl overrides the ambient location: the service worker builds this too (the
+    // context-menu "report this page" entry, which must work with no content script alive),
+    // and there `location` is the WORKER's own chrome-extension:// URL.
     let pageUrl = '';
+    const src = ctx.pageUrl || (globalThis.location ? location.href : 'about:blank');
     try {
-      const u = new URL(globalThis.location ? location.href : 'about:blank');
+      const u = new URL(src);
       pageUrl = u.origin + u.pathname;
-    } catch (e) { pageUrl = String((globalThis.location && location.href) || '').split(/[?#]/)[0]; }
+    } catch (e) { pageUrl = String(src || '').split(/[?#]/)[0]; }
 
     const meta = {
       app: 'open-book-reader',
@@ -289,6 +293,11 @@
     };
     if (typeof ctx.imageCount === 'number') meta.imageCount = ctx.imageCount;
     if (typeof ctx.proseWords === 'number') meta.proseWords = ctx.proseWords;
+    // The reader's own verdict on whether it is actually the thing on screen (reader.js
+    // paintCheck), or the worker's on why it never ran at all. This is what turns "it doesn't
+    // work on this site" into a report that names the cause — no reproduction needed.
+    const fail = ctx.failure || (OBR._paintCheck && OBR._paintCheck.state !== 'ok' ? OBR._paintCheck : null);
+    if (fail) meta.failure = fail;
     return meta;
   };
 
@@ -417,6 +426,7 @@
       case 'obr-rule-auto-url': return { do: 'auto-url' };
       case 'obr-rule-auto-stop': return { do: 'stop-auto' };
       case 'obr-open-options': return { do: 'options' };
+      case 'obr-report-page': return { do: 'report' };
       default: return null;
     }
   };

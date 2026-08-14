@@ -2232,6 +2232,80 @@
     watchMedia(); // re-paginate once late-loading images / fonts settle
     if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
     OBR._opensCompleted = (OBR._opensCompleted || 0) + 1; // test hook: full inits that ran to completion
+    schedulePaintCheck();
+  }
+
+  /* ------------------------------------------------- did the reader actually appear?
+   * Every internal signal can say "opened" while the user sees nothing: the host can be
+   * removed by a framework that rebuilds the document, and the overlay can be painted under a
+   * site layer in the top layer (an open <dialog> or a fullscreen element beats any z-index).
+   * `active` cannot see either. So verify against what is PAINTED — elementFromPoint at the
+   * middle of the viewport, which returns the shadow HOST for anything inside our root.
+   *
+   * The verdict is kept on OBR._paintCheck and rides along in a report, so "it doesn't work on
+   * this site" arrives naming the element that covered us instead of needing a reproduction. */
+  let paintTimer = 0;
+  let reattached = false;
+  let hostWatch = null;
+  function schedulePaintCheck() {
+    clearTimeout(paintTimer);
+    // One check, ~400ms after opening: late enough for layout and for a lazy cookie/chat widget
+    // to have inserted itself, early enough that the user is still looking at the page.
+    paintTimer = setTimeout(() => { try { paintCheck(); } catch (e) { /* never break an open */ } }, 400);
+    // A timer alone cannot catch a re-render that lands LATER — and being deleted an hour into
+    // a long read is the same failure as being deleted immediately. childList on
+    // documentElement only (no subtree): our host is its direct child, so this fires on the one
+    // mutation that can remove it and stays blind to everything the page does inside <body>.
+    try {
+      if (!hostWatch) {
+        hostWatch = new MutationObserver(() => {
+          if (active && host && !host.isConnected) paintCheck();
+        });
+      }
+      hostWatch.observe(document.documentElement, { childList: true });
+    } catch (e) { /* no observer — the timed check still runs */ }
+  }
+
+  function describeEl(el) {
+    if (!el) return 'nothing';
+    const id = el.id ? '#' + el.id : '';
+    const cls = typeof el.className === 'string' && el.className
+      ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
+    let z = '';
+    try { z = getComputedStyle(el).zIndex; } catch (e) { /* */ }
+    return el.tagName.toLowerCase() + id + cls + (z && z !== 'auto' ? ' z=' + z : '');
+  }
+
+  function paintCheck() {
+    if (!active || !host) return;
+    // The host was deleted out from under us (a re-render of <html>). The shadow root and its
+    // content live on in this reference, so putting the host back restores the whole reader.
+    // Once only: a page that wipes on a schedule would otherwise get an endless duel.
+    if (!host.isConnected) {
+      if (reattached) return void verdict('host-removed', 'nothing');
+      reattached = true;
+      try { document.documentElement.appendChild(host); } catch (e) { return void verdict('host-removed', 'nothing'); }
+    }
+    const el = document.elementFromPoint(Math.round(innerWidth / 2), Math.round(innerHeight / 2));
+    if (el === host || (el && host.contains(el))) return void verdict('ok', '');
+    verdict('covered', describeEl(el));
+  }
+
+  function verdict(state, by) {
+    OBR._paintCheck = { state: state, by: by };
+    if (state === 'ok') return;
+    // Console first, unconditionally — the same rule the worker's failure paths follow.
+    try { console.warn('[OpenBookReader] the reader opened but is not what the page is showing: ' + state + (by ? ' (' + by + ')' : '')); } catch (e) { /* */ }
+    if (OBR._notice) {
+      OBR._notice({
+        text: OBR.t(state === 'covered' ? 'noticeCovered' : 'noticeHostRemoved'),
+        actions: [
+          { label: OBR.t('noticeReport'), act: 'report' },
+          { label: OBR.t('noticeDismiss'), act: 'dismiss' },
+        ],
+        source: 'paint-check',
+      });
+    }
   }
 
   // Records a USER-initiated dismissal (Esc, ✕, toolbar toggle-off) into the shared
@@ -2244,6 +2318,8 @@
     if (!active) return;
     if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
     if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
+    clearTimeout(paintTimer); // a close before the check lands must not nag about a closed reader
+    if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
     // Flush the reading position now (don't wait out the debounce — the tab may go away).

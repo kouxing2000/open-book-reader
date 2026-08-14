@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reproduction lab — a normal article, one hostile trait</title>
+  <meta name="author" content="Jane Quill">
+  <style>
+    body { font: 16px/1.6 Georgia, serif; max-width: 42em; margin: 0 auto; padding: 24px; }
+    nav { font: 13px sans-serif; color: #666; }
+    #lab { display: block; margin: 0 0 18px; }
+    figure { margin: 18px 0; } figure img { width: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <!-- A reproduction lab for "the reader just doesn't appear". The page is a NORMAL article;
+       ?mode= adds exactly ONE hostile trait that real sites exhibit, so each failure can be
+       reproduced by hand (load it, press Alt+B) and asserted headlessly. Baseline (no mode)
+       must always open normally — it is the control that proves the harness is honest. -->
+  <!-- The lab banner renders inside a shadow root: Readability walks the light DOM only, so the
+       instructions cannot become the "article" it extracts and skew every mode's result. -->
+  <div id="lab"></div>
+  <header><nav>Home · Essays · About</nav></header>
+  <article id="the-article">
+    <h1>The Art of Slow Reading</h1>
+    <p class="byline">By Jane Quill</p>
+    <p>There was a time when reading was an unhurried act, a slow turning of pages by candlelight or
+    lamplight, when a single book might occupy a reader for an entire winter. The page was a place to
+    dwell rather than a surface to skim, and the reader moved through it the way one walks through a
+    familiar garden, noticing the small things that reward a second glance.</p>
+    <p>Today the screen invites a different posture. We scan, we skip, we hunt for the one sentence
+    that confirms what we already suspected, and then we move on. The infinite scroll has trained the
+    eye to keep falling, never landing, never resting on a paragraph long enough to let it change us.
+    Speed is mistaken for comprehension, and the quiet pleasures of attention are quietly lost.</p>
+    <p>A slower reading is not nostalgia. It is a practical technique for holding an argument in the
+    mind long enough to test it, for letting a sentence finish before the next one begins, and for
+    noticing when a writer has quietly changed the subject. The reader who lingers is harder to
+    fool, because the trick of persuasion usually depends on momentum.</p>
+    <p>What the two-page book view restores is not decoration but a boundary. A page that ends is a
+    place to pause, and a pause is where understanding is assembled. The scroll removed the edge of
+    the page and, with it, the small punctuation of thought that the edge used to provide.</p>
+  </article>
+
+<script>
+/* Each mode reproduces ONE thing real sites do. Kept declarative — a `run` per mode — so a new
+   suspect is a new entry, not a new file. */
+const MODES = {
+  zfight: {
+    what: 'A site overlay at z-index 2147483647 — the CSS maximum, one above the reader’s ' +
+          '2147483646. Cookie banners, chat widgets and sticky ad frames use it routinely.',
+    expect: 'The reader OPENS but is painted under this layer: nothing appears to happen, and a ' +
+            'reload cannot help. Scroll is locked (the reader took it) — the tell that it is open.',
+    run() {
+      const d = document.createElement('div');
+      d.id = 'site-chat-widget';
+      d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;' +
+        'font:14px sans-serif;color:#333;padding:40px';
+      d.textContent = 'site widget painted above everything';
+      document.documentElement.appendChild(d);
+    },
+  },
+  zlate: {
+    what: 'The same max-z-index layer, but inserted AFTER the reader opens (a lazily-loaded ' +
+          'chat widget) — so it is later in the document than our host and wins the tie.',
+    expect: 'The reader is covered despite using the maximum z-index. The paint check notices ' +
+            'and the banner says so, offering Report.',
+    run() {
+      // Wait for the reader to exist, then cover it — the one ordering our z-index cannot beat.
+      new MutationObserver((_recs, obs) => {
+        if (!document.getElementById('obr-host')) return;
+        obs.disconnect();
+        const d = document.createElement('div');
+        d.id = 'late-chat-widget';
+        d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;' +
+          'font:14px sans-serif;color:#333;padding:40px';
+        d.textContent = 'late-loading site widget';
+        document.documentElement.appendChild(d);
+      }).observe(document.documentElement, { childList: true });
+    },
+  },
+  wipe: {
+    what: 'A framework re-render that replaces the children of <html> after load (the reader ' +
+          'host is a child of <html>, so this deletes it).',
+    expect: 'Whatever the reader drew disappears. Re-triggering rebuilds and is wiped again, so a ' +
+            'reload never helps.',
+    run() {
+      setTimeout(() => {
+        const keep = document.body.innerHTML;
+        document.documentElement.innerHTML = '<head><title>The Art of Slow Reading</title></head>' +
+          '<body>' + keep + '</body>';
+      }, 1200);
+    },
+  },
+  iframe: {
+    what: 'The article body lives in an <iframe>; the top document keeps only chrome. Scripts are ' +
+          'injected into the TOP frame only.',
+    expect: 'The reader opens and reports that it could not extract an article — the ⌖ Pick ' +
+            'recovery cannot reach into the frame either.',
+    run() {
+      const art = document.getElementById('the-article');
+      const html = '<!doctype html><meta charset="utf-8"><body>' + art.innerHTML + '</body>';
+      art.remove();
+      const f = document.createElement('iframe');
+      f.style.cssText = 'width:100%;height:70vh;border:0';
+      f.srcdoc = html;
+      document.body.appendChild(f);
+    },
+  },
+  images: {
+    what: 'An illustrated post: many images, little prose — what the toolbar icon’s auto-pick ' +
+          'was built to route to the gallery.',
+    expect: 'The toolbar icon opens the GALLERY, not read view. Alt+B still opens the reader. ' +
+            'From the user’s seat this reads as "it refused to turn the page into read view".',
+    run() {
+      document.querySelectorAll('#the-article p').forEach((p, i) => { if (i > 0) p.remove(); });
+      const art = document.getElementById('the-article');
+      for (let i = 0; i < 14; i++) {
+        const fig = document.createElement('figure');
+        const img = document.createElement('img');
+        // A distinct URL per image: imageCount() de-duplicates by resolved URL, so fourteen
+        // copies of one file count as ONE and the auto-pick never reaches the gallery.
+        img.src = '/pic.png?plate=' + i; img.width = 600; img.height = 400; img.alt = 'plate ' + (i + 1);
+        fig.appendChild(img);
+        art.appendChild(fig);
+      }
+    },
+  },
+};
+
+const mode = new URLSearchParams(location.search).get('mode') || '';
+const m = MODES[mode];
+const links = Object.keys(MODES)
+  .map((k) => '<a href="?mode=' + k + '">' + k + '</a>').join(' · ');
+document.getElementById('lab').attachShadow({ mode: 'open' }).innerHTML =
+  '<style>.lab{font:13px/1.5 sans-serif;background:#fffbe6;border:1px solid #e6d98a;' +
+  'color:#4a3f00;padding:10px 12px;border-radius:6px}.lab a{color:#6b4bd6}</style>' +
+  '<div class="lab"><b>Reproduction lab</b> — ' +
+  (m ? '<b>?mode=' + mode + '</b><br>' + m.what + '<br><i>Expected: ' + m.expect + '</i>'
+     : 'no mode: a plain article. The reader must open normally here.') +
+  '<br>modes: <a href="?">baseline</a> · ' + links + '</div>';
+if (m) m.run();
+</script>
+</body>
+</html>

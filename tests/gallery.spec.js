@@ -108,10 +108,13 @@ test.describe('image gallery', () => {
     await page.waitForFunction(() => window.__tinyImg?.complete && window.__tinyImg.naturalWidth === 40);
 
     await openGallery(page);
-    const hasSource = await page.evaluate(() =>
+    // POLL, don't read once: the <picture> is appended last, so its tile is the last the grid
+    // hydrates, and a single read races that chunk — the test then fails only under load (it
+    // did, in a full suite run, while passing every time the file ran alone).
+    await expect.poll(() => page.evaluate(() =>
       [...document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile img')]
-        .some((im) => (im.getAttribute('src') || '').includes('big-source.jpg')));
-    expect(hasSource).toBe(true); // the larger <source> survived; the picture isn't lost
+        .some((im) => (im.getAttribute('src') || '').includes('big-source.jpg'))))
+      .toBe(true); // the larger <source> survived; the picture isn't lost
   });
 
   test('lightbox uses the largest srcset variant while the grid keeps the thumbnail', async ({ page }) => {

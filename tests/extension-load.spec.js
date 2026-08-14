@@ -100,14 +100,15 @@ test('racing createMenus() calls rebuild the menu without duplicate-id errors', 
     return { builds, errs };
   });
 
-  // Positive landmark FIRST: both racing builds ran to completion, each creating all 14
+  // Positive landmark FIRST: both racing builds ran to completion, each creating all 15
   // ALWAYS-present items. (The fresh test profile has no rules, so the state-scoped
   // "Current selection"/"Stop"/"Clear" rows aren't created here — that's the whole point of the
   // redesign, and it's covered by the state-aware test below.) Without this, a build that
   // silently created nothing would satisfy the no-errors assertion.
   const ids = ['obr-open', 'obr-open-auto', 'obr-open-text', 'obr-open-images',
     'obr-sep', 'obr-configure-default', 'obr-def-auto', 'obr-def-text', 'obr-def-images',
-    'obr-sep2', 'obr-rule-auto', 'obr-rule-auto-url', 'obr-sep-opts', 'obr-open-options'];
+    'obr-sep2', 'obr-rule-auto', 'obr-rule-auto-url', 'obr-sep-opts', 'obr-report-page',
+    'obr-open-options'];
   const sorted = (a) => a.slice().sort();
   const want = JSON.stringify(sorted(ids));
   const complete = builds.filter((b) => JSON.stringify(sorted(b)) === want);
@@ -414,6 +415,69 @@ test('a blocked page gets a "!" badge + tooltip, and Chrome retires it on naviga
     return chrome.action.getBadgeText({ tabId: id });
   }, tabId);
   expect(auto).toBe('');
+});
+
+test('a blocked page also arms a per-tab popup, and navigation disarms it', async ({ page, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    globalThis.__navTab = null;
+    chrome.tabs.onUpdated.addListener((id, info) => { if (info && info.status === 'loading') globalThis.__navTab = id; });
+  });
+  await page.goto('/');
+  const tabId = await serviceWorker.evaluate(() => globalThis.__navTab);
+
+  const armed = await serviceWorker.evaluate(async (id) => {
+    // Suppress the once-per-profile explainer TAB so this test measures the popup alone.
+    await chrome.storage.local.set({ obr_blocked_seen: 1 });
+    await invokeReader(id, 'chrome://settings/', 'auto', {});
+    return { tab: await chrome.action.getPopup({ tabId: id }), global: await chrome.action.getPopup({}) };
+  }, tabId);
+  expect(armed.tab).toMatch(/src\/blocked\.html$/); // the click now has an answer…
+  expect(armed.global).toBe('');                    // …on THIS tab only
+
+  // THE load-bearing assumption. A per-tab popup suppresses action.onClicked for that tab, so if
+  // Chrome ever stopped clearing it on navigation, this tab would keep the popup after moving to
+  // a real article and the icon would never open the reader there again. Same lifecycle as the
+  // badge, which is why no listener of ours cleans it up.
+  await page.goto('/article.html');
+  await expect.poll(() => serviceWorker.evaluate((id) => chrome.action.getPopup({ tabId: id }), tabId)).toBe('');
+});
+
+test('the report path survives a page the reader cannot draw on: menu item + worker-built meta', async ({ serviceWorker }) => {
+  // Every ⚠ Report button lives inside an overlay, so the failures worth reporting are exactly
+  // the ones that hide it. This entry point runs entirely in the worker — no content script.
+  const created = await serviceWorker.evaluate(async () => {
+    const seen = [];
+    const real = chrome.contextMenus.create;
+    chrome.contextMenus.create = function (props, cb) {
+      return real.call(chrome.contextMenus, props, () => { void chrome.runtime.lastError; seen.push({ id: props.id, title: props.title }); if (cb) cb(); });
+    };
+    try { await createMenus(); } finally { chrome.contextMenus.create = real; }
+    return seen;
+  });
+  const item = created.find((m) => m.id === 'obr-report-page');
+  expect(item, 'the report entry must be in the menu').toBeTruthy();
+  expect(item.title).toBe('Report that this page doesn’t work…'); // resolved i18n, not a raw key
+  expect(await serviceWorker.evaluate(() => OBR._menuAction('obr-report-page'))).toEqual({ do: 'report' });
+
+  // …and it opens the bundled report page carrying the PAGE's url. Inside the worker `location`
+  // is the worker's own chrome-extension:// URL, so the url has to be passed in explicitly —
+  // this asserts the built meta, which is the whole value of the entry point.
+  const opened = await serviceWorker.evaluate(async () => {
+    const real = chrome.tabs.create;
+    let url = '';
+    chrome.tabs.create = (o) => { url = o.url; };
+    try { openReportPage({ source: 'context-menu', mode: 'none', pageUrl: 'https://news.test/story/7?utm=x#frag' }); }
+    finally { chrome.tabs.create = real; }
+    return url;
+  });
+  expect(opened).toContain('src/report.html#');
+  const meta = JSON.parse(decodeURIComponent(opened.split('#')[1]));
+  expect(meta.reportSource).toBe('context-menu');
+  expect(meta.app).toBe('open-book-reader');
+  expect(meta.version).toMatch(/^\d+\.\d+\.\d+$/);
+  // Query + fragment stripped, exactly as the in-page path strips them: a session token must
+  // not reach the draft even though the user reviews it before sending.
+  expect(meta.pageUrl).toBe('https://news.test/story/7');
 });
 
 test('an orphaned engine gets the "reload this page" state, not another dead click', async ({ page, serviceWorker }) => {

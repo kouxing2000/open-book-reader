@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title data-i18n="blockedPageTitle">Open Book Reader — not available here</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; }
+    body {
+      font-family: -apple-system, system-ui, "PingFang SC", sans-serif;
+      color: #222; background: #faf8f3; padding: 20px 22px 22px;
+      min-width: 280px; max-width: 420px;
+    }
+    @media (prefers-color-scheme: dark) { body { color: #ddd; background: #16171b; } }
+    h1 { font-size: 16px; margin: 0 0 10px; display: flex; gap: 8px; align-items: center; }
+    p { font-size: 13.5px; line-height: 1.55; opacity: .85; margin: 0 0 12px; }
+    ul { font-size: 13px; line-height: 1.6; opacity: .8; margin: 0 0 14px; padding-left: 20px; }
+    .tip { font-size: 12.5px; opacity: .65; margin: 0; }
+  </style>
+</head>
+<body>
+  <h1>📖 <span data-i18n="blockedHead">Not available on this page</span></h1>
+  <p data-i18n="blockedWhy">The browser does not let any extension read this page, so Open Book Reader
+  cannot open here. This is a Chrome rule, not a problem with the extension.</p>
+  <ul>
+    <!-- Localized nodes carry no inner markup: the i18n pass sets textContent, which would
+         throw any child element away the moment a translation exists. -->
+    <li data-i18n="blockedList1">Browser pages such as chrome://settings and the New Tab page</li>
+    <li data-i18n="blockedList2">The Chrome Web Store, and other extensions' pages</li>
+    <li data-i18n="blockedList3">PDFs and local files, unless you allow file access</li>
+  </ul>
+  <p class="tip" data-i18n="blockedTip">Open any article and press Alt+B — or click the toolbar icon
+  — and the reader will be there.</p>
+  <script src="blocked.js"></script>
+</body>
+</html>
