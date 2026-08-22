@@ -31,6 +31,11 @@
   </ul>
   <p class="tip" data-i18n="blockedTip">Open any article and press Alt+B — or click the toolbar icon
   — and the reader will be there.</p>
+  <!-- Shown ONLY on a soft block (?soft=1): the page was not a scheme Chrome blocks, so the
+       failure is ours and worth hearing about. blocked.js unhides it; it stays hidden on a real
+       chrome:// page, where a report would only describe a browser rule. -->
+  <p class="tip"><a href="#" id="report" hidden data-i18n="blockedReport">This looks like a normal
+  page — tell us it didn't work</a></p>
   <script src="blocked.js"></script>
 </body>
 </html>

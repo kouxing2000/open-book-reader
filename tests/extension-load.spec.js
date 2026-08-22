@@ -442,6 +442,61 @@ test('a blocked page also arms a per-tab popup, and navigation disarms it', asyn
   await expect.poll(() => serviceWorker.evaluate((id) => chrome.action.getPopup({ tabId: id }), tabId)).toBe('');
 });
 
+test('a SOFT block (a normal URL that would not inject) offers Report; a real chrome:// page does not', async ({ page, serviceWorker }) => {
+  // `blocked` has two sources: the restricted-scheme guard, and the catch-all around a failed
+  // injection. The second fires on ordinary pages too, and THAT is a fault worth hearing about —
+  // so the popup carries a Report link exactly there, and stays a plain explanation on a page
+  // the browser genuinely blocks. The scheme test is the only thing separating them.
+  await serviceWorker.evaluate(() => {
+    globalThis.__navTab = null;
+    chrome.tabs.onUpdated.addListener((id, info) => { if (info && info.status === 'loading') globalThis.__navTab = id; });
+  });
+  await page.goto('/');
+  const tabId = await serviceWorker.evaluate(() => globalThis.__navTab);
+
+  const popups = await serviceWorker.evaluate(async (id) => {
+    await chrome.storage.local.set({ obr_blocked_seen: 1 }); // suppress the once-per-profile tab
+    const real = chrome.scripting.executeScript;
+    const get = () => chrome.action.getPopup({ tabId: id });
+    // Hard: the URL guard short-circuits before any injection is attempted.
+    await invokeReader(id, 'chrome://settings/', 'auto', {});
+    const hard = await get();
+    // Hard with no URL at all — how a restricted tab looks to a worker holding no host access.
+    chrome.scripting.executeScript = async () => { throw new Error('Cannot access contents of the page'); };
+    try {
+      await invokeReader(id, '', 'auto', {});
+      const blind = await get();
+      // Soft: a perfectly ordinary article URL whose injection blew up anyway.
+      await invokeReader(id, 'https://news.test/story/7?utm=x#frag', 'auto', {});
+      return { hard, blind, soft: await get() };
+    } finally { chrome.scripting.executeScript = real; }
+  }, tabId);
+
+  expect(popups.hard).toMatch(/src\/blocked\.html$/);   // a Chrome rule — nothing to report
+  expect(popups.blind).toMatch(/src\/blocked\.html$/);  // unknown URL is treated as restricted
+  expect(popups.soft).toContain('src/blocked.html?soft=1&u=');
+  // The page URL rides in the popup's own query string so it survives the worker being evicted —
+  // already stripped to origin+pathname, since the report throws the rest away regardless.
+  expect(decodeURIComponent(popups.soft.split('&u=')[1])).toBe('https://news.test/story/7');
+});
+
+test('isHardBlock covers what blocked.html actually claims, not just the URL scheme', async ({ serviceWorker }) => {
+  // The popup's bullet list names the Web Store and local files as browser rules. A classifier
+  // that reads only the scheme calls both "a normal page" one line below that list and asks for
+  // a report about something no release can change. These are the cases that discrepancy hides.
+  const got = await serviceWorker.evaluate(() => [
+    'chrome://settings/', 'https://chromewebstore.google.com/detail/x',
+    'https://chrome.google.com/webstore/detail/x', 'file:///Users/me/a.pdf',
+    'https://example.com/paper.pdf', 'devtools://devtools/bundled/x.html',
+    'data:text/html,<p>x</p>', 'blob:https://x.com/a', '',
+    'https://news.test/story/7',           // the one that SHOULD offer Report
+  ].map((u) => [u, isHardBlock(u)]));
+  const hard = got.filter(([, h]) => h).map(([u]) => u);
+  const soft = got.filter(([, h]) => !h).map(([u]) => u);
+  expect(soft).toEqual(['https://news.test/story/7']); // exactly one, and it is a real article URL
+  expect(hard).toHaveLength(9);                        // positive landmark: nothing silently dropped
+});
+
 test('a report never carries a local path — origin+pathname is not a strip on an opaque origin', async ({ serviceWorker }) => {
   // Chrome reports `new URL('file:///Users/me/tax.pdf').origin` as "file://" and the pathname as
   // the whole local path, so the documented "stripped to origin+pathname" guarantee inverts into

@@ -128,7 +128,9 @@ test('iframe: the reader opens on the page chrome — visible, but wrong and unf
   expect(o.body).not.toContain('unhurried act'); // the real text is in the frame, out of reach
   expect(o.body).toContain('Home · Essays · About'); // …what the reader shows instead: the nav
   // …and because it "succeeded", the Wrong content? / ⌖ Pick recovery bar never appears. The
-  // user gets a reader full of junk and no offered way out. This is the finding.
+  // user gets a reader full of junk and no offered way out. This is the finding, and it is still
+  // open: the fix belongs in EXTRACTION (descend into the same-origin content frame), not in the
+  // "should I nag?" predicate — widening that flags every genuinely short page instead.
   expect(o.pickHint).toBe('');
 });
 

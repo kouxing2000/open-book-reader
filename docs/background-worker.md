@@ -116,6 +116,23 @@ So each state also gets a surface that survives that, chosen by what the page pe
 | state | page | second surface |
 | --- | --- | --- |
 | `blocked` | nothing of ours can run | `action.setPopup` armed for THAT TAB → `src/blocked.html`, so the click has an answer; plus that page opened once per profile as a tab (`obr_blocked_seen`) |
+
+**`blocked` has two causes and the popup must not conflate them.** The URL guard means the browser
+refused; the catch-all around `executeScript` means injection *failed*, which on an ordinary page is
+our bug. `isHardBlock(url)` splits them and is deliberately WIDER than `RESTRICTED_SCHEME`: the guard
+stays narrow because `file://` works once the user grants file access, while the popup must also
+count the Web Store host, opaque-origin schemes and inline PDFs — `src/blocked.html`'s own bullet
+list names those as browser rules, so calling them our fault would have the popup contradict itself
+one line apart. A soft block arms `src/blocked.html?soft=1&u=<origin+pathname>` and reveals a Report
+link; a hard block gets the explanation alone. It fails CLOSED (Report offered) for anything the URL
+cannot classify, e.g. a transient failure on a page that is scriptable in principle.
+
+**A report never carries a local path.** `_buildReportMeta` allowlists `http(s)` before doing its
+`origin + pathname` strip. On any other scheme that expression is not a strip but the opposite —
+Chrome returns `file://` plus the user's whole path, and `data:` carries the entire page payload —
+so everything else reports `(local file)` / `(data URL)` instead. Keyed on `protocol`, never on
+`origin`: Chrome says `file://` where Node says `"null"`, so an origin-string test passes in a unit
+harness and still leaks in the browser. The test for it runs in a real service worker.
 | `reload` | a normal page — the probe just ran there | `showReloadNotice()` injects `src/content/notice.js` and draws an in-page banner with a **Reload page** button: unmissable, and one click fixes it |
 
 `setPopup` is per-tab on purpose: a manifest `default_popup` is mutually exclusive with

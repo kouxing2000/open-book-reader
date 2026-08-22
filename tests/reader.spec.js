@@ -916,6 +916,34 @@ test.describe('content override', () => {
     expect(r.bannerText).toContain('Wrong content?');
   });
 
+  // The banner carries BOTH ways out: ⌖ Pick, which the user can apply themselves, and ⚠ Report,
+  // for when they cannot. The toolbar has its own ⚠, but this is the moment it is least likely to
+  // be found — the page looks broken, so nobody goes hunting through the chrome for it.
+  test('the "Wrong content?" banner offers ⚠ Report, and the report names why it was flagged', async ({ page }) => {
+    await gotoThinPage(page);
+    await injectReader(page);
+    await page.evaluate(() => globalThis.OBR.open());
+    // Same capture as the ⚙ Settings test above: the reader runs in the test's main world with no
+    // real chrome.runtime, so install a recording sendMessage before the click.
+    await page.evaluate(() => {
+      window.__obrMsgs = [];
+      chrome.runtime = { lastError: null, sendMessage(m, cb) { window.__obrMsgs.push(m); if (cb) cb({ ok: true }); } };
+    });
+    // Positive landmark: the button must actually be in the banner, or the click below would
+    // silently do nothing and an empty __obrMsgs would read as a delivery failure instead.
+    expect(await page.evaluate(() => !!document.getElementById('obr-host').shadowRoot
+      .querySelector('.obr-pick-hint [data-pick="report"]'))).toBe(true);
+    await clickInReader(page, '.obr-pick-hint [data-pick="report"]');
+    const sent = await page.evaluate(() => window.__obrMsgs.filter((m) => m.type === 'obr-open-report'));
+    expect(sent).toHaveLength(1);
+    expect(sent[0].meta.reportSource).toBe('pick-hint');
+    // The verdict rides along, so "it doesn't work on this site" arrives with the numbers that
+    // triggered it instead of needing a reproduction.
+    expect(sent[0].meta.failure.state).toBe('suspect-extraction');
+    expect(sent[0].meta.failure.by).toMatch(/^\d+ of \d+ words kept$/);
+    expect(sent[0].meta.mode).toBe('text');
+  });
+
   test('_extractFromNode scopes extraction to the chosen subtree', async ({ page }) => {
     const r = await page.evaluate(() => {
       const a = OBR._extractFromNode(document.getElementById('real-article'));

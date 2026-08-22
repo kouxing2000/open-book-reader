@@ -799,8 +799,12 @@
       // Only nag when the parse looks wrong — a confident whole-page read shows nothing
       // (the ⌖ Pick toolbar button stays available for the rare same-size wrong block).
       if (extractionSuspect) {
+        // ⌖ Pick is the fix the user can apply; ⚠ Report is the one they can apply when it
+        // cannot be fixed from here. This is the moment the toolbar's own ⚠ is least likely to
+        // be found — the page looks broken, so nobody goes hunting through the chrome for it.
         html = `<span class="obr-pick-msg">${OBR.t('readerHintWrongContent')}</span>
-          <button class="obr-btn" data-pick="start">${OBR.t('readerHintPickBlock')}</button>`;
+          <button class="obr-btn" data-pick="start">${OBR.t('readerHintPickBlock')}</button>
+          <button class="obr-btn" data-pick="report">${OBR.t('readerHintReport')}</button>`;
       }
     } else if (contentSource === 'pick-manual') {
       html = `<span class="obr-pick-msg">${OBR.t('readerHintPickedBlock')}</span>
@@ -821,6 +825,16 @@
   function handlePickHint(action) {
     if (action === 'dismiss') return pickHintEl.classList.remove('show');
     if (action === 'start') return startPicker();
+    // Carry WHY we flagged it, in the same slot the paint check uses: a report saying "the
+    // reader showed 9 words on a page with 31" is actionable without a reproduction.
+    if (action === 'report') {
+      const words = (() => { try { return proseWordCount(); } catch (e) { return 0; } })();
+      return OBR.reportBroken && OBR.reportBroken({
+        source: 'pick-hint', mode: 'text', proseWords: words,
+        failure: { state: 'suspect-extraction', by: lastArticle
+          ? countWords(lastArticle.textContent) + ' of ' + words + ' words kept' : 'no article' },
+      });
+    }
     if (action === 'save') return saveCurrentPick();
     if (action === 'fullpage') return reExtractWholePage();
     if (action === 'clear') return clearCurrentPick();

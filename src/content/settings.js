@@ -330,6 +330,7 @@
     ];
     if ('imageCount' in meta) lines.push('Images detected: ' + meta.imageCount);
     if ('proseWords' in meta) lines.push('Prose words: ' + meta.proseWords);
+    if (meta.failure) lines.push('Failure: ' + meta.failure.state + (meta.failure.by ? ' (' + meta.failure.by + ')' : ''));
     lines.push('', '[feedback-meta v1]', JSON.stringify(meta));
 
     const subject = 'Open Book Reader — problem' + (host ? ' on ' + host : '');

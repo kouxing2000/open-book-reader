@@ -63,6 +63,7 @@ function buildBody(withReporter) {
   ];
   if (typeof m.imageCount === 'number') lines.push('Images detected: ' + m.imageCount);
   if (typeof m.proseWords === 'number') lines.push('Prose words: ' + m.proseWords);
+  if (m.failure) lines.push('Failure: ' + m.failure.state + (m.failure.by ? ' (' + m.failure.by + ')' : ''));
   lines.push('', '[feedback-meta v1]', JSON.stringify(m));
   return lines.join('\n');
 }

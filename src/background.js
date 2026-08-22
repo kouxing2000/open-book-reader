@@ -32,6 +32,26 @@ const FILES = [
 // isolated world). Self-contained by design — see the constraints at the top of notice.js.
 const NOTICE_FILES = ['src/content/notice.js'];
 
+/* The schemes the injection guard refuses to even attempt. Deliberately NARROW: file:// is not
+ * here because it WORKS once the user grants file access, and widening this would take that away. */
+const RESTRICTED_SCHEME = /^(chrome|edge|about|chrome-extension|edge-extension|view-source):/i;
+
+/* Is this failure the browser's rule rather than our fault? A different, WIDER question than the
+ * guard above, and it decides one thing only: whether the blocked popup offers a Report link.
+ * It has to match what that popup's own bullet list already tells the user — the Web Store and
+ * local files are named there, so classifying them as our fault would have the popup contradict
+ * itself one line apart and invite reports about something no release can change.
+ * Not knowable from the URL, and therefore deliberately failing CLOSED (report offered) rather
+ * than open: a page that is scriptable in principle but failed transiently. */
+function isHardBlock(url) {
+  if (!url) return true;                       // a restricted tab reports no URL to a worker holding no host access
+  if (RESTRICTED_SCHEME.test(url)) return true;
+  if (/^(file|blob|data|filesystem|devtools|chrome-untrusted):/i.test(url)) return true;
+  if (/^https?:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/i.test(url)) return true;
+  if (/\.pdf($|[?#])/i.test(url)) return true; // Chrome's inline PDF viewer is not scriptable
+  return false;
+}
+
 /* Trigger tracing (only when OBR.debugTiming(true) — see settings.js). Answers "did my click
  * even reach the worker?", which is the question a silent first trigger raises. `swAge` is
  * performance.now() in the WORKER, i.e. ms since this service worker started: a small value
@@ -142,7 +162,7 @@ function i18nOr(key, fallback) {
  * must not: neither state can be fixed without a real load, so the message stays true. Both
  * halves are pinned by a test in tests/extension-load.spec.js — if a future Chrome stops
  * clearing, that test goes red and this comment is the thing to revisit. */
-function showFailure(tabId, state) {
+function showFailure(tabId, state, url) {
   const msg = FAILURE_TEXT[state];
   if (!msg) return;
   try {
@@ -153,7 +173,7 @@ function showFailure(tabId, state) {
     // behind the puzzle menu), and its message needs a hover to read. So each state also gets a
     // surface that survives that: a click target here, and — where the page allows drawing at
     // all — the in-page banner below.
-    if (state === 'blocked') armBlockedPopup(tabId);
+    if (state === 'blocked') armBlockedPopup(tabId, url);
   } catch (e) { /* tab gone */ }
 }
 
@@ -164,9 +184,22 @@ function showFailure(tabId, state) {
  * on navigation exactly as it drops the badge, so nothing here needs cleaning up (verified;
  * tests/extension-load.spec.js pins it — if it ever stopped, a restricted tab would keep a popup
  * after navigating to a real article and the icon would never open the reader again). */
-function armBlockedPopup(tabId) {
+function armBlockedPopup(tabId, url) {
+  // SOFT block: the URL is a page we should have been able to open, so this is our fault, not
+  // Chrome's — the popup offers a Report link and carries the page URL for it. HARD block (a
+  // restricted scheme, or no URL at all, which is how a restricted tab looks to a worker holding
+  // no host access): the explanation only, since inviting reports about a browser rule we cannot
+  // change buys nothing and costs a reply each. The url rides in the popup's own query string
+  // rather than worker memory so it survives the worker being evicted; it is a first-party
+  // extension page and _buildReportMeta strips the query and fragment before anything is sent.
+  const soft = !isHardBlock(url);
+  // Stripped to origin+pathname HERE, not just at report time: the query and fragment are thrown
+  // away by _buildReportMeta anyway, so carrying them through the popup URL is surface for nothing.
+  let clean = '';
+  try { const u = new URL(url); clean = u.origin + u.pathname; } catch (e) { clean = ''; }
+  const popup = 'src/blocked.html' + (soft && clean ? '?soft=1&u=' + encodeURIComponent(clean) : '');
   try {
-    chrome.action.setPopup({ tabId, popup: 'src/blocked.html' }, () => void chrome.runtime.lastError);
+    chrome.action.setPopup({ tabId, popup }, () => void chrome.runtime.lastError);
   } catch (e) { /* tab gone */ }
   // First time ever, open the explanation instead of waiting to be found: the badge may be
   // hidden and the popup needs a click nobody knows to make. Once per profile, never again.
@@ -221,7 +254,7 @@ async function invokeReader(tabId, url, mode, opts) {
   // And only HERE, after runInvoke's `finally` has cleared the working badge: setting it any
   // earlier would hand the cleanup the very state it is meant to leave behind.
   if (opts && opts.auto) return;
-  showFailure(tabId, failure);
+  showFailure(tabId, failure, url);
   if (failure === 'reload') showReloadNotice(tabId); // …and say it IN the page, where it is unmissable
 }
 
@@ -229,7 +262,7 @@ async function invokeReader(tabId, url, mode, opts) {
 // the trigger landed — invokeReader above owns painting it, so each state has ONE call site.
 async function runInvoke(tabId, url, mode, opts) {
   // Don't try to inject into restricted pages.
-  if (url && /^(chrome|edge|about|chrome-extension|edge-extension|view-source):/i.test(url)) {
+  if (url && RESTRICTED_SCHEME.test(url)) {
     swLog('invokeReader: restricted page, skipping —', url);
     return 'blocked';
   }
