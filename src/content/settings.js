@@ -278,7 +278,18 @@
     const src = ctx.pageUrl || (globalThis.location ? location.href : 'about:blank');
     try {
       const u = new URL(src);
-      pageUrl = u.origin + u.pathname;
+      // Allowlist the two schemes where origin+pathname IS a strip. Everywhere else it is the
+      // opposite: for file: the pathname is the user's whole local path, for data: it is the
+      // entire page payload, and for blob: it repeats the origin — so the "no session tokens can
+      // leak" guarantee above silently inverts into mailing someone their own filesystem. The
+      // scheme alone is all such a page can safely say, and it still tells them apart in triage.
+      // Keyed on the PROTOCOL, never on `origin`: Chrome reports "file://" for a local file where
+      // Node reports "null", so an origin-string test passes in a unit harness and leaks in the
+      // browser (tests/extension-load.spec.js runs this one in a real service worker for exactly
+      // that reason).
+      pageUrl = /^https?:$/.test(u.protocol)
+        ? u.origin + u.pathname
+        : (u.protocol === 'file:' ? '(local file)' : '(' + u.protocol.replace(':', '') + ' URL)');
     } catch (e) { pageUrl = String(src || '').split(/[?#]/)[0]; }
 
     const meta = {

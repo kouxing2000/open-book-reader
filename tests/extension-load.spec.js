@@ -442,6 +442,21 @@ test('a blocked page also arms a per-tab popup, and navigation disarms it', asyn
   await expect.poll(() => serviceWorker.evaluate((id) => chrome.action.getPopup({ tabId: id }), tabId)).toBe('');
 });
 
+test('a report never carries a local path — origin+pathname is not a strip on an opaque origin', async ({ serviceWorker }) => {
+  // Chrome reports `new URL('file:///Users/me/tax.pdf').origin` as "file://" and the pathname as
+  // the whole local path, so the documented "stripped to origin+pathname" guarantee inverts into
+  // mailing someone their own filesystem. Same shape for data: (the entire payload). This runs in
+  // a REAL service worker on purpose: Node reports that origin as "null" instead, so a check
+  // written against Node's value passes in a unit harness and still leaks in the browser.
+  const built = await serviceWorker.evaluate(() => [
+    'file:///Users/me/Documents/tax-return.pdf', 'data:text/html,<p>private note</p>',
+    'blob:https://x.com/abc', 'https://news.test/story/7?utm=x#frag',
+  ].map((u) => OBR._buildReportMeta({ source: 't', mode: 'none', pageUrl: u }).pageUrl));
+  expect(built).toEqual(['(local file)', '(data URL)', '(blob URL)', 'https://news.test/story/7']);
+  expect(built.join(' ')).not.toContain('tax-return');  // the assertion that matters
+  expect(built.join(' ')).not.toContain('private note');
+});
+
 test('the report path survives a page the reader cannot draw on: menu item + worker-built meta', async ({ serviceWorker }) => {
   // Every ⚠ Report button lives inside an overlay, so the failures worth reporting are exactly
   // the ones that hide it. This entry point runs entirely in the worker — no content script.
