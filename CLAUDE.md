@@ -48,11 +48,17 @@ src/content/
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
   zip.js             minimal ZIP writer (OBR._buildZip) — used by the gallery's "Download as ZIP"
   gallery.js         IMAGE mode: collect images → Wall masonry / Ordered rows + lightbox (Shadow DOM)
+  notice.js          page-level banner (OBR._notice) — the one feedback surface for when the
+                     reader's own UI can't be trusted (covered / host deleted / orphaned world).
+                     Pure DOM, no chrome.*, no i18n: strings arrive pre-resolved from the caller
   sentinel.js        AUTO-OPEN sentinel — the ONLY pre-gesture code, and only on sites the user
                      enabled auto-open for (registered by the SW; see docs/auto-open-spec.md)
 src/options/         options page (reuses settings.js)
 src/welcome.html     first-run activation page — onInstalled opens it (pin icon, shortcuts, sample article)
 src/report.html      ⚠ Report page (bundled, offline) — email OR a web form; opened via the SW relay
+src/blocked.html     "not available on this page" (paired blocked.js) — armed per-tab as the
+                     ACTION POPUP on a blocked trigger, so the dead icon click gets an answer;
+                     also opened once per profile as a tab (?first=1). Offers Report on a SOFT block
 src/permission.html  optional-permission request page (paired permission.js) — SW opens it on first
                      download so the user's click can call chrome.permissions.request
 icons/               16/32/48/128
