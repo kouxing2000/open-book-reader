@@ -11,6 +11,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-23
+
+### Added
+- **When the reader doesn't appear, the extension now says why.** Pressing the shortcut and
+  getting nothing back used to be silent in every case, with no way to tell a page the browser
+  blocks from one where something went wrong. Three cases now answer for themselves: a page no
+  extension is allowed to read explains that in a small panel from the toolbar icon; a page where
+  a site's own overlay is painted on top of the reader says so in a banner; and a page that
+  deletes the reader while it is open says that instead of just going blank.
+- **A Report link on the surfaces where the reader's own ⚠ button can't be reached.** If the
+  reader never opened, or opened underneath a site's chat widget, its toolbar is exactly what you
+  cannot click — so reporting now also lives in the banner, in the "not available here" panel,
+  and beside the "Wrong content?" prompt. Each report carries what actually went wrong, so it is
+  useful even without a description.
+
+### Changed
+- **A page that isn't an article now shows an empty state, not an error.** Landing on a recipe
+  index or a photo page is an ordinary thing to do, but the reader used to answer it with a
+  paragraph of instructions where the article should have been, which read as a malfunction. It
+  now says "No article on this page" and offers the two ways forward — choose the block yourself,
+  or select the text you want and open the reader again.
+
+### Fixed
+- **Reloading or updating the extension no longer leaves a dead reader on the page.** An
+  already-open reader kept looking normal while every button in it silently did nothing, and the
+  page's console filled with errors. It now retires itself as soon as it notices, and offers a
+  one-click reload to get the reader back.
+- **Problem reports no longer include a local file path or a whole page's contents.** The line
+  meant to carry just the site address carried the full path on a local file, and the entire page
+  payload on a `data:` page. Those pages now report only what kind of page they were.
+
 ## [1.7.2] - 2026-07-29
 
 ### Changed
@@ -279,7 +310,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.7.2...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.0
 [1.7.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.2
 [1.7.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.1
 [1.7.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.0
