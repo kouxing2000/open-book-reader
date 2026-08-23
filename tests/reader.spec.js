@@ -919,6 +919,102 @@ test.describe('content override', () => {
   // The banner carries BOTH ways out: ⌖ Pick, which the user can apply themselves, and ⚠ Report,
   // for when they cannot. The toolbar has its own ⚠, but this is the moment it is least likely to
   // be found — the page looks broken, so nobody goes hunting through the chrome for it.
+  // An extension reload orphans an already-injected engine: the overlay stays on screen and
+  // fully interactive while every chrome.* in that world throws. The worker cannot see this —
+  // a click on the stale overlay never reaches it — so the detection has to live in the page.
+  // The harness runs these files in a plain main world, so `_ctxDead` is armed by giving the
+  // page a live-looking chrome.runtime.id at load and taking it away afterwards, which is
+  // exactly the transition an extension reload performs.
+  test('an orphaned overlay retires itself and says why, instead of throwing on every click', async ({ page }) => {
+    await gotoArticle(page);
+    await page.addInitScript(() => {
+      // Present BEFORE the content scripts load, so settings.js snapshots "this context lived".
+      globalThis.chrome = globalThis.chrome || {};
+      chrome.runtime = Object.assign({}, chrome.runtime, { id: 'test-extension-id' });
+    });
+    await page.reload();
+    await injectReader(page);
+    await page.evaluate(() => globalThis.OBR.open());
+    await expect.poll(() => page.evaluate(() => !!globalThis.OBR._diagReader().active)).toBe(true);
+    // Positive landmark: it really did open, so the assertions below measure the reload and not
+    // a reader that was never there.
+    expect(await page.evaluate(() => !!document.getElementById('obr-host'))).toBe(true);
+
+    await page.evaluate(() => { delete chrome.runtime.id; });   // ← the extension reload
+    const r = await page.evaluate(() => {
+      const before = globalThis.OBR._ctxDead();
+      document.getElementById('obr-host').click();              // door 1: a click on the stale overlay
+      const notice = document.getElementById('obr-notice');
+      return {
+        dead: before,
+        hostGone: !document.getElementById('obr-host'),         // retired, not left on screen
+        scrollUnlocked: document.documentElement.style.overflow === '',
+        notice: notice && notice.shadowRoot ? notice.shadowRoot.querySelector('.msg').textContent : '',
+        acts: notice && notice.shadowRoot
+          ? Array.from(notice.shadowRoot.querySelectorAll('button')).map((b) => b.textContent) : [],
+      };
+    });
+    expect(r.dead).toBe(true);
+    expect(r.hostGone).toBe(true);
+    expect(r.scrollUnlocked).toBe(true);
+    // Localized, because the strings were snapshotted at load while the context was alive —
+    // OBR.t cannot run any more, so a banner resolved on demand would show raw keys.
+    expect(r.notice).toContain('was updated');
+    expect(r.acts).toEqual(['Reload page', 'Dismiss']);
+  });
+
+  // The regression that made the cure worse than the disease: the one-shot flag guarded the
+  // TEARDOWN as well as the banner, so a second overlay reaching _ctxLost was never retired —
+  // and the click and keydown guards then swallowed every way of closing it, on a page whose
+  // scroll was still locked. The test lives at the altitude of the DEFECT: it re-triggers after
+  // the first retire, which is what background.js does (it dispatches even after detecting the
+  // orphan), rather than asserting _ctxLost in isolation.
+  test('a SECOND retire after the banner still tears down — no unclosable, scroll-locked overlay', async ({ page }) => {
+    await gotoArticle(page);
+    await page.addInitScript(() => {
+      globalThis.chrome = globalThis.chrome || {};
+      chrome.runtime = Object.assign({}, chrome.runtime, { id: 'test-extension-id' });
+    });
+    await page.reload();
+    await injectReader(page);
+    await page.evaluate(() => globalThis.OBR.open());
+    await expect.poll(() => page.evaluate(() => !!globalThis.OBR._diagReader().active)).toBe(true);
+    expect(await page.evaluate(() => !!document.getElementById('obr-host'))).toBe(true); // landmark
+
+    const r = await page.evaluate(async () => {
+      delete chrome.runtime.id;                        // the extension reload
+      document.getElementById('obr-host').click();     // first retire → banner
+      const first = { host: !!document.getElementById('obr-host'),
+                      overflow: document.documentElement.style.overflow };
+      await globalThis.OBR.open();                     // …and the trigger the worker still sends
+      return { first, second: { host: !!document.getElementById('obr-host'),
+                                overflow: document.documentElement.style.overflow,
+                                active: globalThis.OBR._diagReader().active } };
+    });
+    expect(r.first.host).toBe(false);
+    expect(r.first.overflow).toBe('');
+    // The re-open must not leave a live overlay behind in a world that cannot drive it.
+    expect(r.second.host).toBe(false);
+    expect(r.second.overflow).toBe('');   // scroll never left locked
+    expect(r.second.active).toBe(false);
+  });
+
+  test('OBR.t degrades to the key instead of throwing when the context is dead', async ({ page }) => {
+    // settings.js:23 in the crash report: the old guard tested whether chrome.i18n EXISTS, but an
+    // invalidated context keeps the object and throws on the CALL.
+    await gotoArticle(page);
+    await injectReader(page);
+    const out = await page.evaluate(() => {
+      const real = chrome.i18n;
+      chrome.i18n = { getMessage() { throw new Error('Extension context invalidated.'); } };
+      try { return { value: globalThis.OBR.t('noticeDismiss'), threw: false }; }
+      catch (e) { return { value: null, threw: true }; }
+      finally { chrome.i18n = real; }
+    });
+    expect(out.threw).toBe(false);
+    expect(out.value).toBe('noticeDismiss'); // the key, which is the documented degradation
+  });
+
   // A page with NO article at all gets the empty state instead of the article — and the empty
   // state OWNS the two ways out, so the pill below it must stay down. Both halves matter: the
   // offer has to be on screen, and it must not be on screen twice.

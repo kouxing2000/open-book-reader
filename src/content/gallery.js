@@ -701,6 +701,14 @@
     speedSetting = makeNumSetting({ key: 'galleryAutoScrollSpeed', min: 20, max: 400, fallback: 60, field: autoSpeedEl });
     slideSecsSetting = makeNumSetting({ key: 'gallerySlideSeconds', min: 1, max: 30, fallback: 3, field: lbSecsEl, applyLive: applySlideSecsLive });
 
+    // One capture-phase guard ahead of every button below, rather than a check inside each: the
+    // gallery wires its listeners individually, and the failure this stops (a click on a stale
+    // overlay after an extension reload) can arrive at any of them.
+    host.addEventListener('click', (e) => {
+      if (!OBR._ctxDead()) return;
+      e.stopPropagation(); e.preventDefault();
+      OBR._ctxLost(hardTeardown);
+    }, true);
     wrap.querySelector('.close').addEventListener('click', close);
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(OBR.normalizeHost(location.href)); });
     wrap.querySelector('.report').addEventListener('click', () => {
@@ -1754,6 +1762,11 @@
   // gallery has no openGen), which is just as bad. First trigger wins; extras are ignored.
   let opening = false;
   async function open(opts) {
+    // Door 0: never BUILD into a dead world. background.js dispatches even after its probe
+    // detects the orphan (it only records the failure), so a trigger after the banner would
+    // otherwise re-open an overlay that nothing in this world can drive — the state the
+    // teardown then has to rescue. Refusing here means there is nothing to rescue.
+    if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown);
     if (active || opening) return;
     opening = true;
     try { await openInner(opts); } finally { opening = false; }
@@ -1789,6 +1802,7 @@
     slideOn = false; clearTimeout(slideTimer); slideTimer = 0; // fresh slideshow state
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
+    watchCtx();
     active = true;
     openedByAuto = trigger === 'auto';
     if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
@@ -1803,8 +1817,40 @@
   // Records a USER-initiated dismissal into the shared auto-open suppression set —
   // internal close paths (mode switch, the reader's defensive cross-close) pass
   // { suppress: false }. Mirrors reader.js close(); see there for the why.
+  /* Same watchdog as reader.js — an extension reload leaves this overlay live and dead at once.
+   * Poll rather than hold a port open: a port would keep the service worker alive for the whole
+   * session, against the on-demand premise. See the note in reader.js. */
+  let ctxTimer = 0;
+  function watchCtx() {
+    clearInterval(ctxTimer);
+    ctxTimer = setInterval(() => {
+      if (!active) return void clearInterval(ctxTimer);
+      if (!OBR._ctxDead()) return;
+      clearInterval(ctxTimer);
+      OBR._ctxLost(hardTeardown);
+    }, 3000);
+  }
+
+  /* Close without touching chrome.*: the normal close() flushes three settings through
+   * chrome.storage, which is exactly what is broken here. */
+  function hardTeardown() {
+    active = false;
+    clearInterval(ctxTimer);
+    try { stopAutoScroll(); } catch (e) { /* */ }
+    try { stopWatching(); } catch (e) { /* */ }
+    // closeLightbox stops the slideshow, which otherwise keeps re-arming itself against a
+    // DETACHED tree and pulling full-size images off the network long after the gallery is gone.
+    try { closeLightbox(); } catch (e) { /* */ }
+    try { document.documentElement.style.overflow = ''; } catch (e) { /* */ }
+    try { if (host) host.remove(); } catch (e) { /* */ }
+    // Progressive hydration physically scrolls the host page; without this the user is left
+    // hundreds of screens down a page they never scrolled. Pure DOM — nothing stops us doing it.
+    try { window.scrollTo(savedPageX, savedPageY); } catch (e) { /* */ }
+  }
+
   function close(opts) {
     if (!active) return;
+    clearInterval(ctxTimer);
     if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
     stopAutoScroll(); // cancel the rAF before hiding the host (no orphan scrollTop writes)
     speedSetting.flush();     // persist a just-edited speed before a reopen reads storage
@@ -1907,6 +1953,7 @@
 
   document.addEventListener('keydown', (e) => {
     if (!active) return;
+    if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown); // same three doors as reader.js
     if (hideMenuOpen()) { // the Hide popover owns keys while it's up
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeHideMenu(); }
       return;

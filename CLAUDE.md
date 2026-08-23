@@ -318,6 +318,21 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
   `href`/`src`/`xlink:href`/`action`/`formaction`) before it becomes `article.content`.
   `escapeHTML` covers title/byline only.
 
+- **An extension reload ORPHANS this page's engine, and the worker cannot see it.** The old
+  overlay stays on screen and fully interactive while every `chrome.*` in that world throws
+  ("Extension context invalidated"); a click on it never reaches the service worker, so
+  background.js's own orphan probe — which only runs on a fresh trigger — is blind to it. Detection
+  therefore lives in the page: `OBR._ctxDead()` (settings.js; `died` requires having `lived`, so it
+  is inert in the Playwright harness and the manual site proxy, which never had a context) guards
+  **four doors** — `open()`, a capture-phase click listener on each host, each engine's `keydown`,
+  and a 3s `watchCtx` interval — and `OBR._ctxLost(teardown)` retires the overlay and draws the
+  banner. Guard the DOORS, never the individual `chrome.*` calls: that list has no end, and nothing
+  behind a door runs unless a door opens. Three rules hold the design together: each engine's
+  `hardTeardown()` must stay free of `chrome.*` (the normal `close()` flushes state through
+  `chrome.storage`, which is exactly what is broken); the teardown runs on EVERY retire while only
+  the console warn is once-per-page (guarding the teardown behind that flag stranded a second
+  overlay on screen, unclosable, on a scroll-locked page); and the banner's strings are snapshotted
+  at injection into `OBR._deadStrings`, because `OBR.t` cannot run once the context is dead.
 - Listeners (`keydown` capture, `resize`) attach once at injection and persist for the tab's lifetime;
   `close()` only hides the host (inert when `!active`). Don't add re-attach logic without also handling
   the double-injection guard.

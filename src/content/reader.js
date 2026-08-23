@@ -108,6 +108,16 @@
   function build() {
     if (built) return;
     ({ host, root } = OBR.makeShadowHost('obr-host'));
+    // Door 1 of 3 (the others: the keydown listener below, and watchCtx's timer). One capture
+    // guard ahead of every button in the overlay — toolbar, pick hint, empty state — rather than
+    // a check inside each handler, because the list of handlers grows and this does not. It is
+    // the path that produced the crash: a click on a stale overlay after an extension reload
+    // never reaches the worker, so background.js's orphan probe can never see it.
+    host.addEventListener('click', (e) => {
+      if (!OBR._ctxDead()) return;
+      e.stopPropagation(); e.preventDefault();
+      OBR._ctxLost(hardTeardown);
+    }, true);
     // Stay hidden until open() reveals it at the very end. open() can abort AFTER build()
     // but BEFORE active=true (the openGen guard, e.g. the gallery taking over mid-open);
     // since close()/Escape/✕ all bail on !active, a visible host left by such an abort would
@@ -2174,6 +2184,11 @@
   // cancel an in-flight open via openGen — that direction is deliberate and still works.
   let opening = false;
   async function open(opts) {
+    // Door 0: never BUILD into a dead world. background.js dispatches even after its probe
+    // detects the orphan (it only records the failure), so a trigger after the banner would
+    // otherwise re-open an overlay that nothing in this world can drive — the state the
+    // teardown then has to rescue. Refusing here means there is nothing to rescue.
+    if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown);
     if (active || opening) return;
     opening = true;
     try { await openInner(opts); } finally { opening = false; }
@@ -2276,6 +2291,7 @@
     if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
     OBR._opensCompleted = (OBR._opensCompleted || 0) + 1; // test hook: full inits that ran to completion
     schedulePaintCheck();
+    watchCtx();
   }
 
   /* ------------------------------------------------- did the reader actually appear?
@@ -2290,6 +2306,34 @@
   let paintTimer = 0;
   let reattached = false;
   let hostWatch = null;
+  let ctxTimer = 0;
+
+  /* An extension reload leaves this overlay on screen, fully interactive, and completely dead:
+   * every chrome.* call in this world now throws. Poll for that rather than waiting for the user
+   * to find out by clicking — a stale reader that swallows a click is worse than one that says
+   * it is stale. A property read every few seconds, only while open, and NO port to the worker:
+   * an open port would keep the service worker alive for the whole reading session, which is the
+   * on-demand premise this extension is built on. */
+  const CTX_POLL_MS = 3000;
+  function watchCtx() {
+    clearInterval(ctxTimer);
+    ctxTimer = setInterval(() => {
+      if (!active) return void clearInterval(ctxTimer);
+      if (!OBR._ctxDead()) return;
+      clearInterval(ctxTimer);
+      OBR._ctxLost(hardTeardown);
+    }, CTX_POLL_MS);
+  }
+
+  /* Close without touching chrome.*: the normal close() flushes the reading position through
+   * chrome.storage, which is precisely what is broken here. */
+  function hardTeardown() {
+    active = false;
+    clearInterval(ctxTimer); clearTimeout(paintTimer); clearTimeout(mediaTimer); clearTimeout(chromeTimer);
+    if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
+    try { document.documentElement.style.overflow = ''; } catch (e) { /* */ }
+    try { if (host) host.remove(); } catch (e) { /* */ }
+  }
   function schedulePaintCheck() {
     clearTimeout(paintTimer);
     // One check, ~400ms after opening: late enough for layout and for a lazy cookie/chat widget
@@ -2361,6 +2405,7 @@
     if (!active) return;
     if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
     if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
+    clearInterval(ctxTimer);  // nothing to watch once the overlay is gone
     clearTimeout(paintTimer); // a close before the check lands must not nag about a closed reader
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
@@ -2411,6 +2456,11 @@
 
   document.addEventListener('keydown', (e) => {
     if (!active || pickerActive) return; // picker owns the keyboard while it's up
+    // Door 2 of 3. This listener is attached once at injection and NEVER removed (close() only
+    // hides the host), so after an extension reload it is still here, still firing, and every
+    // chrome.* it reaches — tickRead, savePosition — now throws. Retiring the overlay is what
+    // stops all of them at once; guarding them one by one would never end.
+    if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown);
     tickRead(); // keyboard activity keeps the reading clock's gaps small
     // Let modifier combos fall through to the browser for zoom (Ctrl/Cmd+±) and new tab
     // (Cmd+T). Print is the deliberate exception: Cmd/Ctrl+P stays captured so it runs the

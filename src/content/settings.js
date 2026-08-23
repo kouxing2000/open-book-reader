@@ -19,8 +19,64 @@
     // chrome.i18n is present in content scripts / the SW, but NOT in a plain page
     // main world (e.g. the test harness before its i18n shim loads) — guard so a
     // missing i18n degrades to the key name instead of a hard TypeError.
-    var i18n = typeof chrome !== 'undefined' && chrome.i18n;
-    return (i18n && i18n.getMessage(key, subs)) || key;
+    // try/catch, not a truthiness test: after an extension reload the isolated world keeps a
+    // chrome.i18n OBJECT and it is the CALL that throws "Extension context invalidated", so
+    // testing whether the namespace exists checks the wrong thing and still crashes.
+    try {
+      var i18n = typeof chrome !== 'undefined' && chrome.i18n;
+      return (i18n && i18n.getMessage(key, subs)) || key;
+    } catch (e) { return key; }
+  };
+
+  /* Is this world's extension context dead? An extension reload or update ORPHANS an already
+   * injected content script: it keeps running, its DOM stays on screen and its listeners still
+   * fire, but every chrome.* call throws. chrome.runtime.id going undefined is the canonical
+   * tell (background.js probes the same thing from the worker side). */
+  var ctxAlive = function () {
+    try { return !!(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id); }
+    catch (e) { return false; }
+  };
+  // Snapshotted at load: DIED requires having LIVED. Without this the check also reports "dead"
+  // for a world that never had a context at all — the Playwright harness and the manual site
+  // proxy both run these files in a plain page main world — and every guard downstream would
+  // retire a perfectly healthy overlay on its first click.
+  // Latched on the NAMESPACE, not in a file-local: settings.js is the one content file with no
+  // re-entry guard, and the auto-open enable flow re-injects it into the current tab
+  // (SENTINEL_FILES in background.js). A second evaluation in an already-dead world would
+  // otherwise latch false and silently disable every guard downstream for that page.
+  OBR._hadCtx = OBR._hadCtx || ctxAlive();
+  OBR._ctxDead = function () { return !!OBR._hadCtx && !ctxAlive(); };
+
+  /* The banner's words, snapshotted HERE while the context is still alive. OBR.t cannot run once
+   * it is dead, so a banner resolved on demand would be raw keys in every locale but English. */
+  OBR._deadStrings = {
+    text: OBR.t('noticeReload'), reload: OBR.t('noticeReloadBtn'), dismiss: OBR.t('noticeDismiss'),
+  };
+
+  /* Retire a dead overlay and say why, in the page. `teardown` is the engine's own hard close —
+   * hard because the normal close() writes the reading position through chrome.storage, which is
+   * exactly what is broken. Everything from here on is pure DOM (notice.js is built for this),
+   * so it works in a world where nothing else does. Runs once per page. */
+  OBR._ctxLost = function (teardown) {
+    // ALWAYS, before any one-shot: each overlay that reaches this must actually be retired.
+    // Guarding the teardown behind the flag stranded the second one on screen — and the click
+    // and keydown guards then swallowed every way of closing it, on a scroll-locked page.
+    try { teardown && teardown(); } catch (e) { /* the banner matters more than a clean teardown */ }
+    // The console line is the once-per-page part: the banner below is re-shown on each retire
+    // (it replaces rather than stacks), because a user who just tried again deserves the answer
+    // again, while a repeated warn is only noise.
+    if (!OBR._ctxLostDone) {
+      OBR._ctxLostDone = true;
+      try { console.warn('[OpenBookReader] the extension was reloaded or updated; this page\'s '
+        + 'reader is from the previous instance and has been retired. Reload the page to use it here.'); } catch (e) { /* */ }
+    }
+    var d = OBR._deadStrings || {};
+    if (OBR._notice) OBR._notice({
+      text: d.text || 'Open Book Reader was updated. Reload this page to use it here.',
+      actions: [{ label: d.reload || 'Reload page', act: 'reload' },
+                { label: d.dismiss || 'Dismiss', act: 'dismiss' }],
+    });
+    return true;
   };
 
   OBR.STORAGE_KEY = 'obr_settings';
