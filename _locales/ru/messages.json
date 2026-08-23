@@ -43,7 +43,9 @@
   "readerHintDismiss": { "message": "Скрыть" },
   "readerPickSaveNoSelector": { "message": "Не удалось сохранить — у этого блока нет стабильного селектора. Выберите родительский блок." },
   "readerPickSaveStorageFull": { "message": "Не удалось сохранить — хранилище заполнено. Удалите часть сохранённых выборов в настройках." },
-  "readerNoArticleBody": { "message": "Не удалось извлечь читаемую статью с этой страницы. Выделите текст и откройте снова или нажмите кнопку ⌖ Выбрать, чтобы указать блок контента вручную." },
+  "readerNoArticleHead": { "message": "На этой странице нет статьи" },
+  "readerNoArticleBody": { "message": "Это не похоже на статью — или её текст находится там, куда читалка не дотягивается." },
+  "readerNoArticleAlt": { "message": "Либо выделите нужный текст и откройте читалку снова." },
   "readerReadingTime": { "message": "~$MINUTES$ мин", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ стр.", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
 

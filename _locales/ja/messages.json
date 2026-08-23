@@ -43,7 +43,9 @@
   "readerHintDismiss": { "message": "閉じる" },
   "readerPickSaveNoSelector": { "message": "保存できませんでした - このブロックには安定したセレクタがありません。親ブロックを選び直してください。" },
   "readerPickSaveStorageFull": { "message": "保存できませんでした - 保存容量がいっぱいです。オプションで保存済みの選択をいくつか削除してください。" },
-  "readerNoArticleBody": { "message": "このページから読める記事を抽出できませんでした。テキストを選択して開き直すか、⌖ 選択ボタンで内容ブロックをご自身で選んでください。" },
+  "readerNoArticleHead": { "message": "このページには記事が見つかりません" },
+  "readerNoArticleBody": { "message": "記事ではないようです。あるいは本文がリーダーの届かない場所にあります。" },
+  "readerNoArticleAlt": { "message": "読みたいテキストを選択してから、リーダーを開き直すこともできます。" },
   "readerReadingTime": { "message": "約 $MINUTES$ 分", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ ページ", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
 

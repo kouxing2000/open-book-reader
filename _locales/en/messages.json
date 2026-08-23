@@ -45,7 +45,9 @@
   "readerHintDismiss": { "message": "Dismiss" },
   "readerPickSaveNoSelector": { "message": "Could not save - this block has no stable selector. Re-pick a parent block." },
   "readerPickSaveStorageFull": { "message": "Could not save - storage is full. Remove some saved picks in Options." },
-  "readerNoArticleBody": { "message": "Could not extract a readable article from this page. Select the text and reopen, or use the ⌖ Pick button to choose the content block yourself." },
+  "readerNoArticleHead": { "message": "No article on this page" },
+  "readerNoArticleBody": { "message": "This doesn't look like an article — or its text is somewhere the reader can't reach." },
+  "readerNoArticleAlt": { "message": "Or select the text you want, then open the reader again." },
   "readerReadingTime": { "message": "~$MINUTES$ min", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ pages", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
 

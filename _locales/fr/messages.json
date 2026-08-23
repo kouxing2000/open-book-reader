@@ -43,7 +43,9 @@
   "readerHintDismiss": { "message": "Ignorer" },
   "readerPickSaveNoSelector": { "message": "Enregistrement impossible - ce bloc n’a pas de sélecteur stable. Choisissez un bloc parent." },
   "readerPickSaveStorageFull": { "message": "Enregistrement impossible - le stockage est plein. Supprimez des sélections enregistrées dans les Options." },
-  "readerNoArticleBody": { "message": "Impossible d’extraire un article lisible de cette page. Sélectionnez le texte et rouvrez, ou utilisez le bouton ⌖ Choisir pour sélectionner vous-même le bloc de contenu." },
+  "readerNoArticleHead": { "message": "Aucun article sur cette page" },
+  "readerNoArticleBody": { "message": "Cela ne ressemble pas à un article — ou son texte se trouve à un endroit inaccessible au lecteur." },
+  "readerNoArticleAlt": { "message": "Ou sélectionnez le texte voulu, puis rouvrez le lecteur." },
   "readerReadingTime": { "message": "~$MINUTES$ min", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ pages", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
 

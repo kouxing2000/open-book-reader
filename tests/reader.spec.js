@@ -919,6 +919,55 @@ test.describe('content override', () => {
   // The banner carries BOTH ways out: ⌖ Pick, which the user can apply themselves, and ⚠ Report,
   // for when they cannot. The toolbar has its own ⚠, but this is the moment it is least likely to
   // be found — the page looks broken, so nobody goes hunting through the chrome for it.
+  // A page with NO article at all gets the empty state instead of the article — and the empty
+  // state OWNS the two ways out, so the pill below it must stay down. Both halves matter: the
+  // offer has to be on screen, and it must not be on screen twice.
+  test('no article: an empty state carries both ways out, and the hint pill does not repeat them', async ({ page }) => {
+    await gotoArticle(page);
+    await injectReader(page);
+    await page.evaluate(() => {
+      // Readability returns an article for almost anything — even a lone <div> of text becomes
+      // one. It yields NULL only when there is genuinely nothing, which is what an SPA shell or
+      // a login wall looks like at open time, and that is the path the empty state exists for.
+      document.body.innerHTML = '';
+      globalThis.OBR.open();  // async — poll below rather than reading straight after
+    });
+    await expect.poll(() => page.evaluate(() => !!globalThis.OBR._diagReader().active)).toBe(true);
+    const r = await page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const empty = root.querySelector('.obr-empty');
+      return {
+        shown: !!empty,
+        head: empty ? empty.querySelector('.obr-empty-head').textContent : '',
+        acts: empty ? Array.from(empty.querySelectorAll('[data-pick]')).map((b) => b.dataset.pick) : [],
+        // The duplication this replaced: the pill said the same thing directly underneath.
+        pillShown: root.querySelector('.obr-pick-hint').classList.contains('show'),
+        // Alert chrome would have to fight three themes and the user's font size — assert the
+        // empty state takes its colour from the theme instead of a hardcoded alert palette.
+        headColor: empty ? getComputedStyle(empty.querySelector('.obr-empty-head')).color : '',
+        overlayColor: getComputedStyle(root.querySelector('.obr-overlay')).color,
+      };
+    });
+    expect(r.shown).toBe(true);
+    expect(r.head).toBe('No article on this page');
+    // 'report-empty', not 'report': the hint bar's button reports 'suspect-extraction', which
+    // would be a lie here — Readability returned nothing at all, a different report and a
+    // different fix. Asserting the exact action is what keeps the two from being merged back.
+    expect(r.acts).toEqual(['start', 'report-empty']);
+    expect(r.pillShown).toBe(false);               // …and offered exactly once
+    expect(r.headColor).toBe(r.overlayColor);      // inherits the theme, is not an alert colour
+
+    await page.evaluate(() => {
+      window.__obrMsgs = [];
+      chrome.runtime = { lastError: null, sendMessage(m, cb) { window.__obrMsgs.push(m); if (cb) cb({ ok: true }); } };
+      document.getElementById('obr-host').shadowRoot.querySelector('[data-pick="report-empty"]').click();
+    });
+    const sent = await page.evaluate(() => window.__obrMsgs.filter((m) => m.type === 'obr-open-report'));
+    expect(sent).toHaveLength(1);
+    expect(sent[0].meta.reportSource).toBe('empty-state');
+    expect(sent[0].meta.failure).toEqual({ state: 'no-article', by: '' });
+  });
+
   test('the "Wrong content?" banner offers ⚠ Report, and the report names why it was flagged', async ({ page }) => {
     await gotoThinPage(page);
     await injectReader(page);

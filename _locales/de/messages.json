@@ -43,7 +43,9 @@
   "readerHintDismiss": { "message": "Ausblenden" },
   "readerPickSaveNoSelector": { "message": "Speichern fehlgeschlagen – dieser Block hat keinen stabilen Selektor. Wählen Sie einen übergeordneten Block." },
   "readerPickSaveStorageFull": { "message": "Speichern fehlgeschlagen – der Speicher ist voll. Entfernen Sie einige gespeicherte Auswahlen in den Optionen." },
-  "readerNoArticleBody": { "message": "Auf dieser Seite konnte kein lesbarer Artikel gefunden werden. Markieren Sie den Text und öffnen Sie erneut, oder wählen Sie den Inhaltsblock selbst über die Schaltfläche ⌖ Wählen." },
+  "readerNoArticleHead": { "message": "Kein Artikel auf dieser Seite" },
+  "readerNoArticleBody": { "message": "Das sieht nicht nach einem Artikel aus – oder der Text liegt an einer Stelle, die der Lesemodus nicht erreicht." },
+  "readerNoArticleAlt": { "message": "Oder markieren Sie den gewünschten Text und öffnen Sie den Lesemodus erneut." },
   "readerReadingTime": { "message": "~$MINUTES$ Min.", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ Seiten", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
 

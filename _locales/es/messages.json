@@ -43,7 +43,9 @@
   "readerHintDismiss": { "message": "Descartar" },
   "readerPickSaveNoSelector": { "message": "No se pudo guardar: este bloque no tiene un selector estable. Vuelve a elegir un bloque superior." },
   "readerPickSaveStorageFull": { "message": "No se pudo guardar: el almacenamiento está lleno. Elimina algunas selecciones guardadas en Opciones." },
-  "readerNoArticleBody": { "message": "No se pudo extraer un artículo legible de esta página. Selecciona el texto y vuelve a abrir, o usa el botón ⌖ Elegir para escoger tú mismo el bloque de contenido." },
+  "readerNoArticleHead": { "message": "No hay ningún artículo en esta página" },
+  "readerNoArticleBody": { "message": "Esto no parece un artículo, o su texto está en un lugar que el lector no alcanza." },
+  "readerNoArticleAlt": { "message": "O selecciona el texto que quieras y vuelve a abrir el lector." },
   "readerReadingTime": { "message": "~$MINUTES$ min", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ páginas", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
 

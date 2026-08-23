@@ -43,7 +43,9 @@
   "readerHintDismiss": { "message": "关闭" },
   "readerPickSaveNoSelector": { "message": "无法保存 — 此区块没有稳定的选择器。请重新选取上层区块。" },
   "readerPickSaveStorageFull": { "message": "无法保存 — 存储空间已满。请在选项中删除部分已保存的选取。" },
-  "readerNoArticleBody": { "message": "无法从此页面提取可读文章。请选中文本后重新打开,或使用 ⌖ 选取按钮自行选择内容区块。" },
+  "readerNoArticleHead": { "message": "此页面上没有找到文章" },
+  "readerNoArticleBody": { "message": "这看起来不是一篇文章——也可能它的正文在阅读器读不到的地方。" },
+  "readerNoArticleAlt": { "message": "也可以先选中你想读的文字，再打开阅读器。" },
   "readerReadingTime": { "message": "约 $MINUTES$ 分钟", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  共 $TOTAL$ 页", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
 

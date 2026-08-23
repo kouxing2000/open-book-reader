@@ -224,6 +224,26 @@
     .obr-chrome-hidden .obr-pick-hint { opacity: 0; pointer-events: none;
       transform: translateX(-50%) translateY(8px); }
     .obr-pick-msg { opacity: .82; }
+
+    /* Empty state — shown instead of the article when extraction found nothing. Deliberately
+       calm: this is not a failure state, it is a page that is not an article. Colour comes from
+       the theme (currentColor at reduced opacity), never from an alert palette, so it reads the
+       same on all three themes and never fights the paper. */
+    .obr-empty { text-align: center; padding: 8% 4% 0; }
+    .obr-empty-ico { font-size: 30px; opacity: .45; line-height: 1; }
+    .obr-empty-head { font-size: 1.15em; margin: 14px 0 6px; }
+    .obr-empty-body { font-family: ${FONT_STACKS.sans}; font-size: .82em; line-height: 1.55;
+      opacity: .68; margin: 0 auto 18px; max-width: 26em; }
+    .obr-empty-acts { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .obr-empty .obr-btn { font-family: ${FONT_STACKS.sans}; }
+    .obr-empty-go { background: #7c6cff; color: #fff; }
+    .obr-empty-go:hover { background: #6a59f2; }
+    /* Both dark rules are needed and for the same reason: .obr-overlay.dark .obr-btn(:hover) is
+       (0,4,0) and outranks a bare .obr-empty-go(:hover) at (0,2,0). Fixing only the rest state
+       leaves the button losing its purple the moment the pointer touches it. */
+    .obr-overlay.dark .obr-empty-go { background: #7c6cff; }
+    .obr-overlay.dark .obr-empty-go:hover { background: #6a59f2; }
+    .obr-empty-alt { font-family: ${FONT_STACKS.sans}; font-size: .72em; opacity: .5; margin-top: 16px; }
     .obr-pick-hint .obr-btn { background: #7c6cff; color: #fff; padding: 5px 11px; }
     .obr-pick-hint .obr-btn:hover { background: #6a59f2; }
     .obr-pick-x {

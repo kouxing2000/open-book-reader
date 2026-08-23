@@ -798,7 +798,9 @@
     if (contentSource === 'whole') {
       // Only nag when the parse looks wrong — a confident whole-page read shows nothing
       // (the ⌖ Pick toolbar button stays available for the rare same-size wrong block).
-      if (extractionSuspect) {
+      // A TOTAL failure is excluded: renderContent already drew the empty state, which carries
+      // both offers, and repeating them in a pill below it is the duplication this replaced.
+      if (extractionSuspect && lastArticle) {
         // ⌖ Pick is the fix the user can apply; ⚠ Report is the one they can apply when it
         // cannot be fixed from here. This is the moment the toolbar's own ⚠ is least likely to
         // be found — the page looks broken, so nobody goes hunting through the chrome for it.
@@ -827,6 +829,14 @@
     if (action === 'start') return startPicker();
     // Carry WHY we flagged it, in the same slot the paint check uses: a report saying "the
     // reader showed 9 words on a page with 31" is actionable without a reproduction.
+    // Reported separately from the hint bar's button: 'suspect-extraction' would be a lie here.
+    // Readability returned NOTHING, which is a different report and a different fix.
+    if (action === 'report-empty') {
+      return OBR.reportBroken && OBR.reportBroken({
+        source: 'empty-state', mode: 'text',
+        failure: { state: 'no-article', by: '' },
+      });
+    }
     if (action === 'report') {
       const words = (() => { try { return proseWordCount(); } catch (e) { return 0; } })();
       return OBR.reportBroken && OBR.reportBroken({
@@ -1010,9 +1020,24 @@
   function renderContent(article) {
     const title = article ? article.title : document.title;
     const byline = article && article.byline ? article.byline : '';
+    // No article: an EMPTY STATE, not an error. Nothing failed — the page simply isn't one, and
+    // a recipe index or a photo gallery is a perfectly good reason to land here. It also owns the
+    // two ways out, which is why updatePickHint() stays quiet on this path (see the guard there):
+    // one offer on screen, not the same offer twice. Rendered as a block rather than as prose
+    // because the body is where CONTENT goes, and alert chrome there would have to fight the
+    // three themes, the reader's font-size setting and the column pagination at once.
     const body = article
       ? article.content
-      : `<p>${OBR.t('readerNoArticleBody')}</p>`;
+      : `<div class="obr-empty">
+           <div class="obr-empty-ico" aria-hidden="true">📄</div>
+           <div class="obr-empty-head">${escapeHTML(OBR.t('readerNoArticleHead'))}</div>
+           <p class="obr-empty-body">${escapeHTML(OBR.t('readerNoArticleBody'))}</p>
+           <div class="obr-empty-acts">
+             <button class="obr-btn obr-empty-go" data-pick="start">${escapeHTML(OBR.t('readerHintPickBlock'))}</button>
+             <button class="obr-btn" data-pick="report-empty">${escapeHTML(OBR.t('readerHintReport'))}</button>
+           </div>
+           <div class="obr-empty-alt">${escapeHTML(OBR.t('readerNoArticleAlt'))}</div>
+         </div>`;
     titleEl.textContent = title || '';
     // Estimated reading time from the live-DOM prose word count (handles CJK too).
     const words = OBR._articleWordCount ? OBR._articleWordCount() : 0;
@@ -1025,6 +1050,10 @@
          ${byline ? `<div class="obr-byline">${escapeHTML(byline)}</div>` : ''}
          ${body}
        </div>`;
+    // The empty state's buttons speak handlePickHint's vocabulary ('start' / 'report'), so they
+    // route through the one handler rather than growing a second copy of those two actions.
+    pagesEl.querySelectorAll('.obr-empty [data-pick]').forEach((b) =>
+      b.addEventListener('click', () => handlePickHint(b.dataset.pick)));
     // Drop any image that survived extraction with only a placeholder/empty src and no way
     // to render (no srcset, not inside a <picture>) — otherwise it shows as a blank box.
     // Runs AFTER extraction (Readability's own lazy/noscript passes already had their turn).
