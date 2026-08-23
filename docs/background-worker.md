@@ -17,7 +17,12 @@ local-only debug tracing you use to answer "did my click even reach the worker?"
   `removeAll`s before EITHER batch creates anything, so the second batch collides with the first's live
   items → 8 `Cannot create item with duplicate id obr-*` unchecked-lastError entries and a red **Errors**
   badge on the extension card. Don't "simplify" it back. Failures log via `console.warn`, never
-  `console.error` — chrome://extensions collects the worker's `console.error` into that same Errors list.
+  `console.error`. What that buys is precise, and it is less than it sounds: the chrome://extensions
+  Errors page collects BOTH levels, from the worker AND from content scripts, and tells them apart by
+  icon (a filled `!` for an error, a `⚠` triangle for a warning). So `warn` does not keep a message off
+  that page — it keeps the card's RED error badge off, which is the thing that makes a benign no-op look
+  like a fault. Expect every deliberate diagnostic to be listed there; that is the surface working, and
+  chasing an entry off it by lowering the level further just makes the state unexplainable.
   The menu is **state-aware**: `createMenus()` reads `siteRules` and scopes the "Stop auto-opening" and
   "Clear rule" rows with `documentUrlPatterns` so they appear only on the matching site (auto rules /
   whole-site rules respectively), and it re-runs on the `storage.onChanged` `siteRules` delta (alongside
