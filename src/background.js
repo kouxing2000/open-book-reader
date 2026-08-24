@@ -825,7 +825,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // to type (see site/uninstall.html). Param-free by design — the extension appends NO
 // version/usage data. (Opening the page still makes the browser's own request to GitHub
 // Pages, as any navigation does — but the extension itself sends nothing.)
-const UNINSTALL_SURVEY_URL = 'https://kouxing2000.github.io/open-book-reader/uninstall.html';
+const UNINSTALL_SURVEY_URL = 'https://openbook.peach-studio.com/uninstall.html';
 
 chrome.runtime.onInstalled.addListener((details) => {
   createMenus();

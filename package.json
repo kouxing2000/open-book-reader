@@ -4,7 +4,7 @@
   "private": true,
   "description": "Release tooling for the Open Book Reader Chrome extension. The shipped extension is zero-dependency vanilla JS; these devDependencies are build/publish tooling only and are NOT bundled into the extension.",
   "license": "MIT",
-  "homepage": "https://kouxing2000.github.io/open-book-reader/",
+  "homepage": "https://openbook.peach-studio.com/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kouxing2000/open-book-reader.git"

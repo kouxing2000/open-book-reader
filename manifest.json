@@ -5,7 +5,7 @@
   "version": "1.8.0",
   "default_locale": "en",
   "description": "__MSG_extSummary__",
-  "homepage_url": "https://kouxing2000.github.io/open-book-reader/",
+  "homepage_url": "https://openbook.peach-studio.com/",
   "minimum_chrome_version": "102",
   "icons": {
     "16": "icons/icon16.png",

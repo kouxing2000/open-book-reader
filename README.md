@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca"><b>Install from the Chrome Web Store</b></a>
   &nbsp;·&nbsp;
-  <a href="https://kouxing2000.github.io/open-book-reader/">Website</a>
+  <a href="https://openbook.peach-studio.com/">Website</a>
 </p>
 
 Turn any long web article into a **two-page open-book view** with keyboard page-flipping.
@@ -111,8 +111,8 @@ Shots are driven by the demo fixtures in `tests/fixtures/demo-*.html`, so they n
 The public landing page + privacy policy live in `site/` and are hosted on **GitHub Pages**,
 auto-deployed by `.github/workflows/pages.yml` on every push to `master`:
 
-- **Site:** https://kouxing2000.github.io/open-book-reader/
-- **Privacy policy:** https://kouxing2000.github.io/open-book-reader/privacy.html (use this URL in the store listing)
+- **Site:** https://openbook.peach-studio.com/
+- **Privacy policy:** https://openbook.peach-studio.com/privacy.html (use this URL in the store listing)
 
 Static HTML, no build step — just edit `site/` and push. (One-time repo setup: **Settings →
 Pages → Build and deployment → Source = "GitHub Actions"**.)
@@ -130,7 +130,7 @@ dashboard-only; the API (`npm run deploy`) only uploads/publishes the package.
 ## Before publishing (checklist)
 
 - [x] Set `homepage_url` in `manifest.json` to the live site
-- [x] Host the privacy policy publicly — https://kouxing2000.github.io/open-book-reader/privacy.html
+- [x] Host the privacy policy publicly — https://openbook.peach-studio.com/privacy.html
 - [x] Capture 1280×800 screenshots + 440×280 promo tile — `npm run screenshots`
 - [ ] Data-disclosure form: **no data collected / transmitted**; note network requests occur
       only on user-triggered image downloads. `downloads` + `<all_urls>` are optional and
