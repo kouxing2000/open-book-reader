@@ -50,7 +50,7 @@
     <div class="top"><a href="index.html">← Open Book Reader</a></div>
     <div class="card">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 2026-06-19</p>
+      <p class="updated">Last updated: 2026-08-24</p>
 
       <p class="lead">Open Book Reader is designed to be completely private.</p>
 
@@ -73,13 +73,25 @@
       <p>When you remove the extension, your browser may open a short one-question page asking why you left. Answering is optional and works exactly like reporting a problem (a Google Form, or your own email — only what you choose to send). You <strong>may</strong> add your email if you'd like us to let you know when we fix what made you leave, but it is <strong>never required</strong> — leave it blank and the feedback stays anonymous.</p>
 
       <h2>Data stored on your device</h2>
-      <p>Your reading preferences (font size, theme, book width, spine width, line height) are stored using Chrome's <code>storage.sync</code> API. This data stays within your own browser profile and may sync across your signed-in devices via Google's account sync. It is never sent to the developer.</p>
+      <p>Everything below is written by your own browser and is <strong>never sent to the developer</strong>. Removing the extension clears all of it.</p>
+      <p class="sub-label">Synced across your signed-in Chrome devices (Chrome's <code>storage.sync</code>, through your own Google account — never through us):</p>
+      <ul>
+        <li><strong>Reading preferences</strong> — font size, theme, book width, spine width, line height, and your gallery layout choices.</li>
+        <li><strong>Per-site choices you made deliberately</strong> — a saved content pick, images you hid as repeated noise, per-site gallery settings, and the sites you turned auto-open on for. These are keyed by site name, so the list of sites you set something up on syncs along with them.</li>
+      </ul>
+      <p class="sub-label">Kept on this device only (Chrome's <code>storage.local</code>, never synced):</p>
+      <ul>
+        <li><strong>Reading positions</strong> — where you stopped in an article and how long you spent on it, so the reader can offer to resume. An entry records the site and the page path (any <code>?query</code> string is dropped), which makes it a record of the articles you opened the reader on. It stays on this device.</li>
+        <li><strong>Your own counters</strong> — articles finished and total reading time, used only to show your stats on the back-cover page and to decide whether to ask you for a rating.</li>
+      </ul>
+      <p><strong>Incognito windows leave no reading record.</strong> Reading in one saves no position, no reading time and no counters — nothing about it outlives the session. Changes you make deliberately there, such as switching the theme, still save as preferences.</p>
 
       <h2>Permissions</h2>
       <p class="sub-label">Requested at install (the minimal set):</p>
       <ul>
         <li><strong>activeTab / scripting</strong> — used only to render the reading view (text or image gallery) on the page you explicitly activate it on.</li>
-        <li><strong>storage</strong> — used only to remember your preferences.</li>
+        <li><strong>storage</strong> — used only to remember your preferences and the reading data described above.</li>
+        <li><strong>contextMenus</strong> — used only to add the extension's own right-click menu items.</li>
       </ul>
       <p class="sub-label">Optional — requested only the first time you download an image, never at install:</p>
       <ul>
