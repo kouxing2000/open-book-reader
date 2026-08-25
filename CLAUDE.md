@@ -244,9 +244,10 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
 - **Listing copy + IDs**: `.meta/LISTING.md` (gitignored — kept out of this public repo per RULE #1;
   source of truth to paste from), with the localized detailed descriptions in `.meta/listings/<lang>.txt`. Public site (landing +
   privacy): `site/`, auto-deployed to GitHub Pages on push to `master` via `.github/workflows/pages.yml`
-  → https://openbook.peach-studio.com/ (`site/CNAME` sets the custom domain, so the repo is served
-  at the DOMAIN ROOT — root-absolute paths in `site/` are `/…`, never `/open-book-reader/…`; the old
-  `github.io` URL 301s here). Host the privacy policy publicly; note that rendered
+  → https://openbook.peach-studio.com/. The custom domain is a repo **Settings → Pages** field, NOT a
+  `CNAME` file — a workflow-published site ignores that file entirely. It serves the repo at the DOMAIN
+  ROOT, so root-absolute paths in `site/` are `/…`, never `/open-book-reader/…`; the old `github.io`
+  URL 301s here. Host the privacy policy publicly; note that rendered
   article media still fetch from the origin even though the extension makes no requests.
 
 ## Gotchas
