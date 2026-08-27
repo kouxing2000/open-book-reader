@@ -35,6 +35,7 @@
     .b-gallery { background:#e3f4ec; color:#138a5e; }
     .b-either  { background:#f0ece2; color:#7a736a; }
     .b-local   { background:#fde8d6; color:#b5631a; }
+    .b-broken  { background:#fbdede; color:#b12626; }
     footer { max-width:1080px; margin:0 auto; padding:0 24px 50px; color:var(--mut); font-size:13px; }
     .caveat { margin-top:8px; }
   </style>
@@ -59,6 +60,10 @@
     <section>
       <h2>Figure-rich long article → Reader (the reported bug)</h2>
       <div class="grid" id="g-figrich"></div>
+    </section>
+    <section>
+      <h2>Reported failures — real URLs from user feedback</h2>
+      <div class="grid" id="g-reported"></div>
     </section>
     <section>
       <h2>Image gallery · lazy / infinite scroll → Gallery</h2>
@@ -97,6 +102,28 @@
         ['Wikipedia — Photography', 'https://en.wikipedia.org/wiki/Photography', 'reader', '12+ images AND heavy prose. proseWords should be ≫ 200 → stays Reader.'],
         ['Wikipedia — Apollo 11', 'https://en.wikipedia.org/wiki/Apollo_11', 'reader', 'Image-rich essay; the prose signal must win.'],
       ],
+      // Verified against these exact URLs, not guessed. A `broken` badge is a REPRODUCTION:
+      // it describes what the extension does today, so a card that starts passing is the
+      // signal a fix landed — update the card, don't delete it. Dated article URLs rot; when
+      // one 404s, capture a fresh article from the same site and keep the expectation text.
+      'g-reported': [
+        ['Forbes.ru — photo essay (issue #1)',
+         'https://www.forbes.ru/novosti-photogallery/79611-evolyuciya-putina-zhurnalnye-oblozhki-s-rossiyskim-prezidentom',
+         'broken',
+         'The whole body is <figure> + <figcaption>. The AUTO whole-page parse still renders a caption/sidebar quote with zero images and the "Wrong content?" bar fires — but \u2316 Pick on the gallery block now recovers all figures + captions (the kept-none rawFallback). Gallery sees only the covers the carousel has put in the DOM.'],
+        ['The Economist — any article',
+         'https://www.economist.com/', 'reader',
+         'Named in issue #1 but UNVERIFIED: blocks headless capture, so it can only be checked by hand in a signed-in browser. Paywalled articles legitimately extract short — judge against what the page actually shows you.'],
+        ['Forbes.com — any /sites/ article',
+         'https://www.forbes.com/', 'reader',
+         'Text extracts correctly (18 paragraphs). Renders 1 of the 2 content images the page carries.'],
+        ['The Guardian — any article',
+         'https://www.theguardian.com/international', 'reader',
+         'Text is complete. The single lead image is dropped (1 -> 0) — the src our lazy-image rescue cannot resolve.'],
+        ['BBC News — any article',
+         'https://www.bbc.com/news', 'reader',
+         'Clean pass: full text, images survive. Regression anchor — if this one breaks, the extractor broke.'],
+      ],
       'g-gallery': [
         ['Unsplash', 'https://unsplash.com/', 'gallery', 'Infinite scroll, srcset + lazy. Best general test for progressive load.'],
         ['Pexels', 'https://www.pexels.com/', 'gallery', 'Lots of lazy images.'],
@@ -114,16 +141,23 @@
         ['Local lazy-demo (run: node tests/server.js)', 'http://localhost:5099/lazy-demo.html', 'local', 'Numbered tiles, deterministic — see load order and that positions stay put.'],
       ],
     };
-    const BADGE = { reader:['b-reader','Reader'], gallery:['b-gallery','Gallery'], either:['b-either','Either'], local:['b-local','Local'] };
+    const BADGE = { reader:['b-reader','Reader'], gallery:['b-gallery','Gallery'], either:['b-either','Either'],
+                    local:['b-local','Local'], broken:['b-broken','Broken today'] };
     for (const [id, items] of Object.entries(SITES)) {
       const host = document.getElementById(id);
       for (const [name, url, kind, what] of items) {
         const a = document.createElement('a');
         a.className = 'card'; a.href = url; a.target = '_blank'; a.rel = 'noopener';
         const [bc, bl] = BADGE[kind] || BADGE.either;
-        a.innerHTML =
-          `<div class="row1"><span class="name">${name}</span><span class="badge ${bc}">${bl}</span></div>` +
-          `<div class="url">${url}</div><div class="what">${what}</div>`;
+        // Built with textContent, not innerHTML: these descriptions name HTML elements
+        // (<figure>, <figcaption>, <img>), and an innerHTML build silently swallows them as
+        // markup — the sentence then reads as if the words were never written.
+        const div = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; return d; };
+        const row1 = div('row1', '');
+        const n = document.createElement('span'); n.className = 'name'; n.textContent = name;
+        const bg = document.createElement('span'); bg.className = 'badge ' + bc; bg.textContent = bl;
+        row1.append(n, bg);
+        a.append(row1, div('url', url), div('what', what));
         host.appendChild(a);
       }
     }
