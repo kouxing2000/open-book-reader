@@ -608,7 +608,26 @@
     if (!el) return null;
     try {
       const article = parseBaseDoc(scopedBaseDoc(el));
-      if (article && article.content) return article;
+      if (article && article.content) {
+        // A bad SUCCESS loses to rawFallback's contract. On a photo essay whose body is
+        // <figure>+<figcaption> (issue #1: a forbes.ru gallery), Readability "succeeds"
+        // with the densest caption's prose and ZERO images — and for a block the user
+        // explicitly pointed at, "you see exactly what you picked" outranks the parse.
+        // Kept-NONE is the deliberate line: a kept-under-half rule dragged page chrome
+        // into 10 of 20 real-site picks when measured; kept-none fired on exactly the
+        // broken one. Partial keeps stay with Readability's cleanup. The >=4 "image-rich"
+        // bar mirrors parseBaseDoc's rescue gate — move the two together.
+        // Count on a HYDRATED clone, not the live el: on a lazy-loading gallery the live
+        // imgs still hold placeholder/data-src srcs (which IMG_URL rejects), and the
+        // parse being judged ran on a hydrated copy — a live count would go silent on
+        // exactly the JS-lazy galleries this fallback exists for.
+        const probe = el.cloneNode(true);
+        hydrateLazyImages(probe);
+        if (imageUrlSet(probe).size >= 4 && imageUrlSetFromHtml(article.content).size === 0) {
+          return rawFallback(el);
+        }
+        return article;
+      }
       return rawFallback(el);
     } catch (e) {
       console.warn('[OpenBookReader] scoped extraction failed:', e);

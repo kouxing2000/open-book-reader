@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, injectReader, openReader, readState, clickInReader } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -1280,6 +1280,102 @@ test.describe('content override', () => {
     // Clear the pick → falls back to the whole page (the decoy) again.
     await clickInReader(page, '.obr-pick-hint [data-pick="clear"]');
     await expect.poll(() => readState(page).then((x) => x.contentText)).toContain('DECOY-MARKER');
+  });
+});
+
+/* ----------------------------------- picking an image-rich block (photo-essay pages).
+ * The regression lives at the WIRING, not the parser: on a figure+figcaption photo essay
+ * (photo-essay.html, distilled from a real forbes.ru gallery — issue #1) Readability
+ * SUCCEEDS with a caption-only, image-free parse, and extractFromNode used to trust any
+ * non-empty success — so the ⌖ Pick button returned the same broken result no matter what
+ * the user pointed at. rawFallback's contract ("you see exactly what you picked") has to
+ * win over a parse that dropped every image in the picked block. */
+test.describe('picking an image-rich block', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoFixture(page, 'photo-essay.html');
+    await injectReader(page);
+  });
+
+  // Shadow-DOM view of what the reader actually rendered.
+  const rendered = (page) => page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const pages = root.querySelector('.obr-pages');
+    return {
+      imgs: pages ? pages.querySelectorAll('img').length : 0,
+      text: pages ? pages.textContent.replace(/\s+/g, ' ') : '',
+    };
+  });
+
+  // The real picker flow: ⌖, then click the gallery section's top padding (the padding
+  // makes elementFromPoint yield the SECTION itself, not one of its figures).
+  const pickGallerySection = async (page) => {
+    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    const pt = await page.evaluate(() => {
+      const r = document.getElementById('photo-gallery').getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 12) };
+    });
+    await page.mouse.move(pt.x, pt.y);
+    await page.mouse.click(pt.x, pt.y);
+  };
+
+  test('⌖ Pick on the gallery section renders its figures, not a caption-only parse', async ({ page }) => {
+    await openReader(page);
+
+    // Precondition landmark, not a wish: the whole-page parse must reproduce the bug —
+    // caption text extracted, zero images — or this test no longer exercises the defect
+    // path and the fixture needs rebuilding (see photo-essay.html's header comment).
+    const before = await rendered(page);
+    expect(before.imgs).toBe(0);
+    expect(before.text).toContain('GCAP-DENSE');
+
+    await pickGallerySection(page);
+
+    // The picked block holds 6 figures; the reader must show them all, captions included.
+    await expect.poll(() => rendered(page).then((r) => r.imgs)).toBe(6);
+    const after = await rendered(page);
+    expect(after.text).toContain('GCAP-1');
+    expect(after.text).toContain('GCAP-6');
+  });
+
+  test('the fallback fires for a LAZY-placeholder gallery too (guard counts the hydrated block)', async ({ page }) => {
+    // The shape a JS-lazy gallery has before its own script runs: every img holds a
+    // placeholder src and the real URL sits in data-src. The guard must count the
+    // HYDRATED block — a live-src count is zero here and would skip the fallback on
+    // exactly the page class the fix exists for.
+    await page.evaluate(() => {
+      document.querySelectorAll('#photo-gallery img').forEach((img) => {
+        img.setAttribute('data-src', img.getAttribute('src'));
+        img.setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAAAAACw=');
+      });
+    });
+    await openReader(page);
+    await pickGallerySection(page);
+    await expect.poll(() => rendered(page).then((r) => r.imgs)).toBe(6);
+    const after = await rendered(page);
+    expect(after.text).toContain('GCAP-1');
+  });
+
+  // NOTE: this asserts the happy route only — for a 0-image pick, the Readability parse
+  // and rawFallback render the SAME text, so these assertions cannot tell the branches
+  // apart. It's a smoke test that a plain text pick renders what was picked, not proof
+  // of which path served it.
+  test('a text-only pick renders the picked prose, nothing dragged in', async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    // Pick the decoy aside: plenty of text, no images — the parse path, not rawFallback.
+    // It sits below the six figures, so bring it into the viewport first (picker mode
+    // unlocks page scroll for exactly this reason).
+    const pt = await page.evaluate(() => {
+      const el = document.querySelector('#essay-decoy p');
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    });
+    await page.mouse.move(pt.x, pt.y);
+    await page.mouse.click(pt.x, pt.y);
+    await expect.poll(() => rendered(page).then((r) => r.text)).toContain('GDECOY-MARKER');
+    const s = await rendered(page);
+    expect(s.imgs).toBe(0); // nothing to rescue; no figures dragged in from elsewhere
   });
 });
 

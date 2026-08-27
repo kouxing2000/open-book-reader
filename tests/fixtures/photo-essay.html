@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Essay Test Page</title>
+</head>
+<body>
+  <header><nav>Home · Essays · About</nav></header>
+
+  <!-- A photo essay whose ENTIRE body is <figure> + <figcaption>: the shape (distilled from a
+       real forbes.ru photo gallery, issue #1) where Readability's top-candidate selection picks
+       the densest CAPTION's inner div as "the article" and drops every figure. The scoped pick
+       path then returns a caption-only, image-free parse — a bad SUCCESS, which used to mask
+       rawFallback entirely. The one dense caption (GCAP-DENSE) must stay > 1500 non-space chars:
+       below that, parseBaseDoc's image-rescue re-parse could kick in and hide the failure this
+       fixture exists to reproduce. -->
+  <article id="essay">
+    <h1>Thirty Years of Harbor Lights</h1>
+    <!-- padding-top gives the element picker a click target that IS the section itself. -->
+    <section id="photo-gallery" style="padding-top: 40px">
+      <figure>
+        <div class="media"><img src="pic.png?f=1" alt="The lamp room at dusk"></div>
+        <figcaption><div class="cap"><p>GCAP-1 The lamp room photographed at dusk in the first
+        winter, the brass fittings still bright from the founding crew's final polish before
+        the handover ceremony on the pier.</p></div></figcaption>
+      </figure>
+      <figure>
+        <div class="media"><img src="pic.png?f=2" alt="The keeper's journal"></div>
+        <figcaption><div class="cap">
+          <p>GCAP-DENSE The journal entry reproduced here is the longest the keeper ever wrote,
+          and it repays slow reading. He begins with the storm itself, the barometer falling
+          faster than he had ever recorded, the glass trembling in its frame while the tower
+          hummed like a struck bell, and he notes with typical understatement that the stairs
+          were difficult that night. He goes on to describe the fishing fleet caught beyond the
+          shoals, eleven boats by his count, and the calculation he made alone at the top of the
+          tower: that the light must not merely turn but be seen to turn, and that a lamp wick
+          trimmed a quarter inch too low was the difference between a harbor and a graveyard.</p>
+          <p>The middle passage is the one historians quote. He writes that no ship ever thanked
+          a lighthouse, and that this was the whole dignity of the work: to be indispensable and
+          unacknowledged in the same breath, to stand at the edge of the map and hold it steady
+          for men who would never learn his name. The prose runs on for pages in this vein,
+          unhurried and exact, cataloguing the wrecks that did not happen, the cargoes that
+          arrived, the letters that reached their harbors because a flame the size of a fist
+          kept its appointment through every hour of a forty-year argument with the weather.</p>
+          <p>He closes with the inventory he took at dawn, every pane of the lantern glass
+          intact, the mercury bath level, the clockwork wound, and the fleet counted back into
+          the harbor one mast at a time, eleven of eleven, and then the line his biographers
+          always end on: that he made his tea, wrote these pages, and slept until noon,
+          because the light did not keep itself and the next night was already coming. The
+          entry is dated the ninth of February; the photograph shows the page open under the
+          same lamp that burned through the storm it describes, and the ink is unblotted,
+          which the archivists take as its own quiet testimony to the steadiness of his hand.</p>
+        </div></figcaption>
+      </figure>
+      <figure>
+        <div class="media"><img src="pic.png?f=3" alt="The fresnel lens"></div>
+        <figcaption><div class="cap"><p>GCAP-3 The first-order fresnel lens on its cleaning day,
+        each prism numbered in the keeper's hand so the apprentice could reassemble the array
+        without ever consulting the manufacturer's chart.</p></div></figcaption>
+      </figure>
+      <figure>
+        <div class="media"><img src="pic.png?f=4" alt="The supply boat"></div>
+        <figcaption><div class="cap"><p>GCAP-4 The monthly supply boat approaching in heavy
+        swell, oil drums lashed amidships, photographed from the gallery rail by the keeper's
+        daughter on her twelfth birthday.</p></div></figcaption>
+      </figure>
+      <figure>
+        <div class="media"><img src="pic.png?f=5" alt="The brass key"></div>
+        <figcaption><div class="cap"><p>GCAP-5 The brass door key the keeper carried after the
+        automation, worn smooth on one shoulder from three decades in the same coat pocket,
+        now in the maritime museum's permanent collection.</p></div></figcaption>
+      </figure>
+      <figure>
+        <div class="media"><img src="pic.png?f=6" alt="The tower today"></div>
+        <figcaption><div class="cap"><p>GCAP-6 The tower as it stands today, the lamp electric
+        and unattended, the keeper's cottage a small museum whose visitor book fills faster
+        than the journal it commemorates ever did.</p></div></figcaption>
+      </figure>
+    </section>
+  </article>
+
+  <!-- Ambient page furniture: keeps the live page's prose count realistic (so the reader's
+       suspect heuristic has something to compare against), NOT what the whole-page parse
+       returns — measured, the whole-page parse grabs the same dense caption the scoped
+       parse does, which is exactly the forbes.ru behavior. Distinct marker from
+       wrong-content.html's decoy. -->
+  <aside id="essay-decoy">
+    <h2>From the network</h2>
+    <p>GDECOY-MARKER Investors spent the week parsing the central bank's latest guidance, and by
+    Friday the consensus had shifted toward a more cautious reading of the months ahead, with
+    several large funds quietly rotating out of the sectors that had carried the rally and into
+    the defensive names that tend to weather a slowdown with less drama for their managers.</p>
+    <p>Across the ocean, negotiators emerged from another marathon session with little to show
+    beyond a joint statement promising further talks, the kind of diplomatic placeholder that
+    satisfies no one yet keeps the process technically alive, and analysts were left to read
+    the body language of the principals for clues the communique had been drafted to withhold.</p>
+    <p>In technology, a much-anticipated product launch landed to mixed reviews, praised for its
+    polish and panned for its price, while a rival used the moment to leak details of its own
+    forthcoming device, ensuring the news cycle would belong to the category rather than to any
+    single company for at least another restless and speculation-heavy week.</p>
+  </aside>
+</body>
+</html>
