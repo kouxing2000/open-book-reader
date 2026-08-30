@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-08-30
+
+### Fixed
+- **"Pick the block" now shows what you pointed at on photo essays.** On a page whose story
+  lives in its image captions — a photo gallery, a picture-led feature — picking the block by
+  hand could come back as caption text with every image gone, which is precisely the failure
+  the picker exists to rescue you from. When the block you chose is full of images and the
+  extraction finds none of them, the reader now shows that block as it stands, pictures and
+  captions together.
+
 ## [1.8.0] - 2026-08-23
 
 ### Added
@@ -310,7 +320,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.1
 [1.8.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.0
 [1.7.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.2
 [1.7.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.7.1
