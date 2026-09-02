@@ -232,6 +232,24 @@ const flipLayers = (page) => page.locator('#obr-host >> .obr-flip-layer').count(
 // downstream is expressed as a MULTIPLE of this, never as a flat millisecond number.
 const TURN_MS = 1200;
 
+// The single teardown budget for every leaf-cleanup assertion below. Each of those tests PINS its
+// transition to TURN_MS, so the budget is a known multiple of a known turn instead of a flat number
+// against whatever the defaults happen to be. The two modes do not run at the same speed — a book
+// turn lasts transitionMs, a curl lasts CURL_DURATION() = max(760, transitionMs * 1.9) — so pinned
+// at TURN_MS this budget is 6x a 1200ms book turn and 3.2x a 2280ms curl. Ratio is not the point;
+// ABSOLUTE HEADROOM is, because teardown carries fixed overhead that does NOT scale with the
+// transition (animation start latency, the leafAnim.finished promise settling, the poll's own
+// round-trip, CPU contention on a loaded runner). Flat budgets gave the curl tests ~2.2s of
+// headroom over the animation while measured teardown at default speed was 1.0-1.5s for a single
+// turn and 1.5-2.0s for an interrupted one; pinning lifts that to ~4.9s.
+//
+// That thin margin is what failed the soft-curl test below on CI at v1.8.1 — on the first attempt
+// AND the retry — while the release job for the same commit passed, and the same class of margin
+// blocked the v1.7.2 release outright. A leaf that genuinely leaks is NEVER removed, so a generous
+// ceiling costs no sensitivity: with the removal in endActiveFlip() disabled, all four assertions
+// below still fail.
+const LEAF_TEARDOWN_MS = TURN_MS * 6;
+
 test('the book page-turn floats a transient leaf and then cleans it up', async ({ page }) => {
   await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'book', transitionMs: ms }), TURN_MS);
   await openReader(page);
@@ -242,22 +260,20 @@ test('the book page-turn floats a transient leaf and then cleans it up', async (
 
   await page.keyboard.press('ArrowRight');
   expect(await flipLayers(page)).toBe(1);            // built synchronously in the flip handler
-  // Teardown fires when the turn ENDS, so this budget has to scale with TURN_MS. It was a flat
-  // 3000ms — only 2.5x the transition this same test slows down to 1200ms — which held locally
-  // but failed on the first attempt AND the retry on a loaded CI runner, blocking the v1.7.2
-  // release (2026-07-29). A leaf that genuinely leaks is NEVER removed, so a generous ceiling
-  // costs no sensitivity: this still fails closed on the bug it exists to catch.
-  await expect.poll(() => flipLayers(page), { timeout: TURN_MS * 6 }).toBe(0);
+  // Teardown fires when the turn ENDS, so the budget scales with TURN_MS (see LEAF_TEARDOWN_MS).
+  await expect.poll(() => flipLayers(page), { timeout: LEAF_TEARDOWN_MS }).toBe(0);
 });
 
 test('the book turn settles to the exact same state as the plain flip (additive overlay)', async ({ page }) => {
-  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'book' }));
+  // Pin the transition too: the assertion is about the SETTLED state, not the speed, and a pinned
+  // turn is what lets the teardown budget below be a multiple rather than a flat number.
+  await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'book', transitionMs: ms }), TURN_MS);
   await openReader(page);
   await page.keyboard.press('ArrowRight');
   const mid = await readState(page); // real strip already snapped to the destination
   expect(mid.translateX).toBeLessThan(0);
 
-  await expect.poll(() => flipLayers(page), { timeout: 2000 }).toBe(0);
+  await expect.poll(() => flipLayers(page), { timeout: LEAF_TEARDOWN_MS }).toBe(0);
   const after = await readState(page);
   // The transient leaf never touches the real strip — final state == the snapped state.
   expect(after.translateX).toBe(mid.translateX);
@@ -292,6 +308,10 @@ test('prefers-reduced-motion forces an instant flip with no leaf', async ({ page
 });
 
 test('rapid flips strand no leaf and advance by two spreads', async ({ page }) => {
+  // Pin the turn (this ran at the DEFAULTS before). The point of the test is the INTERRUPT, and a
+  // slowed turn makes the second press reliably land mid-flight instead of racing a 760ms curl —
+  // it also lets the teardown budget scale. The default curl path is covered by the curl test below.
+  await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'curl', transitionMs: ms }), TURN_MS);
   await openReader(page);
   const start = await readState(page);
 
@@ -302,12 +322,14 @@ test('rapid flips strand no leaf and advance by two spreads', async ({ page }) =
 
   expect(one.translateX).toBeLessThan(start.translateX);
   expect(two.translateX).toBeLessThan(one.translateX); // second flip advanced further
-  await expect.poll(() => flipLayers(page), { timeout: 2000 }).toBe(0); // nothing orphaned
+  await expect.poll(() => flipLayers(page), { timeout: LEAF_TEARDOWN_MS }).toBe(0); // nothing orphaned
 });
 
 test('the soft curl turn floats a transient leaf, then settles to the plain-flip state', async ({ page }) => {
-  // The curl runs on its own ~760ms+ duration, so the overlay reliably outlives the query.
-  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'curl' }));
+  // The curl runs on its own duration — CURL_DURATION() = max(760, transitionMs * 1.9) — so the
+  // overlay outlives the query at any setting. Pin transitionMs anyway so the teardown budget
+  // below is a multiple of a known turn rather than a flat number against an implicit 760ms.
+  await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'curl', transitionMs: ms }), TURN_MS);
   await openReader(page);
   // Let the late font/image relayout fire first — layout() ends any in-flight turn, so flipping
   // before it settles would legitimately abort the leaf we're about to assert on.
@@ -319,7 +341,7 @@ test('the soft curl turn floats a transient leaf, then settles to the plain-flip
   const mid = await readState(page);
   expect(mid.translateX).toBeLessThan(0);                 // real strip already at destination
 
-  await expect.poll(() => flipLayers(page), { timeout: 3000 }).toBe(0); // sliced strips cleaned up
+  await expect.poll(() => flipLayers(page), { timeout: LEAF_TEARDOWN_MS }).toBe(0); // sliced strips cleaned up
   const after = await readState(page);
   expect(after.translateX).toBe(mid.translateX);          // additive: real strip untouched
   expect(after.indicator).toBe(mid.indicator);

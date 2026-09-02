@@ -7,7 +7,8 @@ Test-suite baseline and the claims inventory, per `plan.md`. Tree: v1.8.1 (`0d80
 | | |
 | --- | --- |
 | Command | `npm test` (Playwright, `workers: 1`, `fullyParallel: false`) |
-| Result (audit environment) | **256 passed, 6 failed, 9m25s** |
+| Result (audit environment, first run) | **256 passed, 6 failed, 9m25s** — see the load caveat below |
+| Result (audit environment, after the PR1 fix) | **261 passed, 1 failed, 3m46s** |
 | Result (CI on the same commit) | **261 passed, 1 failed, 4.9m** — [CI run 28](https://github.com/kouxing2000/open-book-reader/actions/runs/33322147517) |
 | Result (release job, same commit) | **passed** — [release run 16](https://github.com/kouxing2000/open-book-reader/actions/runs/33322147166) |
 | Spec files | 7 (`reader`, `gallery`, `options`, `auto-open`, `extension-load`, `silent-failure`, `packaging`) |
@@ -37,14 +38,20 @@ from real behaviour by probe rather than by assumption.
 
 Each was re-run in isolation three times and probed directly.
 
-| test | isolated | verdict |
-| --- | --- | --- |
-| `reader.spec.js:294` rapid flips strand no leaf | 3/3 fail | **timing margin** — see B1 |
-| `options.spec.js:343` prefill fills + focuses the add-rule form | 3/3 fail | **environment artifact** — see B2 |
-| `reader.spec.js:308` soft curl turn settles | passes | timing margin (the one CI also fails) |
-| `reader.spec.js:489` Auto theme follows the OS | passes | load-dependent (30s timeout under full-suite load) |
-| `reader.spec.js:537` font size preserves progress | passes | load-dependent |
-| `reader.spec.js:554` column count preserves progress | passes | load-dependent |
+**Load caveat on the first run (correction).** That 9m25s run happened while four audit subagents
+were working the same container. The three "load-dependent" rows below are partly self-inflicted:
+on an idle machine the identical tree runs in under 4 minutes and those three pass. This does not
+change the verdict on the two deterministic rows — both were reproduced 3/3 on an idle machine —
+but the first run's timing numbers should not be read as a clean measurement.
+
+| test | isolated | verdict | now |
+| --- | --- | --- | --- |
+| `reader.spec.js:294` rapid flips strand no leaf | 3/3 fail | **timing margin** — see B1 | fixed (PR1) |
+| `options.spec.js:343` prefill fills + focuses the add-rule form | 3/3 fail | **environment artifact** — see B2 | still fails here, passes on CI |
+| `reader.spec.js:308` soft curl turn settles | passes | timing margin (the one CI also failed) | fixed (PR1) |
+| `reader.spec.js:489` Auto theme follows the OS | passes | load-dependent | passes |
+| `reader.spec.js:537` font size preserves progress | passes | load-dependent | passes |
+| `reader.spec.js:554` column count preserves progress | passes | load-dependent | passes |
 
 **B2 — the options focus failure is an artifact, not a defect (CONFIRMED).** A probe read
 `document.activeElement.id === 'siteHost'` with `document.hasFocus() === false`: the code focuses
@@ -54,18 +61,21 @@ headless container. Nothing to fix in the product.
 **B1 — the leaf-cleanup assertions are on a knife edge (CONFIRMED).** With `DEFAULTS.pageTurn:
 'curl'` and `transitionMs: 340`, a probe sampling every 500 ms found the transient leaf gone
 between 1.0–1.5 s after a single turn and between 1.5–2.0 s after an interrupted one. The
-assertion at `reader.spec.js:305` allows a flat **2000 ms**; the one at `:322` allows a flat
-**3000 ms**. Both are margins of well under 2× over an observed 1.5–2 s teardown, so a slow runner
-tips them over. This is the same defect class a previous commit already fixed for the sibling test
-at `:250` by scaling the budget to `TURN_MS * 6` — the fix was never applied to these two, which
-still carry flat numbers.
+assertion at `reader.spec.js:305` allowed a flat **2000 ms**; the one at `:322` allowed a flat
+**3000 ms**. Both were margins of well under 2× over an observed 1.5–2 s teardown, so a slow runner
+tipped them over. This was the same defect class a previous commit already fixed for the sibling
+test at `:250` by scaling the budget to `TURN_MS * 6`; the fix had never been applied to these —
+nor to a third assertion (`:260`, "book turn settles") that carried the same flat budget and had
+simply not failed yet.
 
 That is not a cosmetic point: **`reader.spec.js:308` failed on CI at v1.8.1 on both the first
 attempt and the retry**, while the release job for the identical commit passed. `npm test` is the
 only gate in `release.yml` before the Web Store upload, and this same assertion class already
-blocked the v1.7.2 release once. It is logged as PR1 in `findings.md`.
+blocked the v1.7.2 release once. Logged as PR1 in `findings.md` and **fixed** — a third assertion
+with the same defect turned up in the process, and fail-closed was re-proven by mutation.
 
-Everything else is green. Excluding the six above, **the suite is a genuine pass** and the two
+Everything else is green. After the PR1 fix the only remaining local failure is B2, the headless
+focus artifact, which passes on CI. **The suite is a genuine pass** and the two
 engines, the options page, the auto-open ladder and the packaging allowlist are all exercised
 against real Chromium.
 

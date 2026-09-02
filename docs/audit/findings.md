@@ -9,21 +9,22 @@ Nothing here is fixed yet — the audit is read-only until Phase 4.
 ## Summary
 
 Counts are of NUMBERED entries only. Most areas also carry an unnumbered "done well" list, which
-is part of the finding but not a defect.
+is part of the finding but not a defect. \* PR1 is **fixed**; it stays counted so the tally matches
+the entries below.
 
 | area | P0 | P1 | P2 | P3 | Info | entries |
 | --- | --- | --- | --- | --- | --- | --- |
 | Security | 0 | 0 | 2 | 1 | 1 | S1–S4 |
 | Privacy | 0 | 0 | 0 | 2 | 2 | V1–V4 |
 | Reliability | 0 | 0 | 1 | 0 | 0 | R1 |
-| Process | 0 | 1 | 1 | 1 | 0 | PR1–PR3 |
+| Process | 0 | 1* | 1 | 1 | 0 | PR1–PR3 |
 | Compatibility | 0 | 0 | 0 | 1 | 1 | C1–C2 |
 | Maintainability | 0 | 0 | 0 | 1 | 0 | M1 |
 | Documentation drift | 0 | 0 | 1 | 3 | 0 | D1–D4 |
 | **total** | **0** | **1** | **5** | **9** | **4** | **19** |
 
-One P1, in process, not in the product: a flaky timing assertion is the only gate on the Web Store
-release pipeline, and it is currently red on master (PR1). No P0. The shipped code's security
+One P1, in process, not in the product: a flaky timing assertion was the only gate on the Web Store
+release pipeline and was red on master — **fixed** (PR1). No P0. The shipped code's security
 posture is good for what it is (a content script that renders the page's own content in the page's
 own origin); the two P2 security items are a hardening gap in the ZIP delivery path and unpinned
 CI actions around the release secrets.
@@ -142,8 +143,8 @@ carries a paint check and a page-level notice path (`background.js:28-33`).
 
 ## Process
 
-**PR1 · P1 · CONFIRMED — master's CI is red, and the failing test is a timing margin sitting on the
-release gate.**
+**PR1 · P1 · CONFIRMED — FIXED 2026-09-02 — master's CI is red, and the failing test is a timing
+margin sitting on the release gate.**
 `npm test` is the only gate in `release.yml:59` before the Web Store upload. At v1.8.1 (`0d808b1`,
 the current HEAD) [CI run 28](https://github.com/kouxing2000/open-book-reader/actions/runs/33322147517)
 failed — `reader.spec.js:308` "the soft curl turn floats a transient leaf, then settles to the
@@ -156,10 +157,21 @@ Measured teardown of the transient leaf, with `DEFAULTS.pageTurn: 'curl'` and `t
 is 1.0–1.5 s for a single turn and 1.5–2.0 s for an interrupted one (probe, `baseline.md` B1) — a
 margin under 2×, which a loaded runner erases. Both fail 3/3 in the audit environment.
 Consequences: a red master hides a real regression, and a release either fails on a coin flip or
-passes on one. Fix: apply the existing `TURN_MS * 6` pattern to both assertions — a leaf that
-genuinely leaks is never removed, so the assertion keeps failing closed on the bug it exists to
-catch. Then consider whether `endActiveFlip` should also run off a bounded fallback timer rather
-than only `leafAnim.finished`, so teardown does not depend on the animation promise settling.
+passes on one. **Fixed** in `tests/reader.spec.js`: there were **three** flat budgets, not two — the
+"book turn settles" assertion had the same defect and had simply not failed yet. All three now use
+one shared `LEAF_TEARDOWN_MS = TURN_MS * 6`, and each test pins its own transition to `TURN_MS` so
+the budget is a multiple of a known turn rather than a flat number against whatever the defaults
+are. Absolute headroom over the animation goes from ~2.2s to ~4.9s on the curl paths.
+
+Verified three ways: the four assertions pass 3/3 in isolation; the full suite goes from 6 failures
+to 1 (the headless-focus artifact B2, which is not a defect); and **fail-closed was proven by
+mutation** — with `f.layer.remove()` disabled in `endActiveFlip()` (`reader.js:2084`), all four
+assertions fail, so the generous ceiling costs no sensitivity.
+
+**No engine change.** The evidence does not show a leak: the leaf *is* removed, just later than a
+tight budget allowed. The Phase 2 note suggesting a bounded fallback timer in `endActiveFlip` is
+therefore withdrawn — adding one would risk cancelling a legitimately-running animation to fix a
+problem that only existed in the test.
 
 **PR2 · P2 · CONFIRMED — no dependency automation, one known-vulnerable dev dependency.**
 No `.github/dependabot.yml` or Renovate config. `npm audit` reports one high-severity advisory
@@ -231,5 +243,4 @@ and permission pages.
 ## Next (Phase 3)
 
 Verify every SUSPECTED entry above (S1 end-to-end, V4, R1), then the plan's A2–A7 and B3/B6.
-PR1 is the one item worth pulling forward out of order: master is red now, and every other finding
-is easier to act on against a green baseline.
+PR1 was pulled forward and is fixed; the rest are untouched.
