@@ -9,6 +9,30 @@ around it. This file is the plan; results land beside it:
 | `baseline.md` | Phase 1 output: test-suite baseline + the claims inventory |
 | `findings.md` | the running findings log, one entry per finding, severity-ordered |
 
+## Status — read this first
+
+| phase | state | where |
+| --- | --- | --- |
+| 1 — Baseline | **done** (2026-09-02, v1.8.1 `0d808b1`) | `baseline.md` |
+| 2 — Automated sweeps | **done** | `findings.md` (19 entries: 1×P1, 5×P2, 9×P3, 4×Info) |
+| 3 — Deep dives | not started | — |
+| 4 — Report + fix plan | not started | — |
+
+Nothing has been fixed: the audit is read-only through Phase 3 by design (see **Rules while
+auditing**), so every finding is logged, not patched.
+
+**Resume here.** Read `findings.md` first — its Summary table and the Next section say what is
+open. Then either:
+- **act on PR1** (P1: master's CI is red at v1.8.1 and the failing assertion is the release gate) —
+  worth pulling forward out of order, because a green baseline makes everything else easier to
+  judge; or
+- **start Phase 3** with the SUSPECTED findings (S1 end-to-end, V4, R1), then tracks A2–A7 and
+  B3/B6 below.
+
+Before running the suite in a fresh container, read the **Environment caveat** in `baseline.md` —
+the preinstalled Chromium will not match Playwright's expected build, and the resulting failure
+looks like a total regression but is not one.
+
 The audit is **claims-driven**: the product's promises (README, store listing, options page,
 privacy policy) are the specification, and each promise is checked against the code and the
 tests. Because the extension injects into arbitrary pages and is marketed on "collects

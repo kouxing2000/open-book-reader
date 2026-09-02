@@ -8,15 +8,19 @@ Nothing here is fixed yet — the audit is read-only until Phase 4.
 
 ## Summary
 
-| area | P0 | P1 | P2 | P3 | Info |
-| --- | --- | --- | --- | --- | --- |
-| Security | 0 | 0 | 2 | 2 | 1 |
-| Privacy | 0 | 0 | 0 | 2 | 2 |
-| Reliability | 0 | 0 | 1 | 0 | 1 |
-| Process | 0 | 1 | 1 | 1 | 0 |
-| Compatibility | 0 | 0 | 0 | 1 | 1 |
-| Maintainability | 0 | 0 | 0 | 1 | 2 |
-| Documentation drift | 0 | 0 | 1 | 3 | 1 |
+Counts are of NUMBERED entries only. Most areas also carry an unnumbered "done well" list, which
+is part of the finding but not a defect.
+
+| area | P0 | P1 | P2 | P3 | Info | entries |
+| --- | --- | --- | --- | --- | --- | --- |
+| Security | 0 | 0 | 2 | 1 | 1 | S1–S4 |
+| Privacy | 0 | 0 | 0 | 2 | 2 | V1–V4 |
+| Reliability | 0 | 0 | 1 | 0 | 0 | R1 |
+| Process | 0 | 1 | 1 | 1 | 0 | PR1–PR3 |
+| Compatibility | 0 | 0 | 0 | 1 | 1 | C1–C2 |
+| Maintainability | 0 | 0 | 0 | 1 | 0 | M1 |
+| Documentation drift | 0 | 0 | 1 | 3 | 0 | D1–D4 |
+| **total** | **0** | **1** | **5** | **9** | **4** | **19** |
 
 One P1, in process, not in the product: a flaky timing assertion is the only gate on the Web Store
 release pipeline, and it is currently red on master (PR1). No P0. The shipped code's security
@@ -69,7 +73,7 @@ links inside the trusted-looking overlay, and the picked-block `rawFallback` pat
 function alone (Readability strips `object`/`embed` itself). Fix: switch to an allow-list of
 elements and attributes, or at minimum add those elements to the removal set.
 
-**S4 · P3 · CONFIRMED — single-image download takes a page-chosen URL and filename.**
+**S4 · Info · CONFIRMED — single-image download takes a page-chosen URL and filename.**
 `src/background.js:903-906` passes `msg.url` and `msg.filename` straight to
 `chrome.downloads.download`. The filename is derived and sanitised on the content side
 (`gallery.js:65-84`, `[\w.-]` only, extension forced), and the URL is what the page showed as an

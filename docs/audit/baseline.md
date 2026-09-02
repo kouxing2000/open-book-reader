@@ -13,11 +13,25 @@ Test-suite baseline and the claims inventory, per `plan.md`. Tree: v1.8.1 (`0d80
 | Spec files | 7 (`reader`, `gallery`, `options`, `auto-open`, `extension-load`, `silent-failure`, `packaging`) |
 | Static gates | `verify-locales` (as `pretest`) + the parse check in `packaging.spec.js`. No lint, no type check. |
 
-### Environment caveat
+### Environment caveat — reproducing this run
 
-The audit container has Chromium **141**; Playwright 1.60 expects **148**. The existing build was
-aliased into place rather than downloaded. Everything below distinguishes environment artifacts
-from real behaviour by probe, not by assumption.
+A Claude Code web container ships a pinned Chromium under `/opt/pw-browsers` that will NOT match
+what this repo's Playwright wants (here: build **1194** / Chromium 141 present, build **1223** /
+Chromium 148 expected), and `npx playwright install` re-downloads rather than reusing it. Every
+browser test then fails in ~15 ms with "Executable doesn't exist" — which looks exactly like a
+catastrophic regression and is not one. Alias the build instead:
+
+```sh
+npx playwright install --dry-run chromium   # prints the expected build number, e.g. chromium-1223
+cd /opt/pw-browsers
+ln -s chromium-<present> chromium-<expected>
+ln -s chromium_headless_shell-<present> chromium_headless_shell-<expected>
+ln -s chrome-linux "chromium-<present>/chrome-linux64"   # 1194 used chrome-linux; 1223 expects chrome-linux64
+```
+
+Then `npm ci && npm test`. Results from a mismatched browser are still worth having, but treat any
+failure as suspect until probed — that is why everything below distinguishes environment artifacts
+from real behaviour by probe rather than by assumption.
 
 ### The six failures, characterised
 
