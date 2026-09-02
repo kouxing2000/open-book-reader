@@ -100,6 +100,7 @@ while editing a feature belongs beside that feature.
 | Auto-open — the sentinel's decision ladder, permission model, registration | `docs/auto-open-spec.md` |
 | Service worker — context-menu + sentinel-registration serialization, debug timing and trigger tracing | `docs/background-worker.md` |
 | Welcome, colophon + rating ask, report page, feedback pipeline | `docs/engagement.md` |
+| Repository audit — plan, test baseline + claims inventory, findings log | `docs/audit/` |
 
 ## Conventions
 
