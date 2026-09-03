@@ -31,9 +31,9 @@
     "promo": "node scripts/capture-promo.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0",
-    "archiver": "^7.0.1",
-    "chrome-webstore-upload": "^3.1.4",
-    "dotenv": "^16.4.7"
+    "@playwright/test": "^1.62.1",
+    "archiver": "^8.0.0",
+    "chrome-webstore-upload": "^6.0.0",
+    "dotenv": "^17.4.2"
   }
 }
