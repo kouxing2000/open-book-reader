@@ -14,20 +14,20 @@ around it. This file is the plan; results land beside it:
 | phase | state | where |
 | --- | --- | --- |
 | 1 — Baseline | **done** (2026-09-02, v1.8.1 `0d808b1`) | `baseline.md` |
-| 2 — Automated sweeps | **done** | `findings.md` (19 entries: 1×P1 **fixed**, 5×P2, 9×P3, 4×Info) |
+| 2 — Automated sweeps | **done**; 7 of 19 entries fixed | `findings.md` (1×P1, 5×P2, 9×P3, 4×Info) |
 | 3 — Deep dives | not started | — |
 | 4 — Report + fix plan | not started | — |
 
-The audit is read-only through Phase 3 by design (see **Rules while auditing**), so findings are
-logged rather than patched — with one deliberate exception: **PR1 was pulled forward and fixed**
-(the release gate was red), test-only, no engine change.
+The audit is read-only through Phase 3 by design (see **Rules while auditing**), with two
+deliberate exceptions already taken: **PR1** (the release gate was red — test-only, no engine
+change) and the **cheap Phase 2 items** (PR2, C1, D1–D4). Everything else is logged, not patched.
 
 **Resume here.** Read `findings.md` first — its Summary table and the Next section say what is
 open. Then either:
 - **start Phase 3** with the SUSPECTED findings (S1 end-to-end, V4, R1), then tracks A2–A7 and
-  B3/B6 below; or
-- **close the cheap Phase 2 items** — D1 (README overstates the ZIP permission, which a store
-  reviewer reads), PR2 (no Dependabot), C1 (`color-mix()` below the declared minimum Chrome).
+  B3/B6 below — A4, the real-site extraction sweep, is where user-visible bugs actually live; or
+- **take S1** (ZIP bytes re-entering page-reachable DOM; no loopback/private-range guard on the
+  worker fetch), the one remaining security item with a concrete attack path.
 
 Before running the suite in a fresh container, read the **Environment caveat** in `baseline.md` —
 the preinstalled Chromium will not match Playwright's expected build, and the resulting failure

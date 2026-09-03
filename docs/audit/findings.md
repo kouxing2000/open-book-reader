@@ -9,18 +9,18 @@ Nothing here is fixed yet — the audit is read-only until Phase 4.
 ## Summary
 
 Counts are of NUMBERED entries only. Most areas also carry an unnumbered "done well" list, which
-is part of the finding but not a defect. \* PR1 is **fixed**; it stays counted so the tally matches
-the entries below.
+is part of the finding but not a defect. \* Marks a row containing **fixed** entries — fixed
+findings stay counted so the tally matches the entries below. Fixed so far: PR1, PR2, C1, D1–D4.
 
 | area | P0 | P1 | P2 | P3 | Info | entries |
 | --- | --- | --- | --- | --- | --- | --- |
 | Security | 0 | 0 | 2 | 1 | 1 | S1–S4 |
 | Privacy | 0 | 0 | 0 | 2 | 2 | V1–V4 |
 | Reliability | 0 | 0 | 1 | 0 | 0 | R1 |
-| Process | 0 | 1* | 1 | 1 | 0 | PR1–PR3 |
-| Compatibility | 0 | 0 | 0 | 1 | 1 | C1–C2 |
+| Process | 0 | 1* | 1* | 1 | 0 | PR1–PR3 |
+| Compatibility | 0 | 0 | 0 | 1* | 1 | C1–C2 |
 | Maintainability | 0 | 0 | 0 | 1 | 0 | M1 |
-| Documentation drift | 0 | 0 | 1 | 3 | 0 | D1–D4 |
+| Documentation drift | 0 | 0 | 1* | 3* | 0 | D1–D4 |
 | **total** | **0** | **1** | **5** | **9** | **4** | **19** |
 
 One P1, in process, not in the product: a flaky timing assertion was the only gate on the Web Store
@@ -173,12 +173,17 @@ tight budget allowed. The Phase 2 note suggesting a bounded fallback timer in `e
 therefore withdrawn — adding one would risk cancelling a legitimately-running animation to fix a
 problem that only existed in the test.
 
-**PR2 · P2 · CONFIRMED — no dependency automation, one known-vulnerable dev dependency.**
+**PR2 · P2 · CONFIRMED — FIXED 2026-09-03 — no dependency automation, one known-vulnerable dev
+dependency.**
 No `.github/dependabot.yml` or Renovate config. `npm audit` reports one high-severity advisory
 (`brace-expansion`, a transitive dev dependency, denial-of-service only); `npm outdated` shows
 `@playwright/test` 1.60 → 1.62, `archiver` 7 → 8, `chrome-webstore-upload` 3.2 → 6, `dotenv` 16
 → 17. Nothing here ships to users, but the release job runs all of it with the Web Store secrets.
-Fix: add Dependabot for `npm` and `github-actions`; run `npm audit fix`.
+Fixed: `.github/dependabot.yml` covers both ecosystems, weekly and grouped so a solo maintainer
+gets one PR per ecosystem rather than a stream; `npm audit fix` moved `brace-expansion`
+2.1.3 → 2.1.4 with no direct dependency change (Playwright stays 1.60), and `npm audit` now
+reports 0 vulnerabilities. This also makes S2 cheaper: once the actions are SHA-pinned, Dependabot
+maintains the pins.
 
 **PR3 · P3 · CONFIRMED — the release job tests what it packages, but from a fresh Playwright
 download each run.**
@@ -190,11 +195,13 @@ the test browser under a release with no code change; pinning `@playwright/test`
 
 ## Compatibility
 
-**C1 · P3 · CONFIRMED — one CSS function newer than the declared minimum.**
-`src/welcome.html:28` uses `color-mix()` (Chrome 111) inside a decorative radial gradient;
-`manifest.json` declares `minimum_chrome_version: "102"`. On 102–110 the gradient declaration is
-dropped and the page still renders. Either replace it with a pre-computed colour or accept and
-note it.
+**C1 · P3 · CONFIRMED — FIXED 2026-09-03 — one CSS function newer than the declared minimum.**
+`src/welcome.html:28` used `color-mix()` (Chrome 111) inside a decorative radial gradient;
+`manifest.json` declares `minimum_chrome_version: "102"`. The first write-up understated this: the
+call sat inside a `background:` **shorthand** carrying two layers, and an unsupported value drops
+the WHOLE declaration — so on Chrome 102–110 the first-run page lost `var(--paper)` too, not just
+the gradient. Fixed by precomputing `--card` at 80% alpha into a `--glow` variable per theme, which
+needs nothing newer than custom properties (Chrome 49).
 
 **C2 · Info · CONFIRMED — otherwise the code matches the declared minimum.**
 A grep of shipped code found no JS API newer than Chrome 102; `inert` (`reader.js`,
@@ -218,20 +225,20 @@ notices, which are shipped on purpose; locale parity is enforced (`verify-locale
 
 ## Documentation drift
 
-**D1 · P2 · CONFIRMED — README overstates the ZIP permission.**
+**D1 · P2 · CONFIRMED — FIXED 2026-09-03 — README overstates the ZIP permission.**
 `README.md:84` says a ZIP requests `<all_urls>` host access. The code requests only the origins
 the selected images live on (`background.js:917-955`); all-sites is an explicit secondary link
 on the prompt (`permission.js:69-79`), locked by `extension-load.spec.js:275` and
 `options.spec.js:782`. Fix the README (it is also what a store reviewer reads).
 
-**D2 · P3 · CONFIRMED — CLAUDE.md's injection order omits two files.**
+**D2 · P3 · CONFIRMED — FIXED 2026-09-03 — CLAUDE.md's injection order omits two files.**
 CLAUDE.md lists the engine files as settings, readability, reader.style, reader, zip, gallery;
 `background.js:21-28` also injects `qrcode.js` (before `reader.js`) and `notice.js` (last).
 
-**D3 · P3 · CONFIRMED — CLAUDE.md's test list omits a spec.**
+**D3 · P3 · CONFIRMED — FIXED 2026-09-03 — CLAUDE.md's test list omits a spec.**
 `tests/silent-failure.spec.js` (7 tests) is not in the Tests section.
 
-**D4 · P3 · CONFIRMED — README's architecture block is stale.**
+**D4 · P3 · CONFIRMED — FIXED 2026-09-03 — README's architecture block is stale.**
 `README.md:45-58` omits `qrcode.js`, `notice.js`, `_locales/`, and the welcome, report, blocked
 and permission pages.
 
@@ -243,4 +250,5 @@ and permission pages.
 ## Next (Phase 3)
 
 Verify every SUSPECTED entry above (S1 end-to-end, V4, R1), then the plan's A2–A7 and B3/B6.
-PR1 was pulled forward and is fixed; the rest are untouched.
+PR1 was pulled forward and fixed, then the cheap Phase 2 items (PR2, C1, D1–D4). Still open:
+S1–S3, V3–V4, R1, PR3, M1 — plus every Phase 3 track.
