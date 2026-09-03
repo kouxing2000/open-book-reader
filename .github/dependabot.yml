@@ -1,0 +1,31 @@
+# Keeps the release/test tooling current without generating PR noise for a solo maintainer.
+#
+# Scope note: NOTHING here ships. The extension is zero-dependency vanilla JS loaded straight
+# from src/ (package-extension.js ships only manifest.json, icons/, src/ and _locales/), so an
+# npm advisory can never reach a user. It can still reach the RELEASE JOB, which runs `npm ci`
+# in the same job that holds the Chrome Web Store secrets — that is the risk being managed.
+version: 2
+updates:
+  # GitHub Actions. release.yml runs third-party actions in a job whose env carries
+  # CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN, so a stale action there has real blast radius.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: 'ci'
+
+  # Dev tooling (Playwright, archiver, chrome-webstore-upload, dotenv). One grouped PR a week;
+  # CI runs the full suite on it, which is exactly the check a Playwright bump needs.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-tooling:
+        patterns: ['*']
+    commit-message:
+      prefix: 'chore(deps)'

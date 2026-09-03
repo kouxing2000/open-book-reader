@@ -10,6 +10,7 @@
       --accent: #8a5a2b; --card: #fffdf8; --line: #e7ded0;
       --shadow: 0 10px 30px rgba(60, 45, 25, .12);
       --chip: rgba(138, 90, 43, .10);
+      --glow: rgba(255, 253, 248, .8);   /* --card at 80% */
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -17,6 +18,7 @@
         --accent: #d9a066; --card: #201d16; --line: #362f24;
         --shadow: 0 10px 30px rgba(0, 0, 0, .45);
         --chip: rgba(217, 160, 102, .14);
+        --glow: rgba(32, 29, 22, .8);    /* --card at 80% */
       }
     }
     * { box-sizing: border-box; }
@@ -25,7 +27,7 @@
       font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
       color: var(--ink);
       background:
-        radial-gradient(1100px 460px at 50% -220px, color-mix(in srgb, var(--card) 80%, transparent) 0%, transparent 70%),
+        radial-gradient(1100px 460px at 50% -220px, var(--glow) 0%, transparent 70%),
         var(--paper);
       background-attachment: fixed;
       line-height: 1.6;

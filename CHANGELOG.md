@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **The first-run welcome page no longer loses its background on older Chrome.** The page tinted
+  its header glow with a colour function added in Chrome 111, while the extension supports 102 —
+  and because that call sat inside a `background` shorthand, browsers that did not understand it
+  discarded the whole declaration, dropping the paper colour along with the glow. The tint is now
+  precomputed per theme, so the page looks the same on every supported version.
+
 ## [1.8.1] - 2026-08-30
 
 ### Fixed

@@ -67,9 +67,12 @@ tools/feedback-form/ Google Apps Script backend: the shared feedback collector f
 ```
 
 **Injection flow** (`background.js`): on click/command, `executeScript` probes `OBR._engineLoaded`;
-if absent, injects the files in order (settings, readability, reader.style, reader, zip, gallery —
-settings defines the namespace, reader.style supplies `OBR._readerCSS`, reader needs
-`DEFAULTS`+`Readability`, zip supplies `OBR._buildZip` for the gallery's ZIP download). Then dispatches: keyboard commands call the
+if absent, injects the files in order (settings, readability, reader.style, qrcode, reader, zip,
+gallery, notice — settings defines the namespace, reader.style supplies `OBR._readerCSS`, qrcode
+supplies the print-branding QR, reader needs `DEFAULTS`+`Readability`, zip supplies `OBR._buildZip`
+for the gallery's ZIP download, and notice supplies `OBR._notice` for the paint check). `notice.js`
+is ALSO injected on its own (`NOTICE_FILES`) on the orphaned-context path, where the engine files
+would throw. Then dispatches: keyboard commands call the
 explicit toggle (`OBR.toggle` / `OBR.toggleGallery`); the **toolbar icon** calls `OBR._autoToggle`,
 which closes any open mode or auto-picks — gallery only when image-heavy (`_imageCount() >=
 autoGalleryMin`, default 10) AND not a real article (`_articleWordCount() < autoTextMinWords`,
@@ -100,6 +103,7 @@ while editing a feature belongs beside that feature.
 | Auto-open — the sentinel's decision ladder, permission model, registration | `docs/auto-open-spec.md` |
 | Service worker — context-menu + sentinel-registration serialization, debug timing and trigger tracing | `docs/background-worker.md` |
 | Welcome, colophon + rating ask, report page, feedback pipeline | `docs/engagement.md` |
+| Repository audit — plan, test baseline + claims inventory, findings log | `docs/audit/` |
 
 ## Conventions
 
@@ -155,6 +159,9 @@ npx playwright install chromium                # first run only
   manual-verified per `docs/auto-open-spec.md` §10.
 - `options.spec.js` — options page (real extension context): the how-to-use guide, trigger + shortcut
   docs, native `<details>` collapse, first-run open.
+- `silent-failure.spec.js` — the reader opened but is not what the user sees: a z-index fight (both
+  orderings), a host the page's own re-render deleted, an iframe, and the banner's replace-not-stack
+  behaviour. These are the failures that look identical to a dead extension.
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
 - **Harness caveat**: headless Playwright can't click the real toolbar icon (no `activeTab`), so tests
   inject the content scripts the same way/order as `background.js` and exercise the unmodified engine;

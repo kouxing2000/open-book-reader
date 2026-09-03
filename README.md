@@ -52,11 +52,16 @@ src/content/
   settings.js            shared defaults + storage helpers (globalThis.OBR)
   readability.js         bundled Mozilla Readability (Apache-2.0)
   reader.style.js        reader stylesheet (OBR._readerCSS) — injected before reader.js
+  qrcode.js              bundled qrcode-generator (MIT) — the print branding QR
   reader.js              text engine: extract → paginate → navigate (Shadow DOM)
   zip.js                 minimal ZIP writer (OBR._buildZip)
   gallery.js             image mode: Wall masonry / Ordered rows + lightbox + image filter (Shadow DOM)
+  notice.js              page-level banner — used when the reader's own UI can't be trusted
   sentinel.js            auto-open sentinel — runs only on sites you explicitly enable auto-open for
 src/options/             options page (html + js)
+src/welcome.html         first-run page · src/report.html  report a problem
+src/blocked.html         "not available on this page" · src/permission.html  optional-permission ask
+_locales/                8 locales; the manifest's __MSG_*__ (store title + summary) resolve here
 icons/                   16/32/48/128
 ```
 
@@ -86,7 +91,10 @@ Installed with a minimal set — nothing scary at install time:
 Requested **only on first use, never at install** (optional permissions):
 
 - `downloads` — save images you explicitly download from the gallery
-- `<all_urls>` host access — fetch image bytes cross-origin to bundle a ZIP you request
+- host access to **the sites the images live on** — fetch image bytes cross-origin to bundle a
+  ZIP you request. Least privilege: the prompt lists those hosts and asks only for them. Broad
+  `<all_urls>` access exists solely behind the prompt's "Allow all sites instead" link, for
+  people who download a lot — it is never what a ZIP asks for by default
 - per-site host access — granted when you turn on auto-open for a site (a per-origin subset
   of the same optional host permission), so the tiny sentinel can run there on page load
 
@@ -133,8 +141,9 @@ dashboard-only; the API (`npm run deploy`) only uploads/publishes the package.
 - [x] Host the privacy policy publicly — https://openbook.peach-studio.com/privacy.html
 - [x] Capture 1280×800 screenshots + 440×280 promo tile — `npm run screenshots`
 - [ ] Data-disclosure form: **no data collected / transmitted**; note network requests occur
-      only on user-triggered image downloads. `downloads` + `<all_urls>` are optional and
-      requested at first download, so install asks for none of them.
+      only on user-triggered image downloads. `downloads` and host access are optional and
+      requested at first download (host access scoped to the image hosts, not `<all_urls>`),
+      so install asks for none of them.
 - [ ] Confirm single-purpose description matches behavior
 - [ ] Bump `version` per release
 - [ ] Update the "Add to Chrome" link in `site/index.html` once the store listing is live
