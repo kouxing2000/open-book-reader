@@ -181,8 +181,9 @@ No `.github/dependabot.yml` or Renovate config. `npm audit` reports one high-sev
 → 17. Nothing here ships to users, but the release job runs all of it with the Web Store secrets.
 Fixed: `.github/dependabot.yml` covers both ecosystems, weekly and grouped so a solo maintainer
 gets one PR per ecosystem rather than a stream; `npm audit fix` moved `brace-expansion`
-2.1.3 → 2.1.4 with no direct dependency change (Playwright stays 1.60), and `npm audit` now
-reports 0 vulnerabilities. This also makes S2 cheaper: once the actions are SHA-pinned, Dependabot
+**2.1.1 → 2.1.4** with no direct dependency change (Playwright stays 1.60), and `npm audit` now
+reports 0 vulnerabilities. (npm also normalised two unrelated lockfile fields in the same run: it
+added the root `license` field and dropped a stale `peer: true` marker.) This also makes S2 cheaper: once the actions are SHA-pinned, Dependabot
 maintains the pins.
 
 **PR3 · P3 · CONFIRMED — the release job tests what it packages, but from a fresh Playwright
