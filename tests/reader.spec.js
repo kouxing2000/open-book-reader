@@ -232,23 +232,27 @@ const flipLayers = (page) => page.locator('#obr-host >> .obr-flip-layer').count(
 // downstream is expressed as a MULTIPLE of this, never as a flat millisecond number.
 const TURN_MS = 1200;
 
-// The single teardown budget for every leaf-cleanup assertion below. Each of those tests PINS its
-// transition to TURN_MS, so the budget is a known multiple of a known turn instead of a flat number
-// against whatever the defaults happen to be. The two modes do not run at the same speed — a book
-// turn lasts transitionMs, a curl lasts CURL_DURATION() = max(760, transitionMs * 1.9) — so pinned
-// at TURN_MS this budget is 6x a 1200ms book turn and 3.2x a 2280ms curl. Ratio is not the point;
-// ABSOLUTE HEADROOM is, because teardown carries fixed overhead that does NOT scale with the
-// transition (animation start latency, the leafAnim.finished promise settling, the poll's own
-// round-trip, CPU contention on a loaded runner). Flat budgets gave the curl tests ~2.2s of
-// headroom over the animation while measured teardown at default speed was 1.0-1.5s for a single
-// turn and 1.5-2.0s for an interrupted one; pinning lifts that to ~4.9s.
+// The single teardown budget for every leaf-cleanup assertion below — one generous ceiling, so no
+// test carries a flat millisecond number of its own again. The two modes do not run at the same
+// speed (a book turn lasts transitionMs, a curl lasts CURL_DURATION() = max(760, transitionMs*1.9)),
+// which is what made the old per-test numbers mean wildly different things: 2.6x for one, 5.9x for
+// another. Ratio is not the point; ABSOLUTE HEADROOM is, because teardown carries fixed overhead
+// that does NOT scale with the transition (animation start latency, the leafAnim.finished promise
+// settling, the poll's own round-trip, CPU contention on a loaded runner). Measured teardown is
+// 1.0-1.5s for a single turn and 1.5-2.0s for an interrupted one; the flat budgets left ~2.2s over
+// the animation, this leaves ~7.3s over the slowest transition below (a 2280ms pinned curl).
+//
+// Every test below pins transitionMs to TURN_MS. Do NOT "cover the defaults" by unpinning one of
+// them to widen this budget: the tests also make one-shot synchronous leaf assertions immediately
+// after the keypress, and those live inside the ANIMATION's window, not this one. Unpinning trades
+// 2280ms of curl for 760ms — it buys headroom here by taking 3x more away there.
 //
 // That thin margin is what failed the soft-curl test below on CI at v1.8.1 — on the first attempt
 // AND the retry — while the release job for the same commit passed, and the same class of margin
 // blocked the v1.7.2 release outright. A leaf that genuinely leaks is NEVER removed, so a generous
 // ceiling costs no sensitivity: with the removal in endActiveFlip() disabled, all four assertions
 // below still fail.
-const LEAF_TEARDOWN_MS = TURN_MS * 6;
+const LEAF_TEARDOWN_MS = TURN_MS * 8;
 
 test('the book page-turn floats a transient leaf and then cleans it up', async ({ page }) => {
   await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'book', transitionMs: ms }), TURN_MS);
@@ -308,9 +312,8 @@ test('prefers-reduced-motion forces an instant flip with no leaf', async ({ page
 });
 
 test('rapid flips strand no leaf and advance by two spreads', async ({ page }) => {
-  // Pin the turn (this ran at the DEFAULTS before). The point of the test is the INTERRUPT, and a
-  // slowed turn makes the second press reliably land mid-flight instead of racing a 760ms curl —
-  // it also lets the teardown budget scale. The default curl path is covered by the curl test below.
+  // Pin the turn. The point of this test is the INTERRUPT, and a slowed turn makes the second
+  // press reliably land mid-flight instead of racing a 760ms curl.
   await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'curl', transitionMs: ms }), TURN_MS);
   await openReader(page);
   const start = await readState(page);
@@ -326,9 +329,9 @@ test('rapid flips strand no leaf and advance by two spreads', async ({ page }) =
 });
 
 test('the soft curl turn floats a transient leaf, then settles to the plain-flip state', async ({ page }) => {
-  // The curl runs on its own duration — CURL_DURATION() = max(760, transitionMs * 1.9) — so the
-  // overlay outlives the query at any setting. Pin transitionMs anyway so the teardown budget
-  // below is a multiple of a known turn rather than a flat number against an implicit 760ms.
+  // Pinned for the SYNCHRONOUS assertion below, not for the teardown poll. The curl runs on its
+  // own duration — CURL_DURATION() = max(760, transitionMs * 1.9) — so a pinned 1200ms turn gives
+  // that one-shot flipLayers() read a 2280ms window instead of the default 760ms.
   await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'curl', transitionMs: ms }), TURN_MS);
   await openReader(page);
   // Let the late font/image relayout fire first — layout() ends any in-flight turn, so flipping
