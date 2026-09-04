@@ -39,7 +39,10 @@
     /* An <h2> inside the <summary> keeps the heading outline for screen-reader group navigation. */
     details.card > summary h2 { font-size: 13px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; opacity: .75; margin: 0; display: flex; align-items: center; gap: 7px; }
     details.card > summary h2 .h2-sub { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .65; font-size: 11.5px; }
-    details.card .row:last-child, details.card .row:has(+ .subhead) { border-bottom: 0; } /* avoid doubling with the .subhead top border */
+    /* Two rules, not one selector list: :has() is Chrome 105 and the manifest floor is 102.
+       A selector list is unforgiving, so one list would take :last-child down with it there. */
+    details.card .row:last-child { border-bottom: 0; }
+    details.card .row:has(+ .subhead) { border-bottom: 0; } /* avoid doubling with the .subhead top border */
     /* A subsection inside a card (e.g. Per-site rules under Smart open). */
     .subhead { font-size: 13.5px; font-weight: 600; padding: 16px 0 2px; margin-top: 6px; border-top: 1px solid rgba(127,127,127,.18); }
     .subhead .hint { display: block; font-size: 12px; opacity: .55; margin-top: 3px; font-weight: normal; line-height: 1.5; }
