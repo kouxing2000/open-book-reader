@@ -78,7 +78,40 @@ const STORAGE_SHIM = `
   };
 })();
 `;
-const bundle = () => STORAGE_SHIM + '\n;\n' +
+// A real page has no `chrome.i18n` either, and without it OBR.t() echoes the raw KEY: the
+// reader renders `colophonTheEnd` / `readerBtnThemeLabel` as visible text, which pollutes
+// anything read off the overlay (and has shipped that way once, in a marketing asset). Fed
+// from the real _locales/en catalogue so the strings match what users see. Mirrors
+// tests/helpers.js i18nShim and scripts/lib/capture-harness.mjs.
+const EN_MESSAGES = JSON.parse(
+  readFileSync(path.resolve(HERE, '..', '_locales', 'en', 'messages.json'), 'utf8')
+);
+const I18N_SHIM = `
+/* ==== manual-proxy chrome.i18n shim ==== */
+(function () {
+  try { if (globalThis.chrome && chrome.i18n && chrome.i18n.getMessage) return; } catch (e) {}
+  var messages = ${JSON.stringify(EN_MESSAGES)};
+  globalThis.chrome = globalThis.chrome || {};
+  globalThis.chrome.i18n = {
+    getUILanguage: function () { return 'en'; },
+    getMessage: function (key, subs) {
+      if (key === '@@ui_locale') return 'en';
+      var entry = messages[key];
+      if (!entry) return '';
+      var msg = entry.message;
+      var args = subs == null ? [] : (Array.isArray(subs) ? subs : [subs]);
+      var ph = entry.placeholders || {};
+      Object.keys(ph).forEach(function (name) {
+        var idx = parseInt(String(ph[name].content).replace(/^\\$/, ''), 10) - 1;
+        msg = msg.replace(new RegExp('\\\\$' + name + '\\\\$', 'gi'), args[idx] != null ? String(args[idx]) : '');
+      });
+      return msg;
+    },
+  };
+})();
+`;
+
+const bundle = () => STORAGE_SHIM + '\n;\n' + I18N_SHIM + '\n;\n' +
   FILES.map((f) => `\n/* ==== ${f} ==== */\n` + readFileSync(path.join(CONTENT, f), 'utf8')).join('\n;\n');
 
 const PORT = Number(process.argv[2]) || 8347;

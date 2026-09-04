@@ -4,35 +4,38 @@ Phase 2 (automated sweeps + static review) of the plan in `plan.md`. Severity sc
 CONFIRMED / SUSPECTED convention are defined there. Ordered by severity within each area.
 Line numbers are as of the v1.8.1 tree.
 
-Nothing here is fixed yet — the audit is read-only until Phase 4.
+The audit is read-only through Phase 3 by design; entries marked **FIXED** are the deliberate
+exceptions `plan.md` records, each carrying its own verification.
 
 ## Summary
 
 Counts are of NUMBERED entries only. Most areas also carry an unnumbered "done well" list, which
 is part of the finding but not a defect. \* Marks a row containing **fixed** entries — fixed
-findings stay counted so the tally matches the entries below. Fixed so far: PR1, PR2, C1, D1–D4.
+findings stay counted so the tally matches the entries below. Fixed so far: PR1, PR2, S1, S2, R1,
+C1, C3, D1–D4.
 
 | area | P0 | P1 | P2 | P3 | Info | entries |
 | --- | --- | --- | --- | --- | --- | --- |
-| Security | 0 | 0 | 2 | 1 | 1 | S1–S4 |
-| Privacy | 0 | 0 | 0 | 2 | 2 | V1–V4 |
-| Reliability | 0 | 0 | 1 | 0 | 0 | R1 |
+| Security | 0 | 0 | 2* | 1 | 1 | S1–S4 |
+| Privacy | 0 | 0 | 0 | 1 | 3 | V1–V4 |
+| Reliability | 0 | 0 | 1* | 0 | 0 | R1 |
 | Process | 0 | 1* | 1* | 1 | 0 | PR1–PR3 |
-| Compatibility | 0 | 0 | 0 | 1* | 1 | C1–C2 |
+| Compatibility | 0 | 0 | 0 | 2* | 1 | C1–C3 |
 | Maintainability | 0 | 0 | 0 | 1 | 0 | M1 |
 | Documentation drift | 0 | 0 | 1* | 3* | 0 | D1–D4 |
-| **total** | **0** | **1** | **5** | **9** | **4** | **19** |
+| **total** | **0** | **1** | **5** | **9** | **5** | **20** |
 
 One P1, in process, not in the product: a flaky timing assertion was the only gate on the Web Store
 release pipeline and was red on master — **fixed** (PR1). No P0. The shipped code's security
 posture is good for what it is (a content script that renders the page's own content in the page's
-own origin); the two P2 security items are a hardening gap in the ZIP delivery path and unpinned
-CI actions around the release secrets.
+own origin); both P2 security items — the ZIP delivery path and the unpinned CI actions around the
+release secrets — are now **fixed**, leaving S3 (a deny-list sanitizer, bounded impact) as the only
+open security entry.
 
 ## Security
 
-**S1 · P2 · CONFIRMED (channel) / SUSPECTED (end-to-end) — ZIP bytes fetched with host
-permissions are handed back into page reach.**
+**S1 · P2 · CONFIRMED — FIXED 2026-09-03 — ZIP bytes fetched with host permissions are handed
+back into page reach.**
 `src/content/gallery.js:127-135` (`saveBlob`) delivers the archive by creating a blob URL, putting
 it on an `<a download>` appended to `document.documentElement` (the page's light DOM, not the
 Shadow DOM), clicking it, and revoking the URL 10 s later. A blob URL minted by a content script
@@ -46,21 +49,86 @@ can front an unloaded URL). Preconditions for abuse: the user opens the gallery 
 page, clicks Download as ZIP, and either already holds the all-sites grant or approves the host
 the page chose. Loot is limited to unauthenticated responses on the user's network. That is why
 this is P2, not P1.
-Fix, smallest first: (1) do not attach the anchor — a detached anchor click still downloads in
-Chromium — or build and download the ZIP in the worker via `chrome.downloads` so bytes never
-re-enter the page; (2) in `fetchBytesBase64`, reject `localhost`, `*.localhost`, IP literals in
-loopback/link-local/RFC 1918 ranges, and require a `Content-Type` starting with `image/`;
-(3) extend `tests/gallery.spec.js` "ZIP download SSRF hardening" to cover both.
+**Fixed** in three parts, and one proposed part deliberately dropped:
 
-**S2 · P2 · CONFIRMED — release workflow runs third-party actions pinned by tag with the Web
-Store secrets in scope.**
+1. `saveBlob` no longer appends the anchor. The detached-click assumption was probed before
+   the change, not assumed: a detached `<a download>` click downloads in Chromium and
+   `document.contains(a)` stays false.
+2. `isBlockedHost` (`background.js`) rejects `localhost`, `*.localhost`/`.local`/`.internal`/
+   `.home.arpa`, and **every bare IP literal**, v4 or v6 — checked **before** the request and
+   again against `res.url` after it. The post-check is not belt-and-braces: `fetch` follows
+   redirects by default and `redirect:'manual'` yields an opaque response with no readable
+   `Location`, so a public URL that 302s to `127.0.0.1` is catchable only on the far side.
+
+   The first draft was a per-range table (RFC 1918, CGNAT, link-local, unique-local,
+   IPv4-mapped IPv6, multicast). Review found four defects in it — `fec0::/10` unblocked,
+   `::127.0.0.1` and `::ffff:0:7f00:1` unblocked, and `192.0.0.0/16` blocked where the
+   comment claimed `/24`, ~65k public addresses. The table existed only to keep **public**
+   bare-IP image hosts working, which is close to nonexistent on the real web, and that one
+   allowance was what made the predicate hard to get right. Refusing every IP literal is two
+   lines, strictly stronger, and has no tail of future IANA special-purpose ranges. The
+   intranet/NAS case it appears to threaten is carried by (3), not by the table.
+3. `isBlockedTarget` exempts one host: the **tab's own**. A page can already read images on
+   its own host (`<img>` needs no permission and no CORS), so refusing them buys no security
+   and would break reading a page served from localhost, an intranet name, or a NAS at a bare
+   IP — the whole class of false positive the blanket rule otherwise creates, and the reason
+   (2) can afford to be blunt. Host-scoped, ports ignored, matching how
+   host permissions are scoped; the exemption rides through the redirect check too, so an
+   intranet page still cannot pivot to a neighbouring host.
+
+   The trust boundary is that `ownHost` comes from `sender.url`/`sender.tab.url` and never
+   from `msg`, which the page controls. `runDownload` therefore takes the raw `sender` and
+   calls `senderHost` itself rather than accepting a host from its caller — that removes the
+   seam entirely instead of testing it, and hand it the wrong object and it yields `''`,
+   which means no exemption rather than a wide one.
+4. `text/html` responses are refused.
+
+**Dropped: the proposed `Content-Type: image/*` requirement.** S3 and several CDNs serve real
+images as `application/octet-stream`, so demanding `image/*` would fail legitimate downloads to
+close a gap (2) already covers — the exfiltration value of a non-image response comes from
+reaching a non-public host, which is now blocked outright. A pinned test asserts an
+octet-stream image still succeeds, so the decision can't be quietly reversed.
+
+**Still not covered: DNS rebinding** — a public hostname whose A record answers `127.0.0.1`.
+Blocking it needs the resolved address, which no extension API exposes.
+
+Also fixed alongside: `permsFor` now filters the origin list through `isBlockedTarget`, so a page
+cannot get a private address RENDERED to the user inside the extension's own permission prompt,
+and cannot buy a grant the fetch would refuse. It filters by target rather than by host so the
+tab's own bare-IP host keeps the grant the exemption needs. And the single-image path
+(`obr-download-one`) gained a **protocol allowlist only** — not the host guard: it hands the URL
+to `chrome.downloads`, which fetches as the browser with the user's own cookies, so an http(s)
+target is what right-click → Save image already does, while `file:` is readable by the browser
+and not by the page.
+
+Tests (`gallery.spec.js`): the host table across every notation Chrome canonicalises — including
+named hosts that merely LOOK local (`localhostage.example`, `192.168.1.1.example.com`), which pin
+that the rule matches a host and not a substring — refusal **before any request leaves the
+worker**, the redirect re-check, the same-host exemption and its limits, `senderHost`
+normalisation, the `text/html` refusal, the octet-stream acceptance, the two `permsFor` filtering
+cases, and a MutationObserver assertion that no `<a download>` ever enters the page DOM during a
+real ZIP. The last one sits on the DELIVERY step, not on the ZIP writer, which is where the
+defect was.
+
+Mutation-proven in four directions: re-attaching the anchor fails the observer test; removing the
+pre-flight check fails the pre-flight test; deleting the same-host exemption fails the exemption
+test; and granting it unconditionally fails four tests, so the exemption cannot silently widen.
+
+Two facts the URL parser contributed, both found by the tests rather than by reading: `hostname`
+serializes an IPv6 host **with** its brackets, and it compresses an IPv4-mapped address into hex
+groups (`::ffff:127.0.0.1` arrives as `::ffff:7f00:1`). Only the first still matters — `normHost`
+strips the brackets — because the blanket rule never has to decode what an IPv6 literal MEANS.
+
+**S2 · P2 · CONFIRMED — FIXED 2026-09-03 — release workflow runs third-party actions pinned by
+tag with the Web Store secrets in scope.**
 `.github/workflows/release.yml:29-32,80` uses `actions/checkout@v7`, `actions/setup-node@v6`,
 `actions/upload-artifact@v7`; `ci.yml` and `pages.yml` likewise. A moved tag on any of those
 would run attacker code in a job whose env holds `CHROME_REFRESH_TOKEN` and the client secret,
-which is enough to publish an arbitrary build to every user. Fix: pin every `uses:` to a full
-commit SHA (with the tag in a trailing comment) and add a Dependabot config for
-`github-actions` so the pins move on purpose. Keep `permissions: contents: write` on the release
-job only, as it is today.
+which is enough to publish an arbitrary build to every user. **Fixed:** all nine `uses:` across
+the three workflows are pinned to full commit SHAs with the tag in a trailing comment, and PR2's
+Dependabot `github-actions` entry moves the pins on purpose. The invariant is stated once, in
+`release.yml` beside the job that actually holds the secrets. `permissions: contents: write`
+stays on the release job only, as before.
 
 **S3 · P3 · CONFIRMED — the content sanitizer is a deny-list.**
 `src/content/reader.js:510-535` (`sanitizeContentHTML`) removes script/style/noscript/iframe/form,
@@ -118,7 +186,13 @@ gotcha). The privacy page's "Incognito windows leave no reading record" (`site/p
 is accurate for reading traces; consider one clause saying that settings you change on purpose
 are still remembered, so the wording cannot be read as "nothing at all".
 
-**V4 · P3 · SUSPECTED — `obr_settings` has no byte cap.**
+**V4 · Info · RESOLVED 2026-09-04 (was P3 · SUSPECTED) — `obr_settings` has no byte cap.**
+The entry's own open question — *"Whether the options page tells the user is for Phase 3 to
+check"* — is answered in the code: `options.js:43` `flashSaved(ok)` renders `optSaveFailed`, not
+the dishonest "Saved ✓", whenever `saveSettings` resolves `false`, and the comment at `:41` says
+that was the intent. So this is a visible wall at roughly 80–100 site rules, not silent data
+loss. Downgraded to Info; a proactive cap for a limit no real user reaches is not worth the code.
+Original analysis follows.
 `siteRules` grows with each rule (`settings.js:711` writes the whole object). At roughly 60–100
 bytes per rule the 8 KB per-item sync quota lands near 80–100 rules; the write then fails and
 `saveSettings` resolves `false`. Whether the options page tells the user is for Phase 3 to check
@@ -126,15 +200,70 @@ bytes per rule the 8 KB per-item sync quota lands near 80–100 rules; the write
 
 ## Reliability
 
-**R1 · P2 · SUSPECTED — a slow answer to the permission popup can orphan the download.**
+**R1 · P2 · CONFIRMED — FIXED 2026-09-04 — a slow answer to the permission popup orphans the
+download.**
 The worker keeps the pending download in module state (`permWaiters`, `permWindowId`,
 `background.js:957-1000,1016-1025`) while the popup is open. An MV3 worker idles out after
 about 30 s without events; the popup's `obr-perms-result` then reaches a fresh worker with an
 empty waiter list, and the content script's pending `sendResponse` channel is gone, so the user's
-click on Allow grants the permission but the ZIP never arrives. Phase 3: reproduce with a slow
-Allow. Fix: after `obr-perms-result`, re-check `permissions.contains` and have the content script
-retry its request when the response is `null`, or persist the pending request in
-`storage.session`.
+click on Allow grants the permission but the ZIP never arrives.
+
+**Upgraded to CONFIRMED without needing the repro**, because every link in the chain is
+readable: `permWaiters` is plain module state, `permission.js:37` sends one fire-and-forget
+message and closes, and **no content script had an `onMessage` listener at all** — so the
+`sendResponse` channel was the only path back to the page, and it dies with the worker. The
+page then reported **"Download failed"** while the request was still perfectly alive, which is
+the part a user acts on.
+
+**Fixed by surviving the restart rather than by preventing it.** Two other approaches were
+weighed and rejected: holding a port open from the permission page, and heartbeating the worker
+while waiters pend. Both work by keeping the worker alive, and neither is verifiable here — a
+debugger attached over CDP keeps a service worker alive regardless, so any lifetime test would
+return a green that means nothing. A fix that survives the worker dying is correct either way,
+and cannot silently regress when Chrome changes a lifetime rule. The same constraint bounds the
+tests: the trigger cannot be produced here, but what the PAGE sees when it fires — `sendMessage`
+answering `undefined` — reproduces exactly, and that is the whole input to the fixed path.
+
+**The first implementation of that idea was wrong, and its replacement is smaller.** It parked the
+request payload in `storage.session` and pushed the result back via `chrome.tabs.sendMessage`,
+which meant two delivery paths and a `live` tab set to de-duplicate them. Review found two P1
+defects in that seam. (a) `permission.js:35` closes the popup INSIDE the `obr-perms-result`
+response callback, so `resolveWaiters` had already nulled `permWindowId` by the time
+`windows.onRemoved` fired; the fallback branch then flushed with no `live` set and the download
+ran twice — a second full fetch of every image, or a duplicate file on disk. (b) That same branch
+fired on ANY window closing, so an unrelated window closed during the prompt delivered a denial
+and the later Allow click resumed nothing: R1's own bug, reintroduced. A third defect was scope,
+not logic — `pendingKey` was one key per TAB, so the N parallel requests of "Save selected"
+overwrote each other, and nothing anywhere listened for the `obr-download-one-result` the worker
+pushed. R1 was fixed for ZIP only while the CHANGELOG claimed it whole.
+
+**Shipped shape: the page holds the request; the worker holds nothing.** The only thing that must
+cross the worker's death is the GRANT, and `chrome.permissions` already stores that durably. The
+request's owner — the content script — was never at risk, so on a `null` response it re-sends the
+same message with `noPrompt`, meaning "answer from permission state, never open a second popup".
+The worker replies `{pending:true}` until `contains` is true, then runs the download and answers
+down that live channel (`gallery.js: retryUntilAnswered`, 2 s cadence, 2 min ceiling).
+
+That is ~130 lines lighter and deletes the defects rather than patching them: ONE delivery path,
+so there is nothing to de-duplicate; one request per message, so parallel downloads cannot
+collide; a live `sender` on every retry, so S1's exemption is never re-derived from stored state;
+and no worker→page direction at all, so no content script needs an `onMessage` listener. The
+`windows.onRemoved` handler is back to recognising only its own popup. `noPrompt` is
+page-controlled but can only SUPPRESS a prompt — it reduces privilege, never raises it. Cost:
+dismissing the prompt is no longer instant, it waits out the ceiling.
+
+Tests (`gallery.spec.js`): page-side, a dead channel that retries rather than reporting failure
+(asserting the first ask may prompt and no retry may), a `{pending:true}` answer that keeps
+waiting, and every image of a Save-selected batch surviving; worker-side, against the REAL worker
+from a real extension page, that `noPrompt` returns `{pending:true}` and opens **zero** windows —
+because `noPrompt` is a contract between two files and a shim can only confirm the half that
+wrote it. Six mutations, all red: dropping the retry, dropping the `pending` check, dropping the
+`noPrompt` flag, dropping the worker's `noPrompt` branch, and both `permsFor` filter variants.
+
+Fixed alongside, because the new waiting state exposed it: `setStatus` now cancels any pending
+auto-clear. A timer armed by the gallery's hydration message used to blank the status bar ~2.5 s
+in, which mattered little for a message that lasted 4 s and matters a lot for "Waiting for
+permission…", which stays up as long as someone takes to answer.
 
 **Done well (Info)**: the four orphaned-context doors and the once-per-page banner are covered
 (`reader.spec.js:928,972,1002`, `extension-load.spec.js:553`); silent failures (z-index fights,
@@ -204,11 +333,23 @@ the WHOLE declaration — so on Chrome 102–110 the first-run page lost `var(--
 the gradient. Fixed by precomputing `--card` at 80% alpha into a `--glow` variable per theme, which
 needs nothing newer than custom properties (Chrome 49).
 
-**C2 · Info · CONFIRMED — otherwise the code matches the declared minimum.**
-A grep of shipped code found no JS API newer than Chrome 102; `inert` (`reader.js`,
-`reader.style.js`) is exactly 102; other CSS features used (`inset`, `aspect-ratio`,
-`scrollbar-gutter`) predate it. The true minimum is 102 for function and 111 for the welcome
-page's decoration.
+**C3 · P3 · CONFIRMED — FIXED 2026-09-03 — `:has()` sits in a selector list on the options page.**
+`src/options/options.html:42` had `details.card .row:last-child, details.card .row:has(+ .subhead)`
+in one rule. `:has()` is Chrome 105 against the declared floor of 102, and a selector **list** is
+unforgiving — one unsupported compound invalidates the whole list — so on 102–104 the
+`:last-child` half was dropped too and the last row in every card kept a doubled border. Same
+mechanism as C1 (an unsupported token taking its neighbour down with it), a different language
+construct. Fixed by splitting the list into two rules, which keeps `:has()` as the progressive
+enhancement it was meant to be.
+
+**C2 · Info · CORRECTED 2026-09-03 — the rest of the shipped code matches the declared minimum.**
+As first written this entry claimed the sweep was complete; it was not. It grepped for
+`color-mix()` after C1 rather than enumerating features against the 102 floor, and `:has()` was
+sitting one file away — see C3. Presence of one feature was never evidence about the others.
+Re-checked properly: no JS API newer than Chrome 102; `inert` (`reader.js`, `reader.style.js`) is
+exactly 102; `inset`, `aspect-ratio` and `scrollbar-gutter` predate it. `site/` is out of this
+entry's scope — it is not shipped in the package and has no min-Chrome contract, though
+`site/uninstall.html` uses both `color-mix()` and `:has()` and loses its background below 111.
 
 ## Maintainability
 
@@ -248,8 +389,43 @@ and permission pages.
 `autoAnchorWords` is documented as deliberately hidden (`docs/auto-open-spec.md:354`);
 `galleryMinSize` and `transitionMs` are undocumented internals.
 
+## Extraction (Phase 3 track A4)
+
+Full report: **`sweep-2026-09-04.md`** — 42 real URLs through the real engine. 30 PASS, 0 FAIL;
+extraction itself is in good shape (Wikipedia clean across en/zh/ja/ko/ar/he, RTL fine, a
+127k-word Gutenberg book intact). The defects are in the heuristics AROUND extraction.
+
+**A4-1 · P2 · CONFIRMED — a div-paragraph article loses the toolbar icon's auto-pick.**
+`_proseStats` counts only leaf `p`/`blockquote`/`li`, so an article whose body copy sits in
+`<div>`s reports ZERO prose words. Measured: `paulgraham.com/greatwork.html` extracts 11,619
+words with `_proseStats().words === 0`. That feeds `_autoToggle`'s "not a real article" test,
+so an image-bearing page of this shape opens the GALLERY on a long read. Reproduced with a
+fixture + test, not inferred. CLAUDE.md's "a substantial article always wins" was false and is
+corrected. Fix wants a decision — both candidate widenings loosen a heuristic that currently
+has a clean false-positive record.
+
+**A4-2 · P3 · CONFIRMED — the "extraction looks wrong" nag fires on correct extractions.**
+Asked for the engine's own `_wholeExtractionSuspect` verdict, it fires on 2 of 42 rows, both
+Ars Technica, both on complete and correct extractions — the comment-heavy-page false positive
+the code comment already predicts. The comment calls it acceptable; the sweep supplies the
+missing rate, which on that site is every article. Not fixed: tightening the ratio trades these
+for false negatives on the truncation cases the nag exists to catch.
+
+**A4-3 · Info · FIXED — the manual site proxy had no `chrome.i18n` shim**, so `OBR.t()` echoed
+raw keys and the overlay rendered `colophonTheEnd` as visible text into every measurement.
+
+**A4-4 · Info · method — a site list rots, and a 404 page extracts beautifully.** 11 of 42 URLs
+were dead or bot-walled on the first run and several scored PASS. The runner now classifies
+`DEADURL`/`BOTWALL` from the page's own title before scoring, since most sites serve a 404 body
+with HTTP 200.
+
 ## Next (Phase 3)
 
-Verify every SUSPECTED entry above (S1 end-to-end, V4, R1), then the plan's A2–A7 and B3/B6.
-PR1 was pulled forward and fixed, then the cheap Phase 2 items (PR2, C1, D1–D4). Still open:
-S1–S3, V3–V4, R1, PR3, M1 — plus every Phase 3 track.
+Verify the remaining SUSPECTED entry (V4 — see below), then the plan's A2–A7 and B3/B6. **A4, the
+real-site extraction sweep, is the highest-value work left**: everything fixed so far is process,
+docs, CSS or hardening — nothing has yet tested extraction quality, which is the product.
+
+Fixed so far: PR1, PR2, S1, S2, R1, C1, C3, D1–D4, A4-3. Still open: A4-1, A4-2, S3, V3, PR3, M1 — plus every
+Phase 3 track. V4 is downgraded to Info: its open question (does the options page tell the user a
+save failed?) is answered in the code — `options.js:43` renders `optSaveFailed`, so the quota
+limit is a visible wall at ~80–100 rules, not silent loss.

@@ -14,20 +14,24 @@ around it. This file is the plan; results land beside it:
 | phase | state | where |
 | --- | --- | --- |
 | 1 — Baseline | **done** (2026-09-02, v1.8.1 `0d808b1`) | `baseline.md` |
-| 2 — Automated sweeps | **done**; 7 of 19 entries fixed | `findings.md` (1×P1, 5×P2, 9×P3, 4×Info) |
-| 3 — Deep dives | not started | — |
+| 2 — Automated sweeps | **done**; 11 of 20 entries fixed | `findings.md` (1×P1, 5×P2, 9×P3, 5×Info) |
+| 3 — Deep dives | **A4 done** (2026-09-04); A2-A3, A5-A7, B3, B6 not started | `sweep-2026-09-04.md` |
 | 4 — Report + fix plan | not started | — |
 
-The audit is read-only through Phase 3 by design (see **Rules while auditing**), with two
+The audit is read-only through Phase 3 by design (see **Rules while auditing**), with three
 deliberate exceptions already taken: **PR1** (the release gate was red — test-only, no engine
-change) and the **cheap Phase 2 items** (PR2, C1, D1–D4). Everything else is logged, not patched.
+change), the **cheap Phase 2 items** (PR2, C1, C3, D1–D4), the **two P2 security items** (S1, S2
+— a repo should not sit on a described, unfixed weakness), and **R1** (a granted permission that
+silently loses the download it was granted for). Everything else is logged, not patched.
 
 **Resume here.** Read `findings.md` first — its Summary table and the Next section say what is
-open. Then either:
-- **start Phase 3** with the SUSPECTED findings (S1 end-to-end, V4, R1), then tracks A2–A7 and
-  B3/B6 below — A4, the real-site extraction sweep, is where user-visible bugs actually live; or
-- **take S1** (ZIP bytes re-entering page-reachable DOM; no loopback/private-range guard on the
-  worker fetch), the one remaining security item with a concrete attack path.
+open. **A4 is done** (`sweep-2026-09-04.md`): extraction itself is in good shape, and the two
+defects it found are in the heuristics around it — A4-1 (a div-paragraph article loses the
+toolbar auto-pick) is the open P2 and wants a decision, not a reflex fix. Tracks A2-A3, A5-A7
+and B3/B6 remain; no SUSPECTED entries do.
+
+`npm run sweep` re-runs A4 (it self-checks the instrument before scoring). Read its header before trusting a grade — a dead URL
+extracts beautifully, which is why it classifies DEADURL/BOTWALL before scoring.
 
 Before running the suite in a fresh container, read the **Environment caveat** in `baseline.md` —
 the preinstalled Chromium will not match Playwright's expected build, and the resulting failure

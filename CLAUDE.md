@@ -76,10 +76,16 @@ would throw. Then dispatches: keyboard commands call the
 explicit toggle (`OBR.toggle` / `OBR.toggleGallery`); the **toolbar icon** calls `OBR._autoToggle`,
 which closes any open mode or auto-picks — gallery only when image-heavy (`_imageCount() >=
 autoGalleryMin`, default 10) AND not a real article (`_articleWordCount() < autoTextMinWords`,
-default 200), so a substantial article always wins. Only the icon auto-picks; shortcuts honor their
-named mode. The prose stats are NOT Readability — `OBR._proseStats()` (in `settings.js`, shared with
-the sentinel; `OBR._articleWordCount` is its long-standing alias) counts words in prose leaf blocks
-(`<p>`/`<blockquote>`/`<li>`, ≥20 words each, CJK-aware) off the live DOM, so it's cheap and robust.
+default 200). Only the icon auto-picks; shortcuts honor their named mode. The prose stats are NOT
+Readability — `OBR._proseStats()` (in `settings.js`, shared with the sentinel; `OBR._articleWordCount`
+is its long-standing alias) counts words in prose leaf blocks (`<p>`/`<blockquote>`/`<li>`, ≥20 words
+each, CJK-aware) off the live DOM, so it's cheap and robust.
+**Known limit — a substantial article wins only if its paragraphs are paragraphs.** `_proseStats`
+counts no other element, so an article whose body copy sits in `<div>`s (older CMS templates;
+`paulgraham.com` uses `<font>` in tables) reports ZERO prose words while a reader sees a long
+article — and an image-bearing page of that shape opens the GALLERY from the toolbar icon. Measured
+live and pinned by `tests/fixtures/div-paragraph-article.html`; see `docs/audit/sweep-2026-09-04.md`
+A4-1. The sentinel's ladder reads the same count and inherits the same blindness.
 
 **Two modes, one namespace**: `reader.js` → `OBR.open/close/toggle` (`#obr-host`); `gallery.js` →
 `OBR.openGallery/closeGallery/toggleGallery` (`#obr-gallery-host`). Each is a separate open Shadow

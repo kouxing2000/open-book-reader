@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Div-paragraph article with images</title>
+</head>
+<body>
+  <!-- A substantial article whose paragraphs are DIVs, not <p>. OBR._proseStats counts only
+       p/blockquote/li leaf blocks, so this page reports 0 prose words while a reader sees a
+       long article. Paired with enough images to arm the gallery, it is the exact shape that
+       tests what the toolbar icon's auto-pick does when its "is this a real article?" half is
+       blind. Images are canvas PNG data-URIs so naturalWidth/Height are real (the gallery
+       filters by natural size, and SKIPS data:image/svg outright) — same technique as
+       images.html. -->
+  <article>
+    <h1>A substantial article whose paragraphs are not paragraphs</h1>
+    <div class="para">The layout engine treats every block as a candidate for the reading column, and the decision about which blocks belong to the article is made before any of them are laid out. This paragraph exists to carry enough words that the page reads as substantial prose to a human, while being marked up with divs rather than paragraph elements.</div>
+    <div class="para">Some publishers, particularly older CMS templates and a number of hand-rolled sites, wrap body copy in generic containers instead of semantic paragraph tags. The text is identical to a reader, and the rendered result is indistinguishable, but the document structure is not the one a heuristic keyed on paragraph elements expects to find.</div>
+    <div class="para">A third block of prose, again long enough to clear any per-block minimum, so that the total word count of this page is unambiguously that of a real article rather than a listing page or an index of links to other articles elsewhere on the same site.</div>
+    <div class="para">And a fourth, because the threshold under test is two hundred words of substantial prose and the page must sit well clear of it for the assertion to mean anything at all about the behaviour rather than about where exactly the boundary happens to fall today.</div>
+    <div id="imgs"></div>
+  </article>
+  <script>
+    function png(w, h, color) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = color; ctx.fillRect(0, 0, w, h);
+      return c.toDataURL('image/png');
+    }
+    const host = document.getElementById('imgs');
+    for (let i = 0; i < 12; i++) {
+      const im = document.createElement('img');
+      im.src = png(160 + i * 4, 120 + i * 3, 'hsl(' + (i * 30) + ' 60% 50%)');
+      im.alt = 'figure ' + (i + 1);
+      host.appendChild(im);
+    }
+  </script>
+</body>
+</html>

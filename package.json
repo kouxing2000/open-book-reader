@@ -20,6 +20,7 @@
     "test:headed": "HEADED=true playwright test --project=chromium",
     "test:ui": "playwright test --ui",
     "test:manual": "node tests/manual-site-proxy.mjs",
+    "sweep": "node scripts/sweep-sites.mjs",
     "bump": "node scripts/bump-version.mjs",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "package": "node scripts/package-extension.js",

@@ -6,7 +6,7 @@ import { test, expect } from './fixtures.js';
 import {
   gotoImages, injectGallery, openGallery, galleryState, clickInGallery, sentMessages,
   gotoArticle, injectAll, readState, clickInReader, gotoIllustratedArticle, gotoLazyImages,
-  gotoGrowNoImages,
+  gotoGrowNoImages, gotoFixture,
 } from './helpers.js';
 
 test.describe('image gallery', () => {
@@ -683,6 +683,27 @@ test.describe('toolbar auto-mode', () => {
     await injectAll(page);
     await page.evaluate(() => globalThis.OBR.saveSettings({ autoGalleryMin: 0 }));
     expect(await page.evaluate(() => globalThis.OBR._autoToggle())).toBe('text');
+  });
+
+  test('a substantial article does NOT win when its paragraphs are divs', async ({ page }) => {
+    // From the A4 real-site sweep: OBR._proseStats counts only p/blockquote/li leaf blocks, so
+    // an article whose body copy sits in <div>s reports ZERO prose words. paulgraham.com is a
+    // live example — 11,619 words extracted, `_proseStats().words === 0`.
+    //
+    // This pins the CONSEQUENCE, not the count: with 0 < autoTextMinWords the "not a real
+    // article" half of the auto-pick is satisfied, so an image-bearing page of this shape opens
+    // the GALLERY on a long read. CLAUDE.md said "a substantial article always wins"; it wins
+    // only if its paragraphs are paragraphs. Change the rule and this test should change with
+    // it — it is documenting a known limit, not blessing it.
+    await gotoFixture(page, 'div-paragraph-article.html');
+    await injectAll(page);
+    const words = await page.evaluate(() => globalThis.OBR._proseStats().words);
+    const readable = await page.evaluate(() => globalThis.OBR._countWords(document.body.textContent));
+    expect(words).toBe(0);                 // the heuristic sees nothing
+    expect(readable).toBeGreaterThan(200); // a reader sees a long article
+
+    await page.evaluate(() => globalThis.OBR.saveSettings({ autoGalleryMin: 10, autoTextMinWords: 200 }));
+    expect(await page.evaluate(() => globalThis.OBR._autoToggle())).toBe('images');
   });
 
   test('a second toolbar click closes the open mode (toggle-off)', async ({ page }) => {

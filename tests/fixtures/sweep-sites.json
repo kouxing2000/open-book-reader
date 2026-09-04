@@ -1,0 +1,170 @@
+[
+  {
+    "cat": "news",
+    "url": "https://www.bbc.com/news/articles/c23x0z48x0no"
+  },
+  {
+    "cat": "news",
+    "url": "https://www.theguardian.com/commentisfree/2026/sep/04/capitalism-luton-car-workers-vauxhall-motors-labour-unions-reform"
+  },
+  {
+    "cat": "news",
+    "url": "https://www.theverge.com/ai-artificial-intelligence/941388/gemini-spark-ai-agent-trip-planning"
+  },
+  {
+    "cat": "news",
+    "url": "https://arstechnica.com/ai/2026/09/four-major-ai-models-suffer-rare-overlapping-downtime/"
+  },
+  {
+    "cat": "news",
+    "url": "https://www.npr.org/2026/09/03/nx-s1-5955479"
+  },
+  {
+    "cat": "news",
+    "url": "https://apnews.com/article/anthropic-pentagon-lawsuit-supply-chain-risk-f15e3c30186385e73e72bee82d85b05c"
+  },
+  {
+    "cat": "news",
+    "url": "https://arstechnica.com/ai/2026/09/google-releases-gemini-3-8-flash-its-third-flash-model-in-six-weeks/"
+  },
+  {
+    "cat": "news",
+    "url": "https://text.npr.org"
+  },
+  {
+    "cat": "blog",
+    "url": "http://www.paulgraham.com/greatwork.html"
+  },
+  {
+    "cat": "blog",
+    "url": "https://jvns.ca/blog/2013/03/04/transit-maps-1941-vs-2011/"
+  },
+  {
+    "cat": "blog",
+    "url": "https://danluu.com/percentile-latency/"
+  },
+  {
+    "cat": "blog",
+    "url": "https://overreacted.io/a-complete-guide-to-useeffect/"
+  },
+  {
+    "cat": "blog",
+    "url": "https://simonwillison.net/2023/Dec/31/ai-in-2023/"
+  },
+  {
+    "cat": "blog",
+    "url": "https://www.joelonsoftware.com/2000/04/06/things-you-should-never-do-part-i/"
+  },
+  {
+    "cat": "blog",
+    "url": "https://blog.codinghorror.com/the-best-code-is-no-code-at-all/"
+  },
+  {
+    "cat": "blog",
+    "url": "https://martinfowler.com/articles/patterns-of-distributed-systems/"
+  },
+  {
+    "cat": "docs",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/columns"
+  },
+  {
+    "cat": "docs",
+    "url": "https://docs.python.org/3/tutorial/classes.html"
+  },
+  {
+    "cat": "docs",
+    "url": "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html"
+  },
+  {
+    "cat": "docs",
+    "url": "https://react.dev/learn/thinking-in-react"
+  },
+  {
+    "cat": "docs",
+    "url": "https://en.wikipedia.org/wiki/Apollo_11"
+  },
+  {
+    "cat": "docs",
+    "url": "https://en.wikipedia.org/wiki/Photography"
+  },
+  {
+    "cat": "forum",
+    "url": "https://news.ycombinator.com/item?id=38842091"
+  },
+  {
+    "cat": "forum",
+    "url": "https://stackoverflow.com/questions/1732348/regex-match-open-tags-except-xhtml-self-contained-tags"
+  },
+  {
+    "cat": "forum",
+    "url": "https://www.reddit.com/r/programming/"
+  },
+  {
+    "cat": "forum",
+    "url": "https://lobste.rs/"
+  },
+  {
+    "cat": "cjk",
+    "url": "https://www.ruanyifeng.com/blog/2023/12/weekly-issue-283.html"
+  },
+  {
+    "cat": "cjk",
+    "url": "https://zh.wikipedia.org/wiki/%E9%98%BF%E6%B3%A2%E7%BD%9711%E5%8F%B7"
+  },
+  {
+    "cat": "cjk",
+    "url": "https://ja.wikipedia.org/wiki/%E3%82%A2%E3%83%9D%E3%83%AD11%E5%8F%B7"
+  },
+  {
+    "cat": "cjk",
+    "url": "https://qiita.com/"
+  },
+  {
+    "cat": "cjk",
+    "url": "https://ko.wikipedia.org/wiki/%EC%95%84%ED%8F%B4%EB%A1%9C_11%ED%98%B8"
+  },
+  {
+    "cat": "rtl",
+    "url": "https://www.aljazeera.net/news/2026/9/4/%D8%AA%D8%B5%D8%B9%D9%8A%D8%AF-%D9%81%D9%8A-%D8%A7%D9%84%D8%A8%D8%AD%D8%B1-%D8%A7%D9%84%D8%A3%D8%B3%D9%88%D8%AF-%D9%88%D9%87%D8%AC%D9%85%D8%A7%D8%AA"
+  },
+  {
+    "cat": "rtl",
+    "url": "https://ar.wikipedia.org/wiki/%D8%A3%D8%A8%D9%88%D9%84%D9%88_11"
+  },
+  {
+    "cat": "rtl",
+    "url": "https://he.wikipedia.org/wiki/%D7%90%D7%A4%D7%95%D7%9C%D7%95_11"
+  },
+  {
+    "cat": "rtl",
+    "url": "https://www.bbc.com/arabic"
+  },
+  {
+    "cat": "longform",
+    "url": "https://www.gutenberg.org/files/1342/1342-h/1342-h.htm"
+  },
+  {
+    "cat": "longform",
+    "url": "https://arxiv.org/abs/1706.03762"
+  },
+  {
+    "cat": "gallery",
+    "url": "https://commons.wikimedia.org/wiki/Category:Photographs"
+  },
+  {
+    "cat": "gallery",
+    "url": "https://www.forbes.ru/novosti-photogallery/79611-evolyuciya-putina-zhurnalnye-oblozhki-s-rossiyskim-prezidentom"
+  },
+  {
+    "cat": "gallery",
+    "url": "https://unsplash.com/"
+  },
+  {
+    "cat": "paywall",
+    "url": "https://www.economist.com/"
+  },
+  {
+    "cat": "paywall",
+    "url": "https://medium.com/"
+  }
+]
