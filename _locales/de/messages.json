@@ -106,6 +106,7 @@
   "galleryDownloading": { "message": "Wird heruntergeladen…" },
   "gallerySentCount": { "message": "$COUNT$ gesendet", "placeholders": { "count": { "content": "$1" } } },
   "galleryImageFetchPermissionNeeded": { "message": "Berechtigung zum Bildabruf erforderlich" },
+  "galleryWaitingPermission": { "message": "Warte auf Berechtigung…" },
   "galleryDownloadFailed": { "message": "Download fehlgeschlagen" },
   "galleryDoneSavedFailed": { "message": "Fertig — $SAVED$ gespeichert, $FAILED$ fehlgeschlagen", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Fertig — $SAVED$ gespeichert", "placeholders": { "saved": { "content": "$1" } } },

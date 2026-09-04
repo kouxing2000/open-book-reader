@@ -106,6 +106,7 @@
   "galleryDownloading": { "message": "正在下载…" },
   "gallerySentCount": { "message": "已发送 $COUNT$", "placeholders": { "count": { "content": "$1" } } },
   "galleryImageFetchPermissionNeeded": { "message": "需要图片获取权限" },
+  "galleryWaitingPermission": { "message": "正在等待授权…" },
   "galleryDownloadFailed": { "message": "下载失败" },
   "galleryDoneSavedFailed": { "message": "完成 — 已保存 $SAVED$ 张,失败 $FAILED$ 张", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "完成 — 已保存 $SAVED$ 张", "placeholders": { "saved": { "content": "$1" } } },

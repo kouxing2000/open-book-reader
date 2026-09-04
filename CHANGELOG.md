@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Downloading a gallery ZIP no longer hands the archive back through the page.** The link
+  that saves the file is never placed in the web page itself, so the page's own scripts can't
+  reach into a download it didn't make. When building a ZIP the extension also refuses to fetch
+  images from a bare IP address or a local network name, which a hostile page could otherwise
+  have used it to reach — before the request goes out, and again if a redirect leads there.
+  Pages you are actually reading on such an address are unaffected: a page's own host is always
+  allowed, since the page can already load those images itself. Saving images one at a time is
+  unchanged, because that path downloads exactly what your browser would have anyway.
+
+- **Taking your time over the download permission no longer loses the download.** If you left
+  the permission window sitting for a while before clicking Allow, the extension had already
+  given up behind the scenes and told you the download failed — even though the permission was
+  granted and nothing had gone wrong. Both Download as ZIP and Save selected now keep asking
+  until you answer, and the files arrive afterwards. While you decide, the gallery says it is
+  waiting instead of claiming a failure.
+
+- **The gallery's status line no longer blanks itself mid-download.** A message left over from
+  loading more images could clear the bar a couple of seconds in, hiding the progress of a
+  download that was still running.
+
 - **The first-run welcome page no longer loses its background on older Chrome.** The page tinted
   its header glow with a colour function added in Chrome 111, while the extension supports 102 —
   and because that call sat inside a `background` shorthand, browsers that did not understand it

@@ -106,6 +106,7 @@
   "galleryDownloading": { "message": "Скачивание…" },
   "gallerySentCount": { "message": "Отправлено: $COUNT$", "placeholders": { "count": { "content": "$1" } } },
   "galleryImageFetchPermissionNeeded": { "message": "Нужно разрешение на загрузку изображений" },
+  "galleryWaitingPermission": { "message": "Ожидание разрешения…" },
   "galleryDownloadFailed": { "message": "Не удалось скачать" },
   "galleryDoneSavedFailed": { "message": "Готово — сохранено: $SAVED$, ошибок: $FAILED$", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Готово — сохранено: $SAVED$", "placeholders": { "saved": { "content": "$1" } } },

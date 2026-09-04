@@ -106,6 +106,7 @@
   "galleryDownloading": { "message": "Descargando…" },
   "gallerySentCount": { "message": "Enviadas $COUNT$", "placeholders": { "count": { "content": "$1" } } },
   "galleryImageFetchPermissionNeeded": { "message": "Se necesita permiso para obtener imágenes" },
+  "galleryWaitingPermission": { "message": "Esperando el permiso…" },
   "galleryDownloadFailed": { "message": "Error al descargar" },
   "galleryDoneSavedFailed": { "message": "Listo — $SAVED$ guardadas, $FAILED$ con error", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Listo — $SAVED$ guardadas", "placeholders": { "saved": { "content": "$1" } } },

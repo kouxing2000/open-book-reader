@@ -220,13 +220,25 @@ export async function clickInGallery(page, selector) {
  */
 export function downloadShim() {
   window.__obrMsgs = [];
+  // Two switches that let a test drive the permission-retry path (gallery.js
+  // retryUntilAnswered) without a real worker:
+  //   __obrDeadChannel  — answer with undefined, the way a channel closed by a worker that
+  //                       idled out mid-prompt does. Flip it back off to "restart" the worker.
+  //   __obrPendingSends — answer the next N sends {pending:true}, which is what a live worker
+  //                       says while the prompt is still on screen.
+  window.__obrDeadChannel = false;
+  window.__obrPendingSends = 0;
   globalThis.chrome = globalThis.chrome || {};
   globalThis.chrome.runtime = {
     lastError: null,
     sendMessage(msg, cb) {
       window.__obrMsgs.push(msg);
+      if (window.__obrDeadChannel) { if (cb) setTimeout(() => cb(undefined), 0); return; }
       let resp = { ok: true };
-      if (msg && msg.type === 'obr-fetch-bytes') {
+      if (window.__obrPendingSends > 0) {
+        window.__obrPendingSends--;
+        resp = { pending: true };
+      } else if (msg && msg.type === 'obr-fetch-bytes') {
         resp = { results: (msg.urls || []).map((url) => ({ url, ok: true, b64: 'iVBORw0KGgo=' })) };
       }
       if (cb) setTimeout(() => cb(resp), 0);

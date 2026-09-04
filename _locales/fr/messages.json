@@ -106,6 +106,7 @@
   "galleryDownloading": { "message": "Téléchargement…" },
   "gallerySentCount": { "message": "$COUNT$ envoyées", "placeholders": { "count": { "content": "$1" } } },
   "galleryImageFetchPermissionNeeded": { "message": "Autorisation de récupération d’images requise" },
+  "galleryWaitingPermission": { "message": "En attente de l’autorisation…" },
   "galleryDownloadFailed": { "message": "Échec du téléchargement" },
   "galleryDoneSavedFailed": { "message": "Terminé — $SAVED$ enregistrées, $FAILED$ échouées", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Terminé — $SAVED$ enregistrées", "placeholders": { "saved": { "content": "$1" } } },

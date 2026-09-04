@@ -106,6 +106,7 @@
   "galleryDownloading": { "message": "ダウンロード中…" },
   "gallerySentCount": { "message": "$COUNT$件送信", "placeholders": { "count": { "content": "$1" } } },
   "galleryImageFetchPermissionNeeded": { "message": "画像取得の権限が必要です" },
+  "galleryWaitingPermission": { "message": "権限の許可を待っています…" },
   "galleryDownloadFailed": { "message": "ダウンロードに失敗しました" },
   "galleryDoneSavedFailed": { "message": "完了 — $SAVED$件保存、$FAILED$件失敗", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "完了 — $SAVED$件保存", "placeholders": { "saved": { "content": "$1" } } },

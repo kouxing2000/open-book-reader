@@ -853,24 +853,115 @@ chrome.runtime.onStartup.addListener(() => { createMenus(); syncSentinelRegistra
  * permission flow below. */
 const FETCH_CONCURRENCY = 5;
 
-async function fetchBytesBase64(url) {
+/* Hosts the worker must never fetch on a page's say-so.
+ *
+ * The worker holds host permissions and sits INSIDE the user's network, so a
+ * page-supplied <img src> is an SSRF primitive: a router admin page, a dev server on
+ * localhost, or a cloud metadata endpoint is reachable from here and not from the page.
+ *
+ * The rule is deliberately blunt — EVERY bare IP literal is refused, not just the
+ * non-public ranges. A range table has to be right about CGNAT, unique-local, IPv4-mapped
+ * IPv6, and each new IANA special-purpose block, and every gap is a hole; "is this an IP
+ * literal at all" is one question with no such tail. It costs only the ability to ZIP
+ * images a page hosts on a PUBLIC bare IP, which is close to nonexistent on the real web,
+ * and it costs the intranet/NAS case nothing: the tab's own host is exempt below, which is
+ * what actually carries that case.
+ *
+ * Matching on `parsed.hostname` is what makes this one comparison per address rather than
+ * a notation zoo: Chrome's URL parser canonicalises every IPv4 spelling (0x7f000001,
+ * 2130706433, 127.1, 127.000.000.001 all become 127.0.0.1). It does NOT unwrap IPv6 —
+ * per the URL spec `hostname` serializes an IPv6 host WITH its brackets, so `[::1]` is
+ * what arrives here and the brackets have to come off below. A colon can therefore only
+ * mean IPv6: a DNS name never contains one, and userinfo/port are already stripped.
+ *
+ * NOT covered — DNS rebinding: a public hostname whose A record answers 127.0.0.1.
+ * Blocking that needs the RESOLVED address, which no extension API exposes; the
+ * post-fetch re-check below catches the redirect form of the same trick but not this one.
+ */
+const BLOCKED_HOST_SUFFIXES = ['.localhost', '.local', '.internal', '.home.arpa'];
+
+// One normaliser for every host that gets compared, so the target side and the sender side
+// can't drift: `EXAMPLE.com.` and `example.com` must reach the same string, or the same-host
+// exemption below would silently miss and the rule would silently over-block.
+function normHost(hostname) {
+  return String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+}
+
+function isBlockedHost(hostname) {
+  const h = normHost(hostname);
+  if (!h) return true;                                       // unparseable: fail closed
+  if (h === 'localhost' || h === 'localhost.localdomain') return true;
+  if (BLOCKED_HOST_SUFFIXES.some((s) => h.endsWith(s))) return true;
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':'); // any IP literal, v4 or v6
+}
+
+/* The one exemption: the tab's OWN host.
+ *
+ * A page can already read images on its own host — <img> needs no permission and no CORS —
+ * so refusing to fetch them buys no security and breaks the real case the blanket rule would
+ * otherwise catch by accident: reading a page served from localhost, an intranet name, or a
+ * NAS at a bare IP, then downloading its images as a ZIP. This exemption is what carries that
+ * case, which is why isBlockedHost above can afford to be blunt. A hostile page gains only
+ * the reach it already had.
+ *
+ * HOST-scoped, ports ignored, matching how host permissions themselves are scoped (see the
+ * per-origin note in CLAUDE.md). Port-scanning your own host was already possible from the
+ * page via <img> load timing, so narrowing to a port would cost usability for nothing.
+ *
+ * `ownHost` MUST come from sender.url / sender.tab.url and never from the message body —
+ * the page controls the body, so a payload-supplied ownHost would be the page granting
+ * itself the exemption for any host it liked. No ownHost = no exemption (fail closed).
+ */
+function isBlockedTarget(hostname, ownHost) {
+  if (!isBlockedHost(hostname)) return false;
+  const own = normHost(ownHost);
+  return !own || normHost(hostname) !== own;
+}
+
+// The trusted half of the pair above. Returns '' for anything unparseable, which reads as
+// "no exemption" downstream.
+function senderHost(sender) {
+  const url = (sender && sender.url) || (sender && sender.tab && sender.tab.url) || '';
+  try { return normHost(new URL(url).hostname); } catch (e) { return ''; }
+}
+
+async function fetchBytesBase64(url, ownHost) {
   // These URLs are page-supplied <img> src values, so a hostile/compromised page can
   // seed them. The ZIP "download all" fetches each in the service worker after the
-  // on-demand <all_urls> grant, so harden against SSRF-into-local-file:
+  // on-demand host grant, so harden against SSRF:
   //   1. Protocol allowlist — only http(s). Blocks file:/blob:/data:/chrome:/ftp:, so
   //      a crafted <img src="file:///etc/passwd"> can't route a local file into the ZIP.
-  //   2. No credentials — a seeded URL pointing at an authenticated same-site endpoint
+  //   2. No bare-IP or local-name targets EXCEPT the tab's own host (isBlockedTarget),
+  //      checked BEFORE the request and again on res.url AFTER it — fetch follows redirects
+  //      by default and `redirect:'manual'` yields an opaque response with no readable
+  //      Location, so a public URL that 302s to 127.0.0.1 can only be caught on the far
+  //      side. The bytes are discarded there, which is what keeps the response out of the
+  //      archive. The exemption rides through the redirect check too, so a page on an
+  //      intranet host still cannot pivot to a DIFFERENT one.
+  //   3. No credentials — a seeded URL pointing at an authenticated same-site endpoint
   //      then gets no cookies, so no logged-in/private content is captured. (Trade-off:
   //      images strictly behind a login/session gate now 403 and land in the per-image
   //      "failed" count; the user can still single-download those via chrome.downloads,
   //      which uses the browser's own cookie jar.)
+  //   4. No text/html bodies — nothing served as a document belongs in an image archive.
+  //      Deliberately NOT a positive `image/*` requirement: S3 and several CDNs serve
+  //      real images as application/octet-stream, so demanding image/* would fail
+  //      legitimate downloads to close a gap that (2) already covers.
   let parsed;
   try { parsed = new URL(url); } catch (e) { throw new Error('invalid URL'); }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('unsupported protocol: ' + parsed.protocol);
   }
+  if (isBlockedTarget(parsed.hostname, ownHost)) throw new Error('blocked host: ' + parsed.hostname);
+
   const res = await fetch(url, { credentials: 'omit' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
+  let landed;
+  try { landed = new URL(res.url); } catch (e) { landed = parsed; }
+  if (isBlockedTarget(landed.hostname, ownHost)) throw new Error('blocked host after redirect: ' + landed.hostname);
+  const ctype = (res.headers.get('content-type') || '').toLowerCase();
+  if (ctype.startsWith('text/html')) throw new Error('not an image: ' + ctype);
+
   const buf = new Uint8Array(await res.arrayBuffer());
   let bin = '';
   for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
@@ -881,7 +972,18 @@ async function fetchBytesBase64(url) {
 // hardening above (protocol allowlist + credential-less fetch) directly, since the
 // message path needs an interactive <all_urls> grant that headless tests can't drive.
 // Mirrors the unconditional `OBR._*` test helpers the content scripts already expose.
-if (typeof self !== 'undefined') self.__obrFetchBytesBase64 = fetchBytesBase64;
+if (typeof self !== 'undefined') {
+  self.__obrFetchBytesBase64 = fetchBytesBase64;
+  // isBlockedHost is exposed separately so the range table can be asserted without a
+  // network round-trip — a fetch-level test can only ever cover the handful of hosts
+  // it is willing to dial. senderHost is exposed because it IS the trust boundary for
+  // the same-host exemption, and it is unreachable from a message-path test headlessly.
+  self.__obrIsBlockedHost = isBlockedHost;
+  self.__obrSenderHost = senderHost;
+  // permsFor decides what the permission popup ASKS for and therefore what it shows the
+  // user; a hoisted declaration, so referencing it here is safe above its definition.
+  self.__obrPermsFor = permsFor;
+}
 
 // Run an async worker over items with bounded concurrency.
 async function runPool(items, limit, worker) {
@@ -898,15 +1000,29 @@ async function runPool(items, limit, worker) {
 }
 
 // Do the actual download work (assumes the needed permission is already granted).
-function runDownload(msg, sendResponse) {
+// Takes the raw `sender` and resolves the host itself rather than accepting a host from its
+// caller: that leaves no seam where the same-host exemption could be fed a value off `msg`,
+// which the page controls. Hand it the wrong object and senderHost returns '' — no
+// exemption, the strict path.
+function runDownload(msg, sendResponse, sender) {
+  const ownHost = senderHost(sender);
   if (msg.type === 'obr-download-one') {
+    // Protocol allowlist only — NOT the host guard fetchBytesBase64 uses. This path hands the
+    // URL to chrome.downloads, which fetches as the BROWSER with the user's own cookies, so an
+    // http(s) target is exactly what right-click → Save image would already do and blocking a
+    // bare-IP or .internal host would only break intranet galleries for no security gain. The
+    // schemes are the gap that matters: `file:` is readable by the browser and not by the page,
+    // and msg.url can come from a page-controlled attribute (data-src) that never had to render.
+    let scheme;
+    try { scheme = new URL(msg.url).protocol; } catch (e) { scheme = ''; }
+    if (!/^(https?|data):$/.test(scheme)) return sendResponse({ ok: false });
     chrome.downloads.download(
       { url: msg.url, filename: msg.filename || undefined, conflictAction: 'uniquify' },
       () => { void chrome.runtime.lastError; sendResponse({ ok: true }); }
     );
   } else if (msg.type === 'obr-fetch-bytes') {
     runPool(msg.urls, FETCH_CONCURRENCY, async (url) => {
-      try { return { url, ok: true, b64: await fetchBytesBase64(url) }; }
+      try { return { url, ok: true, b64: await fetchBytesBase64(url, ownHost) }; }
       catch (e) { return { url, ok: false }; }
     }).then((results) => sendResponse({ results }), () => sendResponse({ results: [] }));
   }
@@ -919,7 +1035,7 @@ function runDownload(msg, sendResponse) {
  * (src/permission.html) where the user's click IS a genuine gesture that can call
  * permissions.request. Each action asks only for what it needs: a single download
  * needs `downloads`; a ZIP needs cross-origin `<all_urls>` to fetch the bytes. */
-function permsFor(msg) {
+function permsFor(msg, ownHost) {
   const type = msg && msg.type;
   if (type === 'obr-download-one') return { permissions: ['downloads'] };
   if (type === 'obr-fetch-bytes') {
@@ -946,6 +1062,12 @@ function permsFor(msg) {
         // want anyway. A `*` inside the hostname can't form a valid pattern, and ONE invalid
         // entry fails the whole permissions.request, so drop it rather than sink the batch.
         if (url.hostname.includes('*')) return;
+        // Don't ask for a host fetchBytesBase64 will refuse anyway. permission.js RENDERS this
+        // list, so an unfiltered one lets a page put "192.168.1.1" in front of the user inside
+        // the extension's own prompt, and buys a grant that can never be used. isBlockedTARGET,
+        // not isBlockedHost: the tab's own host IS fetchable, and a NAS gallery needs the grant
+        // that filtering it out would silently skip.
+        if (isBlockedTarget(url.hostname, ownHost)) return;
         const o = '*://' + url.hostname + '/*';
         if (origins.indexOf(o) === -1) origins.push(o);
       } catch (e) { /* not an absolute http(s) URL — nothing to request */ }
@@ -957,6 +1079,26 @@ function permsFor(msg) {
 
 let permWindowId = null;
 const permWaiters = []; // { need, cb }; cb(granted) runs once the prompt resolves
+
+/* Surviving the prompt: the PAGE holds the request, the worker holds nothing.
+ *
+ * A permission prompt is a HUMAN pause and an MV3 worker idles out at about 30s, so the
+ * worker that opened the prompt is routinely dead before the answer arrives — taking
+ * permWaiters and the caller's sendResponse channel with it. The grant still lands; the
+ * archive does not, and the page is told "Download failed" while nothing was wrong.
+ *
+ * The only thing that has to cross that gap is the GRANT, and chrome.permissions already
+ * stores it durably. The request itself does not, because its owner — the content script —
+ * is still alive and can simply ask again. So a page that sees its channel die re-sends
+ * with `noPrompt`, which means "answer from the permission state you have, never open a
+ * second popup": each retry wakes a fresh worker, and the moment `contains` is true the
+ * ordinary path runs and replies down a live channel.
+ *
+ * That keeps ONE delivery path, so there is nothing to de-duplicate, and every retry
+ * carries its own payload and its own live `sender` — so N parallel downloads can't
+ * collide and the same-host exemption is never re-derived from stored state.
+ * `noPrompt` is page-controlled but can only SUPPRESS a prompt, never grant anything.
+ */
 
 // A `need` may carry routing extras (reason/host — which explanation the popup shows).
 // chrome.permissions.* validates its schema strictly, so strip them before any API call.
@@ -1008,11 +1150,15 @@ function requestPerm(need, cb) {
 // before its callback (and thus before either event) fires.
 function resolveWaiters() {
   permWindowId = null;
-  const waiters = permWaiters.splice(0);
-  waiters.forEach(({ need, cb }) => chrome.permissions.contains(permsOnly(need), (has) => cb(!!has)));
+  permWaiters.splice(0).forEach(({ need, cb }) =>
+    chrome.permissions.contains(permsOnly(need), (has) => cb(!!has))
+  );
 }
 
-// If the user closes the popup window without answering, treat it as a decline.
+// If the user closes the popup window without answering, treat it as a decline. Only this
+// worker's own popup: a worker that started AFTER the popup opened has permWindowId === null
+// and cannot recognise it, and guessing from any window close would decline a prompt that is
+// still on screen. Such a page is retrying on its own timer and needs nothing from here.
 chrome.windows.onRemoved.addListener((id) => {
   if (id === permWindowId) resolveWaiters();
 });
@@ -1080,15 +1226,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if ((msg.type === 'obr-download-one' && msg.url) ||
       (msg.type === 'obr-fetch-bytes' && Array.isArray(msg.urls))) {
-    const need = permsFor(msg);
+    const denied = msg.type === 'obr-fetch-bytes' ? { results: [], denied: true } : { ok: false, denied: true };
+    const need = permsFor(msg, senderHost(_sender));
     // Nothing host-scoped to ask for (e.g. every image is a data:/blob: URL) — no prompt.
-    if (!need) { runDownload(msg, sendResponse); return true; }
+    if (!need) { runDownload(msg, sendResponse, _sender); return true; }
     chrome.permissions.contains(need, (has) => {
-      if (has) return runDownload(msg, sendResponse);
-      requestPerm(need, (granted) => {
-        if (granted) runDownload(msg, sendResponse);
-        else sendResponse(msg.type === 'obr-fetch-bytes' ? { results: [], denied: true } : { ok: false, denied: true });
-      });
+      if (has) return runDownload(msg, sendResponse, _sender);
+      // A retry from a page whose first attempt outlived its worker (see the prompt note
+      // above). The prompt it opened is still on screen, so answer from permission state
+      // alone and never open a second one.
+      if (msg.noPrompt) return sendResponse({ pending: true });
+      requestPerm(need, (granted) => (granted ? runDownload(msg, sendResponse, _sender) : sendResponse(denied)));
     });
     return true; // async response
   }

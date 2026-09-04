@@ -527,6 +527,96 @@ test.describe('gallery downloads', () => {
     expect(fetchMsg.urls).toHaveLength(6); // all collected images
   });
 
+  test('the ZIP anchor never enters the page DOM', async ({ page }) => {
+    // The blob URL saveBlob mints belongs to the PAGE's origin, so an <a download>
+    // carrying it in the page's light DOM is a readable handle on an archive the worker
+    // built with host permissions the page does not have. The regression lives in the
+    // DELIVERY step, not in the ZIP writer, so the assertion watches the document —
+    // a test on _buildZip could never fail on this.
+    await page.evaluate(() => {
+      globalThis.__obrSeenAnchors = [];
+      new MutationObserver((records) => {
+        for (const r of records) {
+          for (const n of r.addedNodes) {
+            if (n.nodeType !== 1) continue;
+            const hits = n.tagName === 'A' ? [n] : Array.from(n.querySelectorAll ? n.querySelectorAll('a') : []);
+            for (const a of hits) {
+              globalThis.__obrSeenAnchors.push({ download: a.getAttribute('download'), href: (a.getAttribute('href') || '').slice(0, 5) });
+            }
+          }
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    });
+
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status)).toContain('saved');
+
+    const anchors = await page.evaluate(() => globalThis.__obrSeenAnchors);
+    // The archive was really built and delivered (guards against a vacuously green
+    // assertion if the ZIP path stopped running at all).
+    const msgs = await sentMessages(page);
+    expect(msgs.some((m) => m.type === 'obr-fetch-bytes')).toBe(true);
+    expect(anchors.filter((a) => a.download !== null || a.href === 'blob:')).toEqual([]);
+  });
+
+  /* R1 — a download that outlives the worker that asked for permission.
+   *
+   * A permission prompt is a human pause, an MV3 worker idles out at ~30s, and when it dies it
+   * takes the sendResponse channel with it. The old code read that null as "Download failed"
+   * and told the user so while the request was perfectly alive.
+   *
+   * The real trigger can't be reproduced here — Playwright's CDP attachment keeps workers
+   * alive — but what the PAGE sees can be, exactly: sendMessage answering undefined.
+   * __obrDeadChannel does that, then flips off to stand for the fresh worker. */
+
+  test('a dead channel is retried, not reported as a failure', async ({ page }) => {
+    await page.evaluate(() => { window.__obrDeadChannel = true; });
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status)).toContain('Waiting');
+
+    await page.evaluate(() => { window.__obrDeadChannel = false; }); // the grant lands
+    await expect.poll(() => galleryState(page).then((s) => s.status), { timeout: 15000 }).toContain('saved');
+
+    const sent = await page.evaluate(() => window.__obrMsgs.filter((m) => m.type === 'obr-fetch-bytes'));
+    expect(sent.length).toBeGreaterThan(1);                    // it asked again
+    expect(sent[0].noPrompt).toBeUndefined();                  // the FIRST ask may open the prompt
+    expect(sent.slice(1).every((m) => m.noPrompt)).toBe(true); // no retry opens a second one
+    expect(sent[sent.length - 1].urls).toEqual(sent[0].urls);  // same payload, re-sent verbatim
+  });
+
+  test('a pending answer keeps waiting — only a real answer ends the wait', async ({ page }) => {
+    // The worker replies {pending:true} while the prompt is still on screen. Without the
+    // pending check that reads as a successful response carrying no results, i.e. a failure.
+    await page.evaluate(() => { window.__obrDeadChannel = true; window.__obrPendingSends = 2; });
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status)).toContain('Waiting');
+
+    await page.evaluate(() => { window.__obrDeadChannel = false; });
+    await expect.poll(() => galleryState(page).then((s) => s.status), { timeout: 20000 }).toContain('saved');
+  });
+
+  test('every image of a Save-selected batch survives, not just one', async ({ page }) => {
+    // The per-image path fires N requests in parallel, and it is the one that meets the prompt
+    // first — `downloads` is the permission not held at install. Each retry must carry its own
+    // URL; keying the wait per TAB is what silently dropped N-1 of them.
+    await page.evaluate(() => { window.__obrDeadChannel = true; });
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-sel');
+    await expect.poll(() => galleryState(page).then((s) => s.status)).toContain('Waiting');
+
+    await page.evaluate(() => { window.__obrDeadChannel = false; });
+    await expect.poll(() => galleryState(page).then((s) => s.status), { timeout: 15000 }).toMatch(/Sent \d/);
+
+    const tiles = (await galleryState(page)).tiles;
+    const retried = await page.evaluate(
+      () => window.__obrMsgs.filter((m) => m.type === 'obr-download-one' && m.noPrompt).map((m) => m.url)
+    );
+    expect(new Set(retried).size).toBe(tiles);
+  });
+
   test('lightbox download button asks the SW to download the shown image', async ({ page }) => {
     await clickInGallery(page, '.tile >> nth=0');
     await clickInGallery(page, '.lb-dl');
@@ -1343,6 +1433,184 @@ test.describe('ZIP download SSRF hardening (service-worker fetchBytesBase64)', (
     }
   });
 
+  test('rejects every bare IP literal and local name, in every notation', async ({ serviceWorker }) => {
+    // Asserted through the helper rather than through fetch: a fetch-level test can only
+    // cover hosts it is willing to dial, and the point is what gets rejected WITHOUT a
+    // request. The notation cases matter because a page writes the URL — 0x7f000001 and
+    // 2130706433 are 127.0.0.1 to Chrome's URL parser and to nothing else. The `allowed`
+    // half is the one that can silently rot: it pins that the rule matches a HOST, not a
+    // substring, so a real CDN never gets caught by it.
+    const out = await serviceWorker.evaluate(() => {
+      const probe = (u) => {
+        try { return self.__obrIsBlockedHost(new URL(u).hostname); }
+        catch (e) { return 'unparseable'; }
+      };
+      return {
+        blocked: [
+          'http://localhost/x.png', 'http://LOCALHOST./x.png', 'http://dev.localhost/x.png',
+          'http://printer.local/x.png', 'http://metadata.google.internal/x.png',
+          'http://127.0.0.1/x.png', 'http://127.1/x.png', 'http://0x7f000001/x.png',
+          'http://2130706433/x.png', 'http://0.0.0.0/x.png',
+          'http://10.0.0.5/x.png', 'http://172.16.0.1/x.png', 'http://172.31.255.254/x.png',
+          'http://192.168.1.1/x.png', 'http://169.254.169.254/latest/meta-data',
+          'http://100.100.0.1/x.png', 'http://198.18.0.1/x.png', 'http://239.1.1.1/x.png',
+          'http://[::1]/x.png', 'http://[::ffff:127.0.0.1]/x.png', 'http://[::ffff:10.0.0.1]/x.png',
+          'http://[fd00::1]/x.png', 'http://[FE80::1]/x.png',
+          // A range table has to enumerate these correctly; the blanket IP-literal rule does
+          // not have to know they exist. Each was a live hole in the table this replaced.
+          'http://[fec0:0:0:ffff::1]/x.png',   // site-local IPv6
+          'http://[::127.0.0.1]/x.png',        // IPv4-compatible, serializes to [::7f00:1]
+          'http://[::ffff:0:7f00:1]/x.png',    // IPv4-translated
+          // Public IP literals are refused too — see isBlockedHost. A page that hosts its
+          // images on a bare IP loses the ZIP; the tab's own host is exempt (isBlockedTarget).
+          'https://8.8.8.8/x.png', 'https://172.32.0.1/x.png', 'https://100.63.0.1/x.png',
+          'https://[2606:4700::1111]/x.png', 'https://[::ffff:8.8.8.8]/x.png',
+        ].map((u) => [u, probe(u)]),
+        allowed: [
+          'https://example.com/x.png', 'https://cdn.example.co.uk/x.png',
+          // Named hosts that merely LOOK local or numeric — the rule matches the whole host,
+          // so a suffix or a leading digit run must not drag these in.
+          'https://localhostage.example/x.png', 'https://192.168.1.1.example.com/x.png',
+          'https://10.0.0.5.nip.io/x.png', 'https://local.example.com/x.png',
+        ].map((u) => [u, probe(u)]),
+      };
+    });
+    for (const [u, verdict] of out.blocked) expect(verdict, `${u} must be BLOCKED`).toBe(true);
+    for (const [u, verdict] of out.allowed) expect(verdict, `${u} must be ALLOWED`).toBe(false);
+  });
+
+  test('a blocked host is refused before any request leaves the worker', async ({ serviceWorker }) => {
+    // The table test above proves isBlockedHost; this proves fetchBytesBase64 actually CALLS
+    // it, and that the rejection happens pre-flight — a guard that rejected only the response
+    // would still have poked the internal endpoint.
+    const out = await serviceWorker.evaluate(async () => {
+      const realFetch = self.fetch;
+      let calls = 0;
+      self.fetch = () => { calls++; return Promise.resolve(new Response(new Uint8Array([1]), { status: 200 })); };
+      let verdict;
+      try { await self.__obrFetchBytesBase64('http://169.254.169.254/latest/meta-data'); verdict = 'resolved'; }
+      catch (e) { verdict = 'rejected'; }
+      finally { self.fetch = realFetch; }
+      return { verdict, calls };
+    });
+    expect(out.verdict).toBe('rejected');
+    expect(out.calls).toBe(0);
+  });
+
+  test('exempts the tab\'s OWN host, and only that host', async ({ serviceWorker }) => {
+    // A page can already read images on its own host (<img> needs no permission and no
+    // CORS), so blocking them buys nothing and breaks reading a page served from localhost
+    // or an intranet. The exemption must not widen past that one host.
+    const out = await serviceWorker.evaluate(async () => {
+      const realFetch = self.fetch;
+      self.fetch = () => Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+      const run = async (url, ownHost) => {
+        try { await self.__obrFetchBytesBase64(url, ownHost); return 'ok'; }
+        catch (e) { return 'rejected'; }
+      };
+      try {
+        return {
+          ownLoopback:   await run('http://127.0.0.1:8080/a.png', '127.0.0.1'),
+          ownIntranet:   await run('http://192.168.1.50/a.png', '192.168.1.50'),
+          ownLocalhost:  await run('http://localhost:3000/a.png', 'localhost'),
+          ownTrailingDot: await run('http://192.168.1.50/a.png', '192.168.1.50.'),
+          otherPrivate:  await run('http://192.168.1.1/a.png', '127.0.0.1'),
+          metadata:      await run('http://169.254.169.254/x', '127.0.0.1'),
+          noOwnHost:     await run('http://127.0.0.1/a.png', ''),
+        };
+      } finally { self.fetch = realFetch; }
+    });
+    expect(out.ownLoopback).toBe('ok');       // the dev-server case, ports ignored
+    expect(out.ownIntranet).toBe('ok');
+    expect(out.ownLocalhost).toBe('ok');
+    expect(out.ownTrailingDot).toBe('ok');    // both sides go through one normaliser
+    expect(out.otherPrivate).toBe('rejected'); // no pivot to a neighbour
+    expect(out.metadata).toBe('rejected');
+    expect(out.noOwnHost).toBe('rejected');    // no sender host = no exemption
+  });
+
+  test('the same-host exemption does not survive a redirect to a different private host', async ({ serviceWorker }) => {
+    const verdict = await serviceWorker.evaluate(async () => {
+      const realFetch = self.fetch;
+      self.fetch = () => {
+        const r = new Response(new Uint8Array([1]), { status: 200 });
+        Object.defineProperty(r, 'url', { value: 'http://192.168.0.5/admin' });
+        return Promise.resolve(r);
+      };
+      try { await self.__obrFetchBytesBase64('http://127.0.0.1/a.png', '127.0.0.1'); return 'ok'; }
+      catch (e) { return 'rejected'; }
+      finally { self.fetch = realFetch; }
+    });
+    expect(verdict).toBe('rejected');
+  });
+
+  test('the exemption host comes from the sender, never from the message body', async ({ serviceWorker }) => {
+    // senderHost IS the trust boundary: a page controls msg, so an ownHost read off the
+    // body would let it exempt any host it named.
+    const out = await serviceWorker.evaluate(() => ({
+      fromTab: self.__obrSenderHost({ tab: { url: 'http://192.168.1.50:3000/page' } }),
+      urlWins: self.__obrSenderHost({ url: 'http://a.example/p', tab: { url: 'http://b.example/p' } }),
+      normalised: self.__obrSenderHost({ url: 'http://EXAMPLE.com./p' }),
+      ipv6: self.__obrSenderHost({ url: 'http://[::1]:9000/p' }),
+      garbage: self.__obrSenderHost({ url: 'not a url' }),
+      empty: self.__obrSenderHost(null),
+    }));
+    expect(out.fromTab).toBe('192.168.1.50');   // port dropped
+    expect(out.urlWins).toBe('a.example');
+    expect(out.normalised).toBe('example.com'); // lowercased, trailing dot gone
+    expect(out.ipv6).toBe('::1');               // brackets gone, matching the target side
+    expect(out.garbage).toBe('');
+    expect(out.empty).toBe('');
+  });
+
+  test('re-checks the landing host, so a public URL cannot 302 into the private range', async ({ serviceWorker }) => {
+    // fetch follows redirects by default and redirect:'manual' hands back an opaque
+    // response with no readable Location, so the pre-flight check alone is bypassable.
+    const verdict = await serviceWorker.evaluate(async () => {
+      const realFetch = self.fetch;
+      self.fetch = () => {
+        const r = new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+        Object.defineProperty(r, 'url', { value: 'http://127.0.0.1:8080/admin' });
+        return Promise.resolve(r);
+      };
+      try { await self.__obrFetchBytesBase64('https://example.test/pic.png'); return 'resolved'; }
+      catch (e) { return 'rejected'; }
+      finally { self.fetch = realFetch; }
+    });
+    expect(verdict).toBe('rejected');
+  });
+
+  test('rejects an HTML body so a document cannot be archived as an image', async ({ serviceWorker }) => {
+    const verdict = await serviceWorker.evaluate(async () => {
+      const realFetch = self.fetch;
+      self.fetch = () => Promise.resolve(
+        new Response('<!doctype html><title>admin</title>', {
+          status: 200, headers: { 'content-type': 'text/html; charset=utf-8' },
+        })
+      );
+      try { await self.__obrFetchBytesBase64('https://example.test/pic.png'); return 'resolved'; }
+      catch (e) { return 'rejected'; }
+      finally { self.fetch = realFetch; }
+    });
+    expect(verdict).toBe('rejected');
+  });
+
+  test('still accepts an image served as application/octet-stream', async ({ serviceWorker }) => {
+    // The guard above is deliberately NOT a positive image/* requirement — S3 and several
+    // CDNs serve real images with this type, and demanding image/* would fail them.
+    const b64 = await serviceWorker.evaluate(async () => {
+      const realFetch = self.fetch;
+      self.fetch = () => Promise.resolve(
+        new Response(new Uint8Array([1, 2, 3]), {
+          status: 200, headers: { 'content-type': 'application/octet-stream' },
+        })
+      );
+      try { return await self.__obrFetchBytesBase64('https://example.test/pic.png'); }
+      finally { self.fetch = realFetch; }
+    });
+    expect(b64).toBe('AQID'); // btoa of bytes 1,2,3
+  });
+
   test('fetches image URLs without credentials (no cookies to authenticated endpoints)', async ({ serviceWorker }) => {
     const creds = await serviceWorker.evaluate(async () => {
       const realFetch = self.fetch;
@@ -1358,5 +1626,55 @@ test.describe('ZIP download SSRF hardening (service-worker fetchBytesBase64)', (
       return captured;
     });
     expect(creds).toBe('omit');
+  });
+});
+
+test.describe('the worker half of the permission retry (R1)', () => {
+  // The page-side tests above drive a shimmed worker. This drives the REAL one, from a real
+  // extension page, because `noPrompt` is a contract between two files and a shim can only
+  // ever confirm the half that wrote it. No grant is needed: the assertion is what the worker
+  // does while the permission is still MISSING.
+  const send = (page, msg) =>
+    page.evaluate((m) => new Promise((r) => chrome.runtime.sendMessage(m, (resp) => {
+      void chrome.runtime.lastError; r(resp === undefined ? null : resp);
+    })), msg);
+
+  test('answers a noPrompt request {pending:true} instead of opening a second popup', async ({ page, extensionId, serviceWorker }) => {
+    await page.goto(`chrome-extension://${extensionId}/src/options/options.html`);
+    // Count real popup windows, so "it did not prompt" is asserted rather than assumed.
+    const opened = await serviceWorker.evaluate(() => {
+      self.__obrWinCreates = 0;
+      const real = chrome.windows.create;
+      chrome.windows.create = (...a) => { self.__obrWinCreates++; return real.apply(chrome.windows, a); };
+      return self.__obrWinCreates;
+    });
+    expect(opened).toBe(0);
+
+    // example.test is not granted, so permsFor yields an origin permissions.contains rejects.
+    const resp = await send(page, {
+      type: 'obr-fetch-bytes', urls: ['https://example.test/a.png'], noPrompt: true,
+    });
+    expect(resp).toEqual({ pending: true });
+    expect(await serviceWorker.evaluate(() => self.__obrWinCreates)).toBe(0);
+  });
+
+  test('drops a host it would refuse anyway out of the permission ask', async ({ serviceWorker }) => {
+    // permission.js RENDERS this list, so an unfiltered one lets a page put a private address
+    // in front of the user inside the extension's own prompt — and buys a useless grant.
+    const need = await serviceWorker.evaluate(() => self.__obrPermsFor(
+      { type: 'obr-fetch-bytes', urls: ['https://cdn.example.test/a.png', 'http://192.168.1.1/b.png'] },
+      'news.example.test'
+    ));
+    expect(need).toEqual({ origins: ['*://cdn.example.test/*'] });
+  });
+
+  test('keeps the tab\'s own host in the ask, since that one IS fetchable', async ({ serviceWorker }) => {
+    // The NAS case: filtering by isBlockedHost instead of isBlockedTarget would silently skip
+    // the grant the exemption needs, and the fetch would then fail with no prompt shown.
+    const need = await serviceWorker.evaluate(() => self.__obrPermsFor(
+      { type: 'obr-fetch-bytes', urls: ['http://192.168.1.5/a.png'] },
+      '192.168.1.5'
+    ));
+    expect(need).toEqual({ origins: ['*://192.168.1.5/*'] });
   });
 });

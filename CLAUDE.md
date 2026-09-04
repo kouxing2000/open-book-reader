@@ -111,6 +111,16 @@ while editing a feature belongs beside that feature.
 - All shared state hangs off `globalThis.OBR` so injected files and the options page share one namespace.
 - Settings live in `chrome.storage.sync` under `obr_settings`, merged over `OBR.DEFAULTS` (`settings.js`).
   New setting → add to `DEFAULTS`, and (if user-tunable) to `options.html`/`options.js`.
+- **Messages run page→worker only — no content script listens for a push.** A permission prompt
+  is a human pause and an MV3 worker idles out at ~30s, so the worker that opened the prompt is
+  routinely dead before the answer arrives, taking the `sendResponse` channel with it. The worker
+  stores NOTHING across that gap: `chrome.permissions` already holds the grant durably, and the
+  page still holds its own request. So a `null` from `sendSW` on a download means "ask again",
+  never "failed" — `gallery.js: retryUntilAnswered` re-sends the same message with `noPrompt`,
+  which makes the worker answer from permission state and never open a second popup, replying
+  `{pending:true}` until the grant lands. Keep it one-directional: a worker→page result channel
+  needs de-duplication against the live one, and every retry instead arrives with a live `sender`,
+  which is what the same-host fetch exemption is derived from.
 - Double-injection guards: `reader.js` via `OBR._engineLoaded`, `gallery.js` via
   `OBR._galleryLoaded`, `sentinel.js` via `OBR._sentinelLoaded` (its re-arm entry point for the
   enable flow is `OBR._sentinelArm` — the IIFE won't re-run on a re-enable).

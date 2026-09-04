@@ -123,15 +123,49 @@
     });
   }
 
+  /* Retrying across the worker's death.
+   *
+   * A permission prompt is a human pause; an MV3 worker idles out at ~30s and takes the
+   * sendResponse channel of the request that opened the prompt down with it, so sendSW
+   * resolves null while the prompt is still on screen. A null there means "ask again",
+   * NOT "failed" — the grant, if the user gives one, outlives every worker.
+   *
+   * So re-send the same request with `noPrompt`, which tells the worker to answer from
+   * permission state and never open a second popup: it replies {pending:true} until the
+   * grant lands, then runs the download and answers down that live channel. The page is
+   * the only thing that has to remember the request, and it was never at risk. */
+
+  // Bounded because the gallery is `busy` (buttons disabled) while this runs — long enough
+  // to read a prompt and decide, short enough not to strand someone who walked away.
+  const PERM_WAIT_MS = 120000;
+  const PERM_POLL_MS = 2000;
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Resolves the SW's real answer, or null if the wait ran out. `msg` is re-sent verbatim,
+  // so each caller carries its own payload — parallel single-image downloads can't collide.
+  async function retryUntilAnswered(msg) {
+    const deadline = Date.now() + PERM_WAIT_MS;
+    while (Date.now() < deadline) {
+      await sleep(PERM_POLL_MS);
+      const resp = await sendSW(Object.assign({}, msg, { noPrompt: true }));
+      if (resp && !resp.pending) return resp;   // granted and finished, or a real denial
+    }
+    return null;
+  }
+
+  // The anchor is NEVER attached to the page. A blob URL minted by a content script
+  // belongs to the PAGE's origin, so an element carrying it in the page's light DOM
+  // hands page script a readable handle on the archive for as long as the URL lives —
+  // and the archive is bytes the worker fetched with host permissions the page does
+  // not have. A detached click downloads identically in Chromium (both halves are
+  // pinned by tests/gallery.spec.js).
   function saveBlob(blob, name) {
     const u = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = u;
     a.download = name;
-    a.style.display = 'none';
-    document.documentElement.appendChild(a);
     a.click();
-    a.remove();
     setTimeout(() => URL.revokeObjectURL(u), 10000);
   }
 
@@ -818,10 +852,19 @@
     return images.map((im) => im.url).filter((u) => selected.has(u));
   }
 
+  // One status line, one auto-clear timer. Writing a message CANCELS any pending clear:
+  // the timers are scheduled by whoever wrote last, and without this a clear armed by an
+  // earlier message wipes a later one mid-flight — hydration's 2.5s clear blanking a
+  // download that is still running, which now matters because "Waiting for permission…"
+  // can legitimately stay up for as long as someone takes to answer the prompt.
+  let statusClear = 0;
   function setStatus(msg) {
     const el = wrap && wrap.querySelector('.status');
     if (el) el.textContent = msg || '';
+    clearTimeout(statusClear);
+    statusClear = 0;
   }
+  function clearStatusIn(ms) { statusClear = setTimeout(() => setStatus(''), ms); }
 
   function updateSelUI() {
     if (!wrap) return;
@@ -861,8 +904,16 @@
   // Single download: the SW runs chrome.downloads.download (cross-origin OK). The
   // SW asks the user for the `downloads` permission the first time (resp.denied if
   // they decline). Returns the SW response so batch callers can tally results.
+  // `downloads` is the permission NOT held at install, so the very first download anyone
+  // makes is the one that meets the prompt — and therefore the likeliest to outlive its
+  // worker. Retries on a dead channel for exactly that reason.
   function downloadOne(url, i) {
-    return sendSW({ type: 'obr-download-one', url, filename: filenameFromUrl(url, i) }).then((resp) => {
+    const msg = { type: 'obr-download-one', url, filename: filenameFromUrl(url, i) };
+    return sendSW(msg).then(async (resp) => {
+      if (!resp) {
+        setStatus(OBR.t('galleryWaitingPermission'));
+        resp = await retryUntilAnswered(msg);
+      }
       if (resp && resp.denied) setStatus(OBR.t('galleryDownloadsPermissionNeeded'));
       return resp;
     });
@@ -887,7 +938,15 @@
         setStatus(ok ? OBR.t('gallerySentCount', [String(ok)]) : OBR.t('galleryDownloadsPermissionNeeded'));
       } else {
         // SW fetches bytes (cross-origin host permission bypasses CORS), returns base64.
-        const resp = await sendSW({ type: 'obr-fetch-bytes', urls });
+        const fetchMsg = { type: 'obr-fetch-bytes', urls };
+        let resp = await sendSW(fetchMsg);
+        // A null answer means the CHANNEL died, not that the download failed — normally the
+        // worker idling out while the permission prompt waits on a human. Saying "Download
+        // failed" here (as this did) was a lie the user then acted on.
+        if (!resp) {
+          setStatus(OBR.t('galleryWaitingPermission'));
+          resp = await retryUntilAnswered(fetchMsg);
+        }
         if (resp && resp.denied) { setStatus(OBR.t('galleryImageFetchPermissionNeeded')); return; }
         const results = (resp && resp.results) || [];
         const ok = results.filter((r) => r && r.ok && r.b64);
@@ -907,7 +966,7 @@
     } finally {
       busy = false;
       updateSelUI();
-      setTimeout(() => setStatus(''), 4000);
+      clearStatusIn(4000);
     }
   }
 
@@ -1513,7 +1572,7 @@
       if (!toBottom && active && added === 0) softDone = true;
       if (btn) btn.disabled = false;
       setStatus(added ? OBR.t('galleryAddedImages', [String(added)]) : (fullyHydrated ? OBR.t('galleryAllImagesLoaded') : ''));
-      setTimeout(() => setStatus(''), 2500);
+      clearStatusIn(2500);
     }
     return added;
   }
