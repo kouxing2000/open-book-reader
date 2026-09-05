@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader, READER_JS } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -863,6 +863,36 @@ test('settings persist across a full page reload', async ({ page }) => {
   await openReader(page);
 
   expect((await readState(page)).theme).toBe('light');
+});
+
+/* The double-injection guard (`if (OBR._engineLoaded) return;`, reader.js:7).
+ *
+ * background.js probes `OBR._engineLoaded` before injecting and normally never injects twice —
+ * which is exactly why the guard needs its own test: nothing else in the suite reaches the case
+ * it defends. Re-injecting after a full page RELOAD (the settings-persistence test above) is not
+ * that case, because a reload wipes OBR and there is no first engine left to collide with.
+ *
+ * Deleting the guard leaves the suite green while a second engine runs beside the first: its own
+ * host, its own capture-phase keydown listener on `document`, its own reading-position writer.
+ * The two listeners sit on the SAME node, so `stopPropagation` in one does not stop the other. */
+test('injecting the engine a second time into a live page is a no-op', async ({ page }) => {
+  await openReader(page);
+  await page.evaluate(() => { globalThis.__obrOpenBefore = globalThis.OBR.open; });
+
+  // The file background.js would inject, run again into the same live page.
+  await page.addScriptTag({ path: READER_JS });
+
+  // Reference identity IS the contract, and nothing weaker is. Reaching the bottom of the file
+  // rebinds OBR.open to a new closure with its own `active`, its own overlay and its own
+  // listeners, so `open` still being the same function means the IIFE returned early and
+  // nothing else ran. Note what this catches that a DOM check cannot: a guard MOVED below the
+  // listener block would leave one overlay on screen with every listener doubled.
+  expect(await page.evaluate(() => globalThis.OBR.open === globalThis.__obrOpenBefore)).toBe(true);
+
+  // ...and the consequence a user would see. makeShadowHost appends a NEW element every call,
+  // so a second engine opening leaves a fresh overlay stacked on a stranded, unclosable one.
+  await page.evaluate(() => globalThis.OBR.open());
+  expect(await page.evaluate(() => document.querySelectorAll('#obr-host').length)).toBe(1);
 });
 
 /* ----------------------------------- content override: selection / picker / saved pick.

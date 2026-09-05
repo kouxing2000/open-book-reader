@@ -3,6 +3,10 @@
  * drives the unmodified gallery against an image-heavy fixture page. */
 
 import { test, expect } from './fixtures.js';
+import { execFileSync } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import {
   gotoImages, injectGallery, openGallery, galleryState, clickInGallery, sentMessages,
   gotoArticle, injectAll, readState, clickInReader, gotoIllustratedArticle, gotoLazyImages,
@@ -670,12 +674,30 @@ test.describe('toolbar auto-mode', () => {
     await expect.poll(() => galleryState(page).then((s) => s.hostDisplay)).not.toBe('none');
   });
 
-  test('opens the text reader when images are below the threshold', async ({ page }) => {
+  /* Runs on the SHIPPED defaults, and the ABSENT saveSettings call is the whole test.
+   *
+   * It used to pass `autoGalleryMin: 10` explicitly — which is that setting's own default — and
+   * that one line was the reason the shipped default could be changed to anything with the whole
+   * suite still green (audit A3-2). Do not re-add it: the explicit-value paths are already
+   * covered by the `3` test above and the `0` test below, and this is the only test where the
+   * image threshold gets a vote at all. `images.html` carries no prose, so `_autoToggle`'s
+   * ladder can only reach a verdict through the count — lower the default to 3 and this
+   * turns red, which is exactly what it could not do before. */
+  test('opens the text reader when images are below the threshold, on the shipped defaults', async ({ page }) => {
     await gotoImages(page);
     await injectAll(page);
-    await page.evaluate(() => globalThis.OBR.saveSettings({ autoGalleryMin: 10 }));
+
+    // Fixture preconditions first: images.html is shared by many tests, so if someone changes
+    // its image count this fails HERE, naming the cause, rather than as a mystery verdict flip.
+    const n = await page.evaluate(() => globalThis.OBR._imageCount());
+    expect(n).toBeGreaterThan(2);  // enough that a LOWERED autoGalleryMin would open the gallery
+    expect(n).toBeLessThan(10);    // and below the shipped 10, so the reader is the right answer
+    expect(await page.evaluate(() => globalThis.OBR._proseStats().words)).toBe(0); // prose can't decide
+
     expect(await page.evaluate(() => globalThis.OBR._autoToggle())).toBe('text');
-    await expect.poll(() => readState(page).then((s) => s.hostDisplay)).not.toBe('none');
+    // `present`, not `hostDisplay`: readState returns {present:false} with no host, so
+    // `hostDisplay` is undefined there and an `undefined !== 'none'` check can never fail.
+    await expect.poll(() => readState(page).then((s) => s.present)).toBe(true);
   });
 
   test('off (0) always opens the text reader regardless of image count', async ({ page }) => {
@@ -716,14 +738,17 @@ test.describe('toolbar auto-mode', () => {
     await expect.poll(() => galleryState(page).then((s) => s.hostDisplay)).toBe('none');
   });
 
-  // Image count alone is unreliable: a long article can carry many figures. The
-  // word-count signal keeps an illustrated article in the reader.
+  /* Image count alone is unreliable: a long article can carry many figures. This pins the
+   * autoTextMinWords half of the ladder — the fixture's ~300 prose words are what decide, and
+   * the image count never gets a vote. So this test is INSENSITIVE to autoGalleryMin by
+   * construction (audit A3-2); the sibling above is the one that covers that default. Keep the
+   * pair, and don't merge them: between them they exercise both arms of the branch. */
   test('a long illustrated article stays in the reader despite many images', async ({ page }) => {
-    await gotoIllustratedArticle(page); // 12 figures (>= default autoGalleryMin 10) + ~300 words
+    await gotoIllustratedArticle(page); // 12 figures + ~300 words, on the shipped defaults
     await injectAll(page);
-    // Defaults: autoGalleryMin 10, autoTextMinWords 200. Image-heavy, but it's a real read.
+    expect(await page.evaluate(() => globalThis.OBR._proseStats().words)).toBeGreaterThan(200);
     expect(await page.evaluate(() => globalThis.OBR._autoToggle())).toBe('text');
-    await expect.poll(() => readState(page).then((s) => s.hostDisplay)).not.toBe('none');
+    await expect.poll(() => readState(page).then((s) => s.present)).toBe(true);
   });
 
   test('_articleWordCount counts the page\'s real prose (live DOM, not Readability)', async ({ page }) => {
@@ -1697,5 +1722,103 @@ test.describe('the worker half of the permission retry (R1)', () => {
       '192.168.1.5'
     ));
     expect(need).toEqual({ origins: ['*://192.168.1.5/*'] });
+  });
+});
+
+/* The hand-rolled ZIP writer, read back by a real archive reader (audit A3-3).
+ *
+ * `zip.js` writes the archive byte by byte — local headers, the central directory, the EOCD —
+ * and until this test nothing ever read those bytes back as an archive. `packaging.spec.js`
+ * does run `unzip`, but against `dist.zip`, which **archiver** builds; the download tests assert
+ * a blob was produced and delivered, never that it opens. So the one piece of format-critical
+ * code written by hand here had no oracle.
+ *
+ * EXTRACT AND LIST ARE DIFFERENT ORACLES, and the extract half alone is not enough. A STORE
+ * entry extracts from its LOCAL header, so `unzip -t`/`-p`/`-x` are all clean on an archive
+ * whose CENTRAL-directory sizes are wrong — which is the A3-3 mutation, and the first version of
+ * this test passed under it for exactly that reason. `unzip -Z` lists FROM the central directory,
+ * so the same archive shows the wrong sizes there. Both halves are load-bearing and neither is
+ * redundant: drop the listing and a wrong central directory ships; drop the extraction and a
+ * wrong CRC or local header does. That split is also why one binary suffices — the difference is
+ * which subcommand you ask, not which tool.
+ *
+ * Builds in the page, which is the environment the code ships into (its own TextEncoder and
+ * DataView), then hands the bytes to a reader that had no part in writing them. */
+test.describe('ZIP writer output is a real archive (A3-3)', () => {
+  /* Entries chosen for what they can break, not for realism:
+   *  - a binary payload carrying 0x00 and 0xFF, so a byte-count slip corrupts the CRC
+   *  - a long name, so the per-entry name length feeds the local-header offsets several times
+   *  - a zero-length entry, the classic off-by-one victim in the size and offset fields
+   *
+   * All names are ASCII because that is the only kind the caller can produce: filenameFromUrl
+   * (gallery.js) runs every name through /[^\w.\-]+/g, and JS `\w` without the `u` flag is
+   * ASCII, so a CJK filename arrives here as underscores. Do not "improve" this test with a
+   * multi-byte name — zip.js declares `version made by` = MS-DOS/FAT, which makes Info-ZIP put
+   * non-ASCII names through an OEM code-page translation and then refuse to match them, UTF-8
+   * flag or not. Unreachable today; the audit records it (findings.md, A3-3). */
+  const ENTRIES = [
+    { name: 'photo-001.png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x10, 0x2a, 0x00, 0x01] },
+    { name: 'a_long-image.name.with.dots-0123456789.jpg', bytes: [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46] },
+    { name: 'empty.bin', bytes: [] },
+  ];
+
+  /* One row per CENTRAL-DIRECTORY record, from zipinfo's long listing:
+   *   -rw----  2.0 fat  <uncompressed> b- <compressed> stor 80-Jan-01 00:00 <name>
+   * Ten whitespace-separated fields; the entry names here contain no spaces, so a plain split
+   * is exact. Rows are kept only when the last field is a name we wrote, so the banner and the
+   * summary line cannot be mistaken for entries — and if the format ever drifts this yields an
+   * EMPTY list, which fails the name comparison loudly instead of passing on nothing. */
+  const centralDirectory = (zipPath, names) =>
+    execFileSync('unzip', ['-Zl', zipPath], { encoding: 'utf8' })
+      .split('\n')
+      .map((l) => l.trim().split(/\s+/))
+      .filter((t) => t.length === 10 && names.includes(t[9]))
+      .map((t) => ({ name: t[9], uncompressed: Number(t[3]), compressed: Number(t[5]), method: t[6] }));
+
+  test('the archive opens, every CRC checks out, and each entry reads back byte for byte', async ({ page }) => {
+    await gotoImages(page);
+    await injectGallery(page); // settings.js + zip.js + gallery.js, as background.js injects them
+
+    const b64 = await page.evaluate((entries) => {
+      const files = entries.map((e) => ({ name: e.name, bytes: new Uint8Array(e.bytes) }));
+      const out = globalThis.OBR._buildZip(files);
+      let s = '';
+      for (let i = 0; i < out.length; i++) s += String.fromCharCode(out[i]);
+      return btoa(s);
+    }, ENTRIES);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obr-zip-'));
+    const zipPath = path.join(dir, 'images.zip');
+    try {
+      fs.writeFileSync(zipPath, Buffer.from(b64, 'base64'));
+
+      // 1. EXTRACT. Does it open at all, do the CRCs match, are the local headers and the
+      //    central directory's offsets into them consistent? `unzip -t` exits non-zero on any
+      //    of those, which execFileSync turns into a throw — so "no output" is not an outcome
+      //    that can pass here.
+      expect(execFileSync('unzip', ['-t', zipPath], { encoding: 'utf8' })).toContain('No errors detected');
+      for (const e of ENTRIES) {
+        // `unzip -p` exits 11 on a name it cannot match (verified), so this is a name check too.
+        expect(Array.from(execFileSync('unzip', ['-p', zipPath, e.name])), `payload of ${e.name}`)
+          .toEqual(e.bytes);
+      }
+
+      // 2. LIST. The same archive as the CENTRAL DIRECTORY describes it — the half step 1
+      //    cannot see, because a STORE entry is extracted from the local header and the
+      //    central copy of its sizes is never consulted.
+      const central = centralDirectory(zipPath, ENTRIES.map((e) => e.name));
+      expect(central.map((r) => r.name)).toEqual(ENTRIES.map((e) => e.name)); // count, order, names
+      for (let i = 0; i < ENTRIES.length; i++) {
+        const want = ENTRIES[i], got = central[i];
+        expect(got.uncompressed, `central uncompressed size of ${want.name}`).toBe(want.bytes.length);
+        // STORE, so the two sizes are equal by definition — asserting both covers both fields.
+        expect(got.compressed, `central compressed size of ${want.name}`).toBe(want.bytes.length);
+        // A central directory claiming deflate over stored bytes extracts fine under Info-ZIP
+        // (it reads the LOCAL method) and fails in every central-directory-first reader.
+        expect(got.method, `central compression method of ${want.name}`).toBe('stor');
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

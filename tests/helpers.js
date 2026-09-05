@@ -15,12 +15,17 @@ const EN_MESSAGES = JSON.parse(
   readFileSync(path.resolve(__dirname, '..', '_locales', 'en', 'messages.json'), 'utf8')
 );
 
+// Exported because the double-injection test re-injects this ONE engine file into a live
+// page — the case background.js's `_engineLoaded` probe exists to prevent.
+export const READER_JS = path.join(CONTENT, 'reader.js');
+const GALLERY_JS = path.join(CONTENT, 'gallery.js');
+
 export const CONTENT_FILES = [
   path.join(CONTENT, 'settings.js'),
   path.join(CONTENT, 'readability.js'),
   path.join(CONTENT, 'reader.style.js'),
   path.join(CONTENT, 'qrcode.js'),   // vendored QR encoder (print branding); loads before reader.js
-  path.join(CONTENT, 'reader.js'),
+  READER_JS,
   path.join(CONTENT, 'notice.js'), // OBR._notice — the page-level banner reader.js falls back to
 ];
 
@@ -28,11 +33,11 @@ export const CONTENT_FILES = [
 export const GALLERY_FILES = [
   path.join(CONTENT, 'settings.js'),
   path.join(CONTENT, 'zip.js'),
-  path.join(CONTENT, 'gallery.js'),
+  GALLERY_JS,
 ];
 
 // All modes together (for cross-mode switching tests).
-export const ALL_FILES = [...CONTENT_FILES, path.join(CONTENT, 'zip.js'), path.join(CONTENT, 'gallery.js')];
+export const ALL_FILES = [...CONTENT_FILES, path.join(CONTENT, 'zip.js'), GALLERY_JS];
 
 // The auto-open sentinel loads with ONLY settings.js beside it (mirrors the SW's
 // registered-script list and the enable-time injection).
