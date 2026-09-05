@@ -15,7 +15,7 @@ around it. This file is the plan; results land beside it:
 | --- | --- | --- |
 | 1 — Baseline | **done** (2026-09-02, v1.8.1 `0d808b1`) | `baseline.md` |
 | 2 — Automated sweeps | **done**; 11 of 20 entries fixed | `findings.md` (1×P1, 5×P2, 9×P3, 5×Info) |
-| 3 — Deep dives | **A4 done** (2026-09-04); A2-A3, A5-A7, B3, B6 not started | `sweep-2026-09-04.md` |
+| 3 — Deep dives | **A3 + A4 + A7 + B6 done**; A3's three gaps closed by tests (2026-09-05); A2, A5, A6, B3 not started | `sweep-2026-09-04.md`, findings A3-1..A3-4, A7-1..A7-2, B6-1..B6-5 |
 | 4 — Report + fix plan | not started | — |
 
 The audit is read-only through Phase 3 by design (see **Rules while auditing**), with three
@@ -26,9 +26,15 @@ silently loses the download it was granted for). Everything else is logged, not 
 
 **Resume here.** Read `findings.md` first — its Summary table and the Next section say what is
 open. **A4 is done** (`sweep-2026-09-04.md`): extraction itself is in good shape, and the two
-defects it found are in the heuristics around it — A4-1 (a div-paragraph article loses the
-toolbar auto-pick) is the open P2 and wants a decision, not a reflex fix. Tracks A2-A3, A5-A7
-and B3/B6 remain; no SUSPECTED entries do.
+defects it found are in the heuristics around it — A4-1 was measured at zero real incidence and
+closed won't-fix. **A3 is done**: 10 mutations, 7 caught, 3 survived (A3-1..A3-3) — the security
+and privacy guards were all covered, and the three gaps (the double-injection guard, the shipped
+`autoGalleryMin` default, the hand-rolled ZIP writer's output) now have tests, each verified red
+under its own mutation. **A7 is done** and came back clean — the plan's "unbounded `obr_positions`"
+item describes code that does not exist (it is LRU-bounded at 300), and the one gap is that the
+bound has no test (A7-2). **B6 is done** and is the one track that found a user-visible defect: the
+overlay does not trap focus, so a keyboard user tabs through the page it is covering (B6-1). Tracks
+A2, A5, A6 and B3 remain; no SUSPECTED entries do.
 
 `npm run sweep` re-runs A4 (it self-checks the instrument before scoring). Read its header before trusting a grade — a dead URL
 extracts beautifully, which is why it classifies DEADURL/BOTWALL before scoring.

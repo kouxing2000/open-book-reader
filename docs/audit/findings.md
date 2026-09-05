@@ -12,18 +12,22 @@ exceptions `plan.md` records, each carrying its own verification.
 Counts are of NUMBERED entries only. Most areas also carry an unnumbered "done well" list, which
 is part of the finding but not a defect. \* Marks a row containing **fixed** entries — fixed
 findings stay counted so the tally matches the entries below. Fixed so far: PR1, PR2, S1, S2, R1,
-C1, C3, D1–D4.
+C1, C3, D1–D4, A4-3, A3-1, A3-2, A3-3.
 
 | area | P0 | P1 | P2 | P3 | Info | entries |
 | --- | --- | --- | --- | --- | --- | --- |
 | Security | 0 | 0 | 2* | 1 | 1 | S1–S4 |
 | Privacy | 0 | 0 | 0 | 1 | 3 | V1–V4 |
 | Reliability | 0 | 0 | 1* | 0 | 0 | R1 |
-| Process | 0 | 1* | 1* | 1 | 0 | PR1–PR3 |
+| Process | 0 | 1* | 2* | 1 | 0 | PR1–PR4 |
 | Compatibility | 0 | 0 | 0 | 2* | 1 | C1–C3 |
 | Maintainability | 0 | 0 | 0 | 1 | 0 | M1 |
 | Documentation drift | 0 | 0 | 1* | 3* | 0 | D1–D4 |
-| **total** | **0** | **1** | **5** | **9** | **5** | **20** |
+| Test coverage (A3) | 0 | 0 | 3* | 0 | 1 | A3-1–A3-4 |
+| Chrome API contracts (A7) | 0 | 0 | 0 | 1 | 1 | A7-1–A7-2 |
+| Accessibility (B6) | 0 | 0 | 1 | 4 | 0 | B6-1–B6-5 |
+| Extraction (A4) | 0 | 0 | 0 | 1 | 3* | A4-1–A4-4 |
+| **total** | **0** | **1** | **10** | **15** | **10** | **36** |
 
 One P1, in process, not in the product: a flaky timing assertion was the only gate on the Web Store
 release pipeline and was red on master — **fixed** (PR1). No P0. The shipped code's security
@@ -188,7 +192,7 @@ are still remembered, so the wording cannot be read as "nothing at all".
 
 **V4 · Info · RESOLVED 2026-09-04 (was P3 · SUSPECTED) — `obr_settings` has no byte cap.**
 The entry's own open question — *"Whether the options page tells the user is for Phase 3 to
-check"* — is answered in the code: `options.js:43` `flashSaved(ok)` renders `optSaveFailed`, not
+check"* — is answered in the code: `options.js:45`, inside `flashSaved(ok)`, renders `optSaveFailed`, not
 the dishonest "Saved ✓", whenever `saveSettings` resolves `false`, and the comment at `:41` says
 that was the intent. So this is a visible wall at roughly 80–100 site rules, not silent data
 loss. Downgraded to Info; a proactive cap for a limit no real user reaches is not worth the code.
@@ -323,6 +327,40 @@ This is sound. The only gap is that a Playwright or Chromium release between two
 the test browser under a release with no code change; pinning `@playwright/test` exactly (it is
 `^1.49.0` in `package.json`) would make a release build reproducible.
 
+**PR4 · P2 · CONFIRMED — the grouped dependency PR carries a change that would break releases,
+and no CI run can see it.** (`PR4` is this audit's fourth Process finding; the GitHub pull requests
+it is about are #3 and #4. The two numbering schemes are unrelated.)
+Dependabot PR #4 bumps four dev deps as one group. CI is red, but the red is the *lesser* problem.
+
+- **`archiver` 7 → 8 — this is what CI catches.** v8 **removed the default export**: `index.js`
+  now exports only `Archiver`, `ZipArchive`, `TarArchive`, `JsonArchive`. So
+  `import archiver from 'archiver'` (`package-extension.js:22`) binds `undefined` and
+  `archiver('zip', …)` throws. The release notes list exactly one breaking change — *"esm: node
+  v18+ required"* — and do not mention the export removal at all. Migration is two lines:
+  `import { ZipArchive } from 'archiver'` and `new ZipArchive({ zlib: { level: 9 } })`;
+  `directory()`, `file()` and `finalize()` are still on the base class and `pipe()` comes from
+  `Transform`, so nothing else in the script changes.
+- **`chrome-webstore-upload` 3 → 6 — this is what CI CANNOT catch.** v4 requires Node 20 and wraps
+  API errors in `CWSError`; **v6 moves to Chrome Web Store API v2 and makes a `publisherId` option
+  mandatory** (upstream changelogs, read 2026-09-04 — re-check before acting, these are third-party
+  facts the repo cannot verify for itself). `deploy-to-store.js:47-50` builds its config from exactly four values —
+  `extensionId`, `clientId`, `clientSecret`, `refreshToken` — and there is no `publisherId`
+  anywhere in the repo or the CI secrets. Merging this makes the next tag push fail at the upload
+  step, and **the suite would stay green the whole time**, because the publish path only runs on a
+  `v*` tag. This is the "unchanged metric that cannot see the change" trap in its exact form.
+- `dotenv` 16 → 17 and `@playwright/test` 1.49 → 1.62 are routine. The Playwright jump is 13
+  minors on the harness this repo has documented macOS-only hangs with, so it is worth landing
+  where the result can be watched rather than inside a four-package group.
+
+**Recommendation: split the group.** The failing packaging fix and the publish-path migration have
+nothing to do with each other and one of them needs a credential that does not exist yet.
+
+**Dependabot #3, same finding.** It bumps `actions/setup-node` v6 → v7 by editing the tag, which
+the S2 commit replaced with a SHA, so it will conflict. Dependabot updates SHA pins natively
+(bumping the SHA and rewriting the `# v6` comment) but has to regenerate against the pinned form —
+which it cannot do until the pins reach origin. **Sequence: push first, then close #3 and let it
+re-open.** Closing it before the push accomplishes nothing.
+
 ## Compatibility
 
 **C1 · P3 · CONFIRMED — FIXED 2026-09-03 — one CSS function newer than the declared minimum.**
@@ -395,14 +433,40 @@ Full report: **`sweep-2026-09-04.md`** — 42 real URLs through the real engine.
 extraction itself is in good shape (Wikipedia clean across en/zh/ja/ko/ar/he, RTL fine, a
 127k-word Gutenberg book intact). The defects are in the heuristics AROUND extraction.
 
-**A4-1 · P2 · CONFIRMED — a div-paragraph article loses the toolbar icon's auto-pick.**
+**A4-1 · Info · CONFIRMED mechanism, ZERO measured incidence — WON'T FIX 2026-09-04 — a
+div-paragraph article loses the toolbar icon's auto-pick.**
 `_proseStats` counts only leaf `p`/`blockquote`/`li`, so an article whose body copy sits in
 `<div>`s reports ZERO prose words. Measured: `paulgraham.com/greatwork.html` extracts 11,619
-words with `_proseStats().words === 0`. That feeds `_autoToggle`'s "not a real article" test,
-so an image-bearing page of this shape opens the GALLERY on a long read. Reproduced with a
-fixture + test, not inferred. CLAUDE.md's "a substantial article always wins" was false and is
-corrected. Fix wants a decision — both candidate widenings loosen a heuristic that currently
-has a clean false-positive record.
+words with `_proseStats().words === 0`. That feeds `_autoToggle`'s "not a real article" test.
+Reproduced with a fixture + test, not inferred. CLAUDE.md's "a substantial article always wins"
+was false and is corrected.
+
+**Downgraded from P2 after measuring the CONSEQUENCE rather than the mechanism.** The original
+write-up said an image-bearing page of this shape opens the gallery — but that branch needs BOTH
+a zero-ish prose count AND `imageCount() >= autoGalleryMin`, and only the first had been
+measured. Re-run across all 42 sweep URLs against the gallery's **own filtered** tile count (what
+`_autoToggle` actually reads, not `document.images.length`): 17 rows are image-heavy, and **not
+one** of them is a real article with a prose count under the threshold. Two rows match on paper —
+`commons.wikimedia.org/wiki/Category:Photographs` (`tiles=49`, `live=75`) and `qiita.com`
+(`tiles=17`, `live=156`) — and both are listing pages where the gallery IS the right answer.
+Commons only scores as prose at all because Readability pulled 534 words of category boilerplate
+out of it.
+
+The detail that undoes the original claim: **`paulgraham.com` has one image** (`tiles=1`). The
+essay used to prove the bug can never reach the gallery branch; it opens in the reader, correctly.
+
+**And the widening has a measured cost the status quo does not.** `qiita.com` sits at
+`live=156, kept=192, tiles=17` — correctly a gallery today, and any rule that counts `<div>` text
+pushes it over 200 and flips it to text. One measured regression against zero measured defects.
+Cost beyond correctness: `_proseStats` is also the auto-open **sentinel's**, which is pre-gesture
+code running on every page load of an enabled site, so `querySelectorAll('div')` plus a per-div
+leaf check is not the same scan as `p, blockquote, li`.
+
+**Not proof of absence.** 42 URLs chosen for extraction diversity bounds the frequency loosely,
+and the shape lives in older CMS templates that such a corpus under-samples. The fixture pins the
+CONSEQUENCE rather than the rule, so a future fix changes the test and cannot land silently.
+A narrow zero-prose fallback remains the cheapest candidate if evidence ever arrives; its own
+false-positive rate is unmeasured (the sweep records no `body.textContent` totals).
 
 **A4-2 · P3 · CONFIRMED — the "extraction looks wrong" nag fires on correct extractions.**
 Asked for the engine's own `_wholeExtractionSuspect` verdict, it fires on 2 of 42 rows, both
@@ -419,13 +483,219 @@ were dead or bot-walled on the first run and several scored PASS. The runner now
 `DEADURL`/`BOTWALL` from the page's own title before scoring, since most sites serve a 404 body
 with HTTP 200.
 
+## Test coverage (Phase 3 track A3)
+
+Ten deliberate breakages, each run against the FULL suite, reverted after. A mutation the suite
+still passes is a proven coverage gap; one it catches is proof the matching test is load-bearing
+rather than decorative. Run with a throwaway driver, deleted afterwards — the deliverable is the
+table below, and a committed script that rewrites `src/` is a foot-gun in a public repo (see the
+note at the end of this section).
+
+**7 caught, 3 survived.** The security and privacy guards are all covered — every sanitizer rule,
+the least-privilege permission ask, the incognito write gate, and the orphaned-context detection
+failed the suite the moment they were broken. The three survivors are below.
+
+| # | area | mutation | verdict |
+| --- | --- | --- | --- |
+| 1 | security | sanitizer stops stripping `on*` handlers | CAUGHT (2 tests) |
+| 2 | security | sanitizer stops removing `<script>`/`<iframe>`/`<form>` | CAUGHT |
+| 3 | security | sanitizer stops stripping `javascript:` URLs | CAUGHT |
+| 4 | security | ZIP permission ask escalates back to `<all_urls>` | CAUGHT |
+| 5 | privacy | incognito passive-write gate always off | CAUGHT |
+| 6 | reliability | orphaned-context detection never fires | CAUGHT |
+| 7 | reliability | **double-injection guard removed** | **SURVIVED** |
+| 8 | i18n | CJK word counting dropped | CAUGHT |
+| 9 | defaults | **`autoGalleryMin` default 10 → 3** | **SURVIVED** |
+| 10 | correctness | **ZIP central-directory size field off by one** | **SURVIVED** |
+
+**A3-1 · P2 · CONFIRMED — FIXED 2026-09-05 — nothing tested the double-injection guard.**
+`if (OBR._engineLoaded) return;` could be deleted and all 278 tests passed. No test injected the
+engine twice into one live page — the settings-persistence test re-injects only after a full
+reload, which wipes `OBR` and so is not the case the guard exists for. CLAUDE.md states the
+consequence explicitly ("listeners attach once at injection and persist for the tab's lifetime"),
+so a second engine runs beside the first with its own capture-phase `keydown` on the same node,
+its own overlay, and its own reading-position writer.
+
+*Fix:* `reader.spec.js` › "injecting the engine a second time into a live page is a no-op".
+Re-injects `reader.js` alone into an open reader and asserts **`OBR.open` is the same function
+object**, because reaching the bottom of the file necessarily rebinds it to a new closure. That is
+the contract itself rather than a symptom of it: an earlier draft asserted only the host count,
+which stays green if the guard is *moved* below the listener block — one overlay on screen, every
+listener doubled. Verified red on both mutations (guard deleted, guard relocated), green with it.
+
+**A3-2 · P2 · CONFIRMED — FIXED 2026-09-05 — the only test that exercised the shipped defaults was
+insensitive to half of them.**
+`gallery.spec.js` ("a long illustrated article stays in the reader despite many images") was the
+one auto-mode test that set no settings, and its comment said *"Defaults: autoGalleryMin 10,
+autoTextMinWords 200. Image-heavy, but it's a real read."* Lowering the `autoGalleryMin` DEFAULT
+from 10 to 3 left it green — the fixture carries ~300 prose words, so `autoTextMinWords` decides
+the verdict and the image count never gets a vote. The test's stated reason ("12 figures >= default
+autoGalleryMin 10") was not the reason it passed.
+
+*Fix:* one **deleted line**, not a new test. `gallery.spec.js` › "opens the text reader when images
+are below the threshold" already used the same fixture and expected the same verdict; it passed
+`autoGalleryMin: 10` explicitly, which is that setting's own default, and that line was the entire
+reason the shipped default could be changed with the suite green. Removing it puts the test on the
+shipped defaults, where `images.html`'s zero prose words leave the image count as the only input
+that can decide. Verified red at `autoGalleryMin: 3`. An earlier draft added a 15-line near-clone
+instead; the existing test one line away from doing the job is the cheaper and more honest fix.
+
+**A3-3 · P2 · CONFIRMED — FIXED 2026-09-05 — the hand-rolled ZIP writer's output was never parsed
+as a real archive.**
+Corrupting the central-directory size field in `OBR._buildZip` (`zip.js`) left all 278 tests green.
+`packaging.spec.js` does run `unzip` — but against `dist.zip`, which **archiver** built, not
+`_buildZip`. The gallery's download tests assert a blob was produced and delivered, never that the
+bytes form a readable archive.
+
+*Fix:* `gallery.spec.js` › "ZIP writer output is a real archive (A3-3)". Builds in the page, then
+reads the bytes back with `unzip` — **both extracting and listing, because they are different
+oracles.** A STORE entry extracts from its LOCAL header, so `unzip -t`/`-p`/`-x` are clean on an
+archive whose central-directory sizes are wrong; that is the A3-3 mutation, and the first version
+of this test used only those subcommands and passed under the very mutation it was written for.
+`unzip -Z` lists FROM the central directory and shows the wrong sizes. One binary, two questions.
+
+**Sensitivity, measured across 31 single-field mutations of `zip.js`: 19 caught, 12 survived.**
+The survivors, so nobody reads green as total:
+
+| survivor | why |
+| --- | --- |
+| local/central UTF-8 flag, name length in chars | unreachable — `filenameFromUrl` (`gallery.js:79`) sanitizes names to ASCII via `/[^\w.\-]+/g`, and JS `\w` is ASCII without the `u` flag |
+| central `version made by` | the A3-4 wart below; also unreachable for ASCII names |
+| **central CRC** | Info-ZIP verifies the LOCAL CRC; reading the central copy needs the multi-line `unzip -Zv` parse, judged not worth the complexity |
+| **EOCD entries-on-this-disk** | only the offset-10 total is read; 7-Zip and Windows read offset 8 |
+| DOS date/time, disk-start, internal/external attrs, local `version needed` | no reader consults them for a single-disk STORE archive |
+
+The two in bold are genuine gaps rather than unreachable code. Both are cheap to close if a real
+defect ever points at them; neither is closed today.
+
+**A3-4 · Info · CONFIRMED — `zip.js` declares "version made by = MS-DOS/FAT" while setting the
+UTF-8 name flag, and Info-ZIP believes the former.**
+Found while writing A3-3's test. `zip.js` writes `version made by = 20` (upper byte 0 = MS-DOS/FAT)
+in every central-directory record, so Info-ZIP puts filenames through an OEM code-page translation
+before matching them — a non-ASCII name is then displayed mangled and cannot be extracted by name
+(exit 11), UTF-8 flag or not. Python's `zipfile` reads the same archive correctly, which is what
+makes this an interop wart rather than a corrupt archive. **Incidence is zero**: `filenameFromUrl`
+(`gallery.js:79`) replaces every non-`[\w.\-]` character with `_`, so no non-ASCII name can reach
+`_buildZip` today. Fix if it ever can: `cv.setUint16(4, 0x031e)` (made by Unix 3.0). Not applied —
+a one-line change to shipped byte-format code with no reachable defect behind it.
+
+**If you re-run A3, the tool must fail safe.** Anything that mutates shipped source to test the
+suite has to survive being killed: a `finally` block does not, and an interrupted first run here
+left the reader's `on*`-handler stripping DISABLED in the working tree. Three properties earn their
+place — refuse to start unless `src/` is clean (a mutation must be distinguishable from real work,
+and a leftover one must never be mistaken for it); write the original bytes to a recovery file
+before each mutation and restore from it on startup; revert on SIGINT/SIGTERM. Keep it out of the
+repo: it was one `git add -A` from committing a source-rewriting script to a public repo, and a
+module like that RUNS when imported, so it cannot be safely inspected by importing it.
+
+**The durable fix is tests, not a kept driver — and it is now done.** A3-1, A3-2 and A3-3 all have
+tests (2026-09-05), so mutations 7, 9 and 10 are CAUGHT and re-running this list only re-confirms
+covered code. Suite: 278 → 281.
+
+**A green oracle is not the same as a sensitive one.** A3-3's first test used `unzip` alone, passed,
+and passed *equally* under the mutation it existed to catch — the tool simply does not read the
+field that was broken. Any test written against a finding here should be run once with the mutation
+applied before it is called a fix; "it passes" and "it can fail" are different claims.
+
+## Chrome API contracts (Phase 3 track A7)
+
+Each of the plan's five A7 items read against the code rather than sampled. **Four hold, one was a
+wrong premise in the plan, and one real gap is a missing test rather than a defect.** No P0–P2.
+
+**Top-level listener registration — holds.** Every `addListener` in `src/` was enumerated, not
+grepped for and spot-checked: **14 sites = 10 + 3 + 1.** The ten in `background.js` all sit at
+column 0, i.e. in the worker's initial evaluation, which is the MV3 contract — a listener registered
+inside a callback or after an `await` does not wake a terminated worker. Three are in
+`options.js:925,926,980` and one in `reader.js:2518`; those are a page and a content script, where
+the rule does not apply. The content-script one is `storage.onChanged`, not `runtime.onMessage`, so
+CLAUDE.md's "no content script listens for a push" still describes the code.
+
+**`permissions.remove` semantics — holds**, and is the subject of its own CLAUDE.md gotcha after S1:
+`remove()` resolves `true` for origins never granted and cannot carve a hole out of `<all_urls>`, so
+every caller re-checks `contains()` and reports only that.
+
+**MV3 worker termination — holds**, and R1 is the worked example: the worker now stores nothing
+across a permission prompt, because the prompt outlives it.
+
+**Context-menu idempotency — holds.** `createMenus()` serializes every build on one `menuBuild`
+promise chain and calls `contextMenus.removeAll()` before each rebuild, so a duplicate id is
+unreachable; `create()` reads `lastError` in its callback rather than throwing. It is invoked from
+`onInstalled`, `onStartup`, and the `storage.onChanged` handler — the three points where the rules
+it renders can have changed.
+
+**A7-1 · Info · CONFIRMED — the plan's "unbounded `obr_positions` growth" describes code that does
+not exist.** `settings.js:735` sets `POSITIONS_MAX = 300` and `makeMapStore` LRU-prunes by the
+entry's `t` on every write, so the map is bounded by construction. `positionsStore` takes no
+`maxBytes`, which is correct for `storage.local`: 300 entries of an origin+pathname key are ~4
+orders of magnitude under the area's quota, and the byte bound exists for the 8KB **sync** items.
+Recorded because the plan line is what a future session would resume from.
+
+**A7-2 · P3 · CONFIRMED — nothing tests the reading-position LRU bound.** No test in the suite
+references `POSITIONS_MAX` or drives `savePosition` past it; the only test that touches
+`savePosition` spies on it to observe a flush (`reader.spec.js:626`). So the bound that keeps a
+heavy reader's `storage.local` from growing without limit is unverified — the same shape as
+A3-1..A3-3, found by reading rather than by mutation. Fix is one test: write `POSITIONS_MAX + N`
+positions and assert the map holds `POSITIONS_MAX` and that the survivors are the newest.
+
+## Accessibility (Phase 3 track B6)
+
+Measured in real Chromium against the article fixture with focusable controls planted in the page,
+not read off the source — a Tab sweep on a fixture with no focusable content of its own cannot tell
+"trapped" from "nothing else to focus", and the first version of this probe made exactly that
+mistake. Numbers below are from that run.
+
+**Done well.** Every control is a real `<button>` or labelled form control, so the UA focus ring
+survives (`outline: auto 1px` measured on a focused toolbar button — nothing in `reader.style.js`
+sets `outline: none`). `aria-label`, `aria-current` and `aria-pressed` are on the segmented controls
+and the toggles, and are updated when state changes. `prefers-reduced-motion: reduce` forces an
+instant page turn and has a test. Gallery tiles are keyboard-reachable (2 focusable elements per
+tile). The reader's toolbar tab order matches its visual order.
+
+**B6-1 · P2 · CONFIRMED — the overlay covers the page but the keyboard still walks through it.**
+There is no focus trap, no `role="dialog"`/`aria-modal` on either host, and the page behind is
+neither `inert` nor `aria-hidden`. Measured Tab order with the reader open: the four planted page
+controls come FIRST, then the eleven overlay controls, then `body`, then the page controls again.
+So a keyboard user opening the reader tabs four times into content they cannot see, and tabbing off
+the Close button lands them back there. A screen reader has it worse — the whole underlying document
+is still in its buffer, with nothing marking the reader as the active surface. This is the one B6
+finding with a user-visible failure rather than a missing nicety.
+
+**B6-2 · P3 · CONFIRMED — a page turn announces nothing.** Zero `[aria-live]` elements in either
+engine's shadow root. `.obr-indicator` goes from "1–2 / 6 pages" to "3–4 / 6 pages" silently, and
+the gallery's `.status` (download progress, "Done — 6 saved") is equally mute. Both are exactly the
+transient, non-focus-moving updates `aria-live="polite"` exists for.
+
+**B6-3 · P3 · CONFIRMED — opening the reader does not move focus into it.** `document.activeElement`
+is still `body` immediately after `OBR.open()` resolves. Combined with B6-1 there is no signal at
+all — visual, focus, or announced — that a full-screen surface just opened. Fixing B6-1 would
+normally carry this with it: focus the overlay on open, restore it to the trigger on close.
+
+**B6-4 · P3 · CONFIRMED — under `forced-colors: active` the selected mode is carried by font weight
+alone.** Measured with the media emulated: the active and inactive segmented buttons come back with
+identical `background-color`, `color`, `border-color` and `box-shadow` (the purple fill and its
+shadow are both dropped), leaving `font-weight` 600 vs 400 as the only visual difference. Not
+invisible, and `aria-current="true"` still carries it non-visually — but weight alone is a thin
+signal for the users this mode exists for. The standard fix is a `@media (forced-colors: active)`
+block that re-expresses selection with a system colour or an added border; there is currently no
+`forced-colors` rule anywhere in `src/`.
+
+**B6-5 · P3 · CONFIRMED — two gallery inputs delete their focus ring.**
+`gallery.js:513` and `:653` set `outline: none` on `.autospeed-in:focus` and `.lb-secs-in:focus`,
+substituting a `border-color` change. That is a weak indicator in normal rendering and can be no
+indicator at all under forced colours, where the border colour is overridden by the system palette —
+so the substitute and the thing it replaced both disappear. These are the only two `outline: none`
+rules in the shipped engines.
+
 ## Next (Phase 3)
 
-Verify the remaining SUSPECTED entry (V4 — see below), then the plan's A2–A7 and B3/B6. **A4, the
-real-site extraction sweep, is the highest-value work left**: everything fixed so far is process,
-docs, CSS or hardening — nothing has yet tested extraction quality, which is the product.
+A3, A4, A7 and B6 are done, and A3's three findings are now closed by tests rather than logged.
+Extraction came back clean (30 PASS, 0 FAIL), the security/privacy guards are all covered, and the
+Chrome API contracts hold. B6 is the one track that came back with a user-visible defect: the
+overlay does not trap focus (B6-1). What remains: the plan's A2, A5, A6 and B3, the open findings
+above, and PR #4 (see Process → PR4).
 
-Fixed so far: PR1, PR2, S1, S2, R1, C1, C3, D1–D4, A4-3. Still open: A4-1, A4-2, S3, V3, PR3, M1 — plus every
-Phase 3 track. V4 is downgraded to Info: its open question (does the options page tell the user a
-save failed?) is answered in the code — `options.js:43` renders `optSaveFailed`, so the quota
-limit is a visible wall at ~80–100 rules, not silent loss.
+Fixed so far: PR1, PR2, S1, S2, R1, C1, C3, D1–D4, A4-3, A3-1, A3-2, A3-3. Still open: B6-1..B6-5,
+A4-2, PR4, S3, V3, PR3, M1, A7-2, and A3-4 / A7-1 (Info) — plus the Phase 3 tracks above. V4 is downgraded to Info: its open
+question (does the options page tell the user a save failed?) is answered in the code —
+`options.js:45` renders `optSaveFailed`, so the quota limit is a visible wall at ~80–100 rules, not
+silent loss.

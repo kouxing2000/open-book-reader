@@ -83,9 +83,15 @@ each, CJK-aware) off the live DOM, so it's cheap and robust.
 **Known limit — a substantial article wins only if its paragraphs are paragraphs.** `_proseStats`
 counts no other element, so an article whose body copy sits in `<div>`s (older CMS templates;
 `paulgraham.com` uses `<font>` in tables) reports ZERO prose words while a reader sees a long
-article — and an image-bearing page of that shape opens the GALLERY from the toolbar icon. Measured
-live and pinned by `tests/fixtures/div-paragraph-article.html`; see `docs/audit/sweep-2026-09-04.md`
-A4-1. The sentinel's ladder reads the same count and inherits the same blindness.
+article. Measured live and pinned by `tests/fixtures/div-paragraph-article.html`. The sentinel's
+ladder reads the same count and inherits the same blindness. **Do NOT "fix" this by adding `div`
+to the selector without measuring the reverse risk first** — the gallery branch also needs
+`imageCount() >= autoGalleryMin`, and across the 42-site sweep no real article met both, so the
+measured incidence of the bug is zero. Meanwhile `qiita.com` sits at 156 prose words with 17 tiles,
+correctly a gallery today and close enough to the 200-word line that counting `div` text could push
+it over; the sweep records no `div`-counted total, so how close is unmeasured. A widened rule would
+also make the pre-gesture sentinel scan every `div` on every page load. See
+`docs/audit/sweep-2026-09-04.md` A4-1.
 
 **Two modes, one namespace**: `reader.js` → `OBR.open/close/toggle` (`#obr-host`); `gallery.js` →
 `OBR.openGallery/closeGallery/toggleGallery` (`#obr-gallery-host`). Each is a separate open Shadow
@@ -165,9 +171,10 @@ npx playwright install chromium                # first run only
 - `extension-load.spec.js` — loads, SW registers, shipped manifest correct; plus a real-SW test that
   `chrome.downloads` works and the SW fetches cross-origin via `host_permissions`.
 - `reader.spec.js` — text engine: extraction, Shadow render, pagination, flipping, Home/End, theme,
-  font size, progress/resume, close/toggle, settings persistence.
+  font size, progress/resume, close/toggle, settings persistence, the double-injection guard.
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
-  (stubbed SW), mode switching.
+  (stubbed SW), mode switching, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
+  by real archive parsers.
 - `auto-open.spec.js` — the sentinel's decision ladder end-to-end (content gates, metadata veto,
   suppression + SPA re-arm, enable-time chip, engine chip/suppress integration) plus the pure rule
   helpers; the SW-side registration sync is covered in `extension-load.spec.js` with a stubbed
@@ -179,6 +186,12 @@ npx playwright install chromium                # first run only
   orderings), a host the page's own re-render deleted, an iframe, and the banner's replace-not-stack
   behaviour. These are the failures that look identical to a dead extension.
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
+- **The suite shells out to `unzip`** (`packaging.spec.js` for `dist.zip`, `gallery.spec.js` for
+  `OBR._buildZip`'s bytes). **Extracting and listing are different oracles — the ZIP test needs
+  both.** A STORE entry extracts from its LOCAL header, so `unzip -t`/`-p`/`-x` are clean on an
+  archive whose CENTRAL-directory sizes are wrong; `unzip -Z` lists FROM the central directory and
+  shows them. Neither half is redundant, and no second tool is needed — the difference is which
+  subcommand you ask.
 - **Harness caveat**: headless Playwright can't click the real toolbar icon (no `activeTab`), so tests
   inject the content scripts the same way/order as `background.js` and exercise the unmodified engine;
   only the ~2 lines of gesture→inject wiring are uncovered. `chrome.storage.sync` is shimmed in-page.
