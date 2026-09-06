@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   discarded the whole declaration, dropping the paper colour along with the glow. The tint is now
   precomputed per theme, so the page looks the same on every supported version.
 
+- **Chinese and Japanese now use the punctuation those languages actually take.** Around ninety
+  strings — the Simplified Chinese store summary among them — were written with half-width
+  `,` `:` `;` `?` where Chinese and Japanese use the full-width forms. To a native reader that is
+  the tell of a machine translation, whatever the words say. Code, CSS selectors and URLs sitting
+  inside those strings are unchanged.
+
 ## [1.8.1] - 2026-08-30
 
 ### Fixed
