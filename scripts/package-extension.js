@@ -123,7 +123,7 @@ async function packageExtension() {
   }
   if (manifest.homepage_url && manifest.homepage_url.includes('github.com/steven/')) {
     log('⚠️  manifest.homepage_url still uses the placeholder "github.com/steven/..."', 'yellow');
-    log('   Update it before a real store submission (see CLAUDE.md).', 'yellow');
+    log('   Update it before a real store submission (see AGENTS.md).', 'yellow');
   }
   log(`📌 Extension: ${displayName} v${manifest.version}`, 'cyan');
   log(`📝 Description: ${displayDesc}`, 'cyan');

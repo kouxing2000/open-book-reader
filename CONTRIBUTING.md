@@ -70,4 +70,4 @@ public issue.
 ## Architecture
 
 For a deeper map of how injection, the two modes, pagination, and downloads work, see the
-**Architecture** section of [`README.md`](README.md) and the project notes in `CLAUDE.md`.
+**Architecture** section of [`README.md`](README.md) and the project notes in `AGENTS.md`.

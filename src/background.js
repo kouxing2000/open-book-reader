@@ -905,7 +905,7 @@ function isBlockedHost(hostname) {
  * the reach it already had.
  *
  * HOST-scoped, ports ignored, matching how host permissions themselves are scoped (see the
- * per-origin note in CLAUDE.md). Port-scanning your own host was already possible from the
+ * per-origin note in AGENTS.md). Port-scanning your own host was already possible from the
  * page via <img> load timing, so narrowing to a port would cost usability for nothing.
  *
  * `ownHost` MUST come from sender.url / sender.tab.url and never from the message body —

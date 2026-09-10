@@ -1,6 +1,6 @@
 # Activation, engagement and feedback
 
-> Deep reference, loaded on demand. `CLAUDE.md` holds the always-on architecture map,
+> Deep reference, loaded on demand. `AGENTS.md` holds the always-on architecture map,
 > conventions and cross-cutting gotchas; this file holds the detail you only need while
 > actually working on this area.
 

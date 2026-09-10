@@ -1,6 +1,6 @@
 # Service worker internals (`src/background.js`)
 
-> Deep reference, loaded on demand. `CLAUDE.md` holds the always-on architecture map,
+> Deep reference, loaded on demand. `AGENTS.md` holds the always-on architecture map,
 > conventions and cross-cutting gotchas; this file holds the detail you only need while
 > actually working on this area.
 
@@ -67,7 +67,7 @@ use the Console context dropdown, or just enable from Options). Where the lines 
 `[OBR gallery]` log to the ARTICLE page's console; `[OBR sw]` logs to the service-worker console
 (chrome://extensions → service worker → Inspect). **Purely local — nothing is ever
 sent anywhere; keep it that way** (the zero-telemetry invariant and why it is load-bearing live in
-`CLAUDE.md`; don't restate the rationale here). The SW reads the
+`AGENTS.md`; don't restate the rationale here). The SW reads the
 in-memory `OBR._debug` (hydrated at `importScripts` + kept fresh by the `storage.onChanged`
 `local`/`obr_debug` branch) so the normal path adds NO per-invoke storage read, and it hands the
 resolved flag into the `open()`/`openGallery()` dispatch so a cold first invoke still times itself.

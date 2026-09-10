@@ -1,6 +1,6 @@
 # Text reader internals (`src/content/reader.js`)
 
-> Deep reference, loaded on demand. `CLAUDE.md` holds the always-on architecture map,
+> Deep reference, loaded on demand. `AGENTS.md` holds the always-on architecture map,
 > conventions and cross-cutting gotchas; this file holds the detail you only need while
 > actually working on this area.
 
@@ -11,7 +11,7 @@ overrides a bad extraction, and the layout traps that produced blank pages.
 ## Rendering and pagination
 
 The base model — Readability into an open Shadow DOM, styling via `adoptedStyleSheets`, pagination
-as CSS multi-column where a "spread" is N columns-per-view — lives in `CLAUDE.md` under
+as CSS multi-column where a "spread" is N columns-per-view — lives in `AGENTS.md` under
 Architecture, because you need it to orient in the codebase at all. **That is the single source;
 don't copy it back here.** Everything below builds on it.
 

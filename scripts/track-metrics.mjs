@@ -4,7 +4,7 @@
 // Scrapes the PUBLIC Chrome Web Store listing (no login, no secrets, no API key)
 // and appends a dated row to metrics/store-metrics.csv. This is the only source of
 // usage data that does NOT require in-extension telemetry, so the "collects no data /
-// sends nothing to the developer" posture (see CLAUDE.md) stays intact.
+// sends nothing to the developer" posture (see AGENTS.md) stays intact.
 //
 // There is NO Chrome Web Store stats API. The Developer Dashboard has precise
 // install / weekly-active / by-country numbers, but only behind an authenticated

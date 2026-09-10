@@ -447,7 +447,7 @@ exactly the two signals the sentinel consumes; the real-tab behavior rides §10.
 
 - Architecture blurb (sentinel + registration sync): §0 above. The registration-sync gotcha
   (same `onInstalled`+`onStartup` double-fire as the context menu) lives in
-  `docs/background-worker.md`; the prose-stats-live-in-`settings.js` gotcha is in `CLAUDE.md`.
+  `docs/background-worker.md`; the prose-stats-live-in-`settings.js` gotcha is in `AGENTS.md`.
 - `README.md`: feature bullet + privacy sentence ("auto-open runs only on sites you enable").
 - `site/` landing + privacy page: same disclosure.
 - Store listing source of truth (`.meta/LISTING.md` + localized descriptions): feature line.
