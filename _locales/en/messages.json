@@ -29,6 +29,7 @@
   "readerBtnCloseTitle": { "message": "Close reader (Esc)" },
   "readerBtnCloseLabel": { "message": "✕ Close" },
   "readerFooterHint": { "message": "← / → flip · ↑↓ / Space · +/− font · T theme · P print · Esc exit" },
+  "readerFooterHintTouch": { "message": "Edges turn pages · middle shows the toolbar" },
   "readerPrintDefaultTitle": { "message": "Article" },
   "readerPrintNoArticle": { "message": "Could not extract a readable article from this page." },
   "readerPrintBrandTagline": { "message": "Printed with the free, distraction-free reader" },

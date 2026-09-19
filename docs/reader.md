@@ -15,6 +15,40 @@ as CSS multi-column where a "spread" is N columns-per-view — lives in `AGENTS.
 Architecture, because you need it to orient in the codebase at all. **That is the single source;
 don't copy it back here.** Everything below builds on it.
 
+## Input model — three tap zones, and one rule about mouse-compatibility events
+
+Paging is keyboard (`ArrowRight`/`Down`/`PageDown`/space and their reverses) **and** pointer. The
+click handler in `build()` splits the viewport by width: below `EDGE_FRAC` (0.28) turns back,
+above `1 - EDGE_FRAC` turns forward, and the middle band toggles the auto-hidden chrome **on touch
+only**. A tap needs no touch listener to page — Chromium synthesizes a `click` carrying `clientX`,
+which is all the handler reads.
+
+The handler listens on the content rather than a blocking overlay, so text stays selectable; a
+non-collapsed `root.getSelection()` suppresses the turn. It is `root.getSelection()`, not
+`window.getSelection()`, because the content is in a shadow root.
+
+**Every mouse listener in the reader is gated on `!touchMode`, and that gate is load-bearing.**
+Chromium's tap sequence is `pointerdown` … `mousemove`, `mousedown`, `mouseup`, `click`, so a tap
+fires the mouse listeners too. Un-gated, the synthesized `mousemove` reveals the chrome *before*
+the click arrives, so the centre band's toggle can only ever find it visible and hide it — the
+centre tap then looks as dead as the band it replaced. The `mouseenter`/`mouseleave` pair is gated
+for the mirror-image reason: `mouseleave` does not fire reliably on touch, so `overControls` would
+latch `true` and the chrome would never hide again. That is also why `setTouchMode()` clears
+`overControls` on the way into touch — on a hybrid device you can hover the toolbar with a mouse
+and *then* tap, and the `mouseleave` that would have cleared it is by then gated off.
+
+`touchMode` is latched from `pointerdown`'s `pointerType` (capture phase, so toolbar taps count)
+and **starts `false`** — it is deliberately not seeded from `(pointer: coarse)`, because it gates
+real behaviour and a coarse-*primary* device driven by a Bluetooth mouse (Android tablet, ChromeOS
+in tablet mode) would then lose hover-reveal and silently swallow the first click spent recovering.
+The latch loses nothing: `pointerdown` fires at touch-start, before the compatibility mouse events,
+so a session's first tap is already in touch mode by click time. `coarsePrimary` is a separate
+constant used for the footer hint's *wording* only, so a phone does not open showing keyboard
+shortcuts. `pen` is deliberately not touch — a stylus hovers, so it wants the mouse behaviour.
+
+`tests/reader-touch.spec.js` pins all of it, and is the only spec that runs below
+`singlePageBelow` (720) — i.e. the only coverage of the one-column layout a phone gets.
+
 ## Page-turn animation
 
 **Page-turn animation** (`reader.js`: `flip` → `bookFlip` / `curlFlip` / `endActiveFlip`, setting

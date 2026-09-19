@@ -27,6 +27,7 @@
   "readerBtnCloseTitle": { "message": "Cerrar el lector (Esc)" },
   "readerBtnCloseLabel": { "message": "✕ Cerrar" },
   "readerFooterHint": { "message": "← / → pasar · ↑↓ / Space · +/− fuente · T tema · P imprimir · Esc salir" },
+  "readerFooterHintTouch": { "message": "Los bordes pasan página · el centro muestra la barra" },
   "readerPrintDefaultTitle": { "message": "Artículo" },
   "readerPrintNoArticle": { "message": "No se pudo extraer un artículo legible de esta página." },
   "readerPrintBrandTagline": { "message": "Impreso con el lector gratuito y sin distracciones" },

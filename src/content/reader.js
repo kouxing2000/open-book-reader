@@ -20,12 +20,34 @@
   const ICON_IMAGES = OBR.ICONS.images;
 
   let settings = Object.assign({}, OBR.DEFAULTS);
-  let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, pickHintEl;
+  let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, pickHintEl, hintEl;
   // Element-picker mode (the ⌖ Pick override): a separate Shadow host so its highlight
   // box / instruction bar can't disturb the reader's styles, plus the live hover target.
   let pickerActive = false, pickHost = null, pickRoot = null, pickBox = null, pickLabel = null, pickHoverNode = null;
   let active = false, built = false;
   let chromeTimer = null, overControls = false;
+  // How long the floating chrome stays up before auto-hiding. Touch gets longer: a mouse
+  // re-reveals itself with a twitch (the mousemove listener), a finger has no hover and pays
+  // a whole extra tap for every dismissal it did not mean.
+  const CHROME_HIDE_MS = 2200, CHROME_HIDE_TOUCH_MS = 5000;
+  // Width fraction of the left/right page-turn bands. The remainder is the middle band, which
+  // on touch toggles the chrome (see the click handler in build()).
+  const EDGE_FRAC = 0.28;
+  // Which input the user last actually used. Latched from pointerdown's pointerType in build(),
+  // so a hybrid device works in both modes. `pen` is deliberately not touch — a stylus hovers,
+  // so it wants the mouse behaviour.
+  // Starts FALSE, never seeded from `(pointer: coarse)`: this gates real behaviour (the mousemove
+  // reveal, both hover listeners, the middle-band toggle, the hide delay), and a coarse-PRIMARY
+  // device driven by a Bluetooth mouse — an Android tablet, ChromeOS in tablet mode — would then
+  // lose hover-reveal entirely and silently swallow the first click spent trying to recover.
+  // The latch costs nothing here: pointerdown fires at touch-start, before the compatibility
+  // mouse events, so even a session's very first tap is already in touch mode by click time.
+  let touchMode = false;
+  // Hint WORDING only, which is the one thing that must be right before any interaction — a
+  // phone should not open showing keyboard shortcuts. Never gates behaviour.
+  const coarsePrimary = (() => {
+    try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; }
+  })();
   let currentSpread = 0, totalSpreads = 1, totalColumns = 1;
   let colW = 0, colGap = 0, pagesPerSpread = 2;
   let savedScrollY = 0;
@@ -172,6 +194,8 @@
     indicatorEl = overlay.querySelector('.obr-indicator');
     progressFillEl = overlay.querySelector('.obr-progress-fill');
     pickHintEl = overlay.querySelector('.obr-pick-hint');
+    hintEl = overlay.querySelector('.obr-hint');
+    applyFooterHint(); // the (pointer: coarse) seed gets the first paint right on a phone
 
     // Click near the left/right edge turns the page. We listen on the content itself (NOT a
     // blocking overlay) so the page text stays fully selectable — a drag-select leaves a
@@ -185,18 +209,37 @@
       const sel = root.getSelection ? root.getSelection() : (globalThis.getSelection && getSelection());
       if (sel && !sel.isCollapsed && String(sel).trim()) return; // mid text-selection → don't flip
       const w = window.innerWidth;
-      if (e.clientX < w * 0.28) flip(-1);
-      else if (e.clientX > w * 0.72) flip(1);
+      if (e.clientX < w * EDGE_FRAC) flip(-1);
+      else if (e.clientX > w * (1 - EDGE_FRAC)) flip(1);
+      // The middle band is the only touch route to the auto-hidden chrome. Inert with a mouse,
+      // which already reveals on mousemove and would otherwise flicker on every stray click.
+      else if (touchMode) toggleChrome();
     });
     overlay.querySelectorAll('.obr-btn, .obr-seg-btn').forEach((b) =>
       b.addEventListener('click', () => handleAction(b.dataset.act)));
 
+    // Capture phase, so a tap on a toolbar button latches too. pointerdown fires at touch-start,
+    // BEFORE the compatibility mouse events that follow touchend — so the very first tap of a
+    // session is already in the right mode by the time its click handler runs.
+    overlay.addEventListener('pointerdown', (e) => setTouchMode(e.pointerType === 'touch'), true);
+
     // Auto-hide the floating chrome: reveal on mouse move, hide when idle,
     // and never hide while the pointer is over the controls themselves.
-    overlay.addEventListener('mousemove', showChrome);
+    // Every listener here is mouse-only. A tap synthesizes mousemove/mouseenter too, and taking
+    // them would break both other fixes: the synthesized mousemove arrives BEFORE the click, so
+    // toggleChrome() would always find the chrome already shown and could only ever hide it; and
+    // mouseleave does not reliably fire on touch, so overControls would latch true and the chrome
+    // would never hide again.
+    overlay.addEventListener('mousemove', () => { if (!touchMode) showChrome(); });
     [overlay.querySelector('.obr-topbar'), overlay.querySelector('.obr-footer')].forEach((bar) => {
-      bar.addEventListener('mouseenter', () => { overControls = true; clearTimeout(chromeTimer); });
-      bar.addEventListener('mouseleave', () => { overControls = false; scheduleHideChrome(); });
+      bar.addEventListener('mouseenter', () => {
+        if (touchMode) return;
+        overControls = true; clearTimeout(chromeTimer);
+      });
+      bar.addEventListener('mouseleave', () => {
+        if (touchMode) return;
+        overControls = false; scheduleHideChrome();
+      });
     });
 
     applyStylesheet();
@@ -210,12 +253,42 @@
     scheduleHideChrome();
   }
 
+  function hideChrome() {
+    if (!built) return;
+    clearTimeout(chromeTimer);
+    overlay.classList.add('obr-chrome-hidden');
+  }
+
+  function toggleChrome() {
+    if (!built) return;
+    if (overlay.classList.contains('obr-chrome-hidden')) showChrome();
+    else hideChrome();
+  }
+
   function scheduleHideChrome() {
     clearTimeout(chromeTimer);
     if (overControls) return;
     chromeTimer = setTimeout(() => {
-      if (!overControls) overlay.classList.add('obr-chrome-hidden');
-    }, 2200);
+      if (!overControls) hideChrome();
+    }, touchMode ? CHROME_HIDE_TOUCH_MS : CHROME_HIDE_MS);
+  }
+
+  // Swap the footer hint when the input modality changes: readerFooterHint is keyboard advice and
+  // is dead weight on a phone, so touch gets the gesture map in the same slot.
+  function setTouchMode(on) {
+    if (on === touchMode) return;
+    touchMode = on;
+    // Releasing to touch must also release the hover latch. overControls is set by mouseenter and
+    // cleared only by mouseleave, which is gated off on touch AND does not fire reliably there —
+    // so on a hybrid device (hover the toolbar, then tap) it would stay true forever and pin the
+    // chrome permanently over the text. Re-arm too: mouseenter cleared the pending timer.
+    if (on && overControls) { overControls = false; scheduleHideChrome(); }
+    applyFooterHint();
+  }
+
+  function applyFooterHint() {
+    if (!hintEl) return;
+    hintEl.textContent = OBR.t(touchMode || coarsePrimary ? 'readerFooterHintTouch' : 'readerFooterHint');
   }
 
   function handleAction(act) {
@@ -2459,8 +2532,12 @@
   OBR._diagReader = function () {
     return {
       active: active, opening: opening, gen: openGen, built: built,
-      spread: currentSpread, cols: totalColumns,
+      spread: currentSpread, cols: totalColumns, perSpread: pagesPerSpread,
       hostShown: !!(host && host.style.display !== 'none'),
+      // Input modality and chrome visibility: the observables the touch tests assert on, and
+      // the pair that explains "the toolbar won't come back" on a phone.
+      touch: touchMode,
+      chromeHidden: !!(overlay && overlay.classList.contains('obr-chrome-hidden')),
       flipDesyncs: flipDesyncs, lastFlipDesync: lastFlipDesync,
     };
   };

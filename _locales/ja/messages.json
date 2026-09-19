@@ -27,6 +27,7 @@
   "readerBtnCloseTitle": { "message": "リーダーを閉じる (Esc)" },
   "readerBtnCloseLabel": { "message": "✕ 閉じる" },
   "readerFooterHint": { "message": "← / → めくる · ↑↓ / Space · +/− 文字 · T テーマ · P 印刷 · Esc 終了" },
+  "readerFooterHintTouch": { "message": "端をタップでめくる · 中央でツールバー" },
   "readerPrintDefaultTitle": { "message": "記事" },
   "readerPrintNoArticle": { "message": "このページから読める記事を抽出できませんでした。" },
   "readerPrintBrandTagline": { "message": "無料で集中できるリーダーで印刷" },

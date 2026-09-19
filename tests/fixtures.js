@@ -36,7 +36,11 @@ function killByProfile(dir) {
 
 export const test = base.extend({
   // A persistent context with the extension loaded. One per test (clean storage).
-  context: async ({}, use) => {
+  // viewport/hasTouch come from the config's `use:` block, so a spec can opt into a phone-sized,
+  // touch-capable context with test.use() without disturbing the rest of the suite. They must be
+  // threaded through by hand: launchPersistentContext is called directly here, so Playwright's
+  // own option plumbing never sees it.
+  context: async ({ viewport, hasTouch }, use) => {
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obr-e2e-'));
     const headed = process.env.HEADED === 'true';
 
@@ -58,7 +62,8 @@ export const test = base.extend({
       headless: false, // must be false for extensions; mode is set via the arg above
       args,
       locale: 'en-US',
-      viewport: { width: 1280, height: 800 },
+      viewport,
+      hasTouch,
     });
 
     await use(context);

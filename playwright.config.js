@@ -23,5 +23,11 @@ export default defineConfig({
   },
   use: {
     baseURL: 'http://localhost:5099',
+    // Suite defaults, read by the context fixture (tests/fixtures.js) so a spec can override them
+    // with test.use(). Both are written out explicitly: Playwright's OWN default viewport is
+    // 1280x720, and silently inheriting that would change the column count every reader test
+    // asserts on (reader.spec.js relies on 1280px giving 2 columns/spread).
+    viewport: { width: 1280, height: 800 },
+    hasTouch: false,
   },
 });

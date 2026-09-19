@@ -23,6 +23,10 @@
          appended when the reader opens, i.e. later in the document than the page's own
          furniture. tests/silent-failure.spec.js pins it. */
       position: fixed; inset: 0; z-index: 2147483647;
+      /* A host page without a width-device-width viewport meta keeps Android's double-tap-to-zoom
+         alive, which puts a ~300ms delay on every page-turn tap and zooms the page on a fast
+         double turn. manipulation drops double-tap only; pinch-zoom is unaffected. */
+      touch-action: manipulation;
       display: flex; flex-direction: column; align-items: center;
       font-family: ${FONT_STACKS.sans}; animation: obr-fade .22s ease;
     }

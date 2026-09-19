@@ -27,6 +27,7 @@
   "readerBtnCloseTitle": { "message": "关闭阅读器 (Esc)" },
   "readerBtnCloseLabel": { "message": "✕ 关闭" },
   "readerFooterHint": { "message": "← / → 翻页 · ↑↓ / Space · +/− 字体 · T 主题 · P 打印 · Esc 退出" },
+  "readerFooterHintTouch": { "message": "点两侧翻页 · 点中间显示工具栏" },
   "readerPrintDefaultTitle": { "message": "文章" },
   "readerPrintNoArticle": { "message": "无法从此页面提取可读文章。" },
   "readerPrintBrandTagline": { "message": "使用免费、无干扰的阅读器打印" },

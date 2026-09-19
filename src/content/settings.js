@@ -288,7 +288,9 @@
   };
 
   // Create an overlay host element with an open Shadow root (the build prologue both engines
-  // share). Open mode so Playwright can pierce it in tests. Returns { host, root }.
+  // share). Open mode so Playwright can pierce it in tests — and, load-bearing for users, so
+  // the browser's built-in translator can reach the reader's text and translate it in place.
+  // Returns { host, root }.
   OBR.makeShadowHost = function (id) {
     const host = document.createElement('div');
     host.id = id;

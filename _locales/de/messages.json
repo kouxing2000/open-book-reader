@@ -27,6 +27,7 @@
   "readerBtnCloseTitle": { "message": "Leser schließen (Esc)" },
   "readerBtnCloseLabel": { "message": "✕ Schließen" },
   "readerFooterHint": { "message": "← / → blättern · ↑↓ / Space · +/− Schrift · T Design · P Drucken · Esc Beenden" },
+  "readerFooterHintTouch": { "message": "Ränder blättern · Mitte zeigt die Leiste" },
   "readerPrintDefaultTitle": { "message": "Artikel" },
   "readerPrintNoArticle": { "message": "Auf dieser Seite konnte kein lesbarer Artikel gefunden werden." },
   "readerPrintBrandTagline": { "message": "Gedruckt mit dem kostenlosen, ablenkungsfreien Lesemodus" },

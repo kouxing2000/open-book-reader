@@ -191,6 +191,11 @@ npx playwright install chromium                # first run only
   manual-verified per `docs/auto-open-spec.md` §10.
 - `options.spec.js` — options page (real extension context): the how-to-use guide, trigger + shortcut
   docs, native `<details>` collapse, first-run open.
+- `reader-touch.spec.js` — the reader on a phone, and the **only** spec that runs below
+  `singlePageBelow` (412x915, `hasTouch`): single-column layout, edge taps both directions, the
+  centre band toggling the chrome, the footer hint swap, and that the toolbar still auto-hides
+  after a toolbar button is tapped. It is the one place the mouse-compatibility-event gating is
+  pinned — see `docs/reader.md` → Input model.
 - `silent-failure.spec.js` — the reader opened but is not what the user sees: a z-index fight (both
   orderings), a host the page's own re-render deleted, an iframe, and the banner's replace-not-stack
   behaviour. These are the failures that look identical to a dead extension.
@@ -371,6 +376,15 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
   overlay — plus all inline `on*` handlers, `srcdoc`, and `javascript:` URLs on
   `href`/`src`/`xlink:href`/`action`/`formaction`) before it becomes `article.content`.
   `escapeHTML` covers title/byline only.
+
+- **The reader's shadow root must stay OPEN — the browser's built-in translator depends on it.**
+  Chrome's page translation descends into an open shadow root and rewrites the reader's text in
+  place, so a non-English reader can translate an article *while the reader is showing it*
+  (verified on desktop Chrome; a closed root is untested and switching to one would be a
+  user-visible behaviour change, not an implementation detail). `OBR.makeShadowHost` opens every
+  host — reader, gallery, both chips — and nothing may quietly pass `{ mode: 'closed' }`. This is
+  invisible in our own signals: nobody files a bug saying translation stopped working, they
+  uninstall.
 
 - **An extension reload ORPHANS this page's engine, and the worker cannot see it.** The old
   overlay stays on screen and fully interactive while every `chrome.*` in that world throws

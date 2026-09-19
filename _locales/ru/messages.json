@@ -27,6 +27,7 @@
   "readerBtnCloseTitle": { "message": "Закрыть читалку (Esc)" },
   "readerBtnCloseLabel": { "message": "✕ Закрыть" },
   "readerFooterHint": { "message": "← / → листать · ↑↓ / Space · +/− шрифт · T тема · P печать · Esc выход" },
+  "readerFooterHintTouch": { "message": "Края листают · центр показывает панель" },
   "readerPrintDefaultTitle": { "message": "Статья" },
   "readerPrintNoArticle": { "message": "Не удалось извлечь читаемую статью с этой страницы." },
   "readerPrintBrandTagline": { "message": "Напечатано в бесплатной читалке без отвлечений" },
