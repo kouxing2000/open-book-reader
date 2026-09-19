@@ -137,8 +137,13 @@ if (SAVE && rows.length) {
   const header = 'date,locale,keyword,rank,results';
   let lines = existsSync(OUT) ? readFileSync(OUT, 'utf8').trim().split('\n') : [header];
   if (lines[0] !== header) lines = [header, ...lines.filter(Boolean)];
-  // Reruns replace today's rows rather than duplicating them.
-  lines = lines.filter((l, i) => i === 0 || !l.startsWith(date + ','));
+  // Reruns replace today's rows rather than duplicating them — but ONLY for the
+  // locales this run actually wrote. A bare `date` match would let a one-locale run
+  // (`… check-store-ranking.mjs ko`) delete every other locale measured today, and
+  // the CSV is gitignored, so there is nothing to recover from.
+  const wrote = new Set(rows.map((r) => r[1]));
+  lines = lines.filter((l, i) => i === 0
+    || !(l.startsWith(date + ',') && wrote.has(l.split(',')[1])));
   for (const r of rows) lines.push(r.map(csv).join(','));
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, lines.join('\n') + '\n');
