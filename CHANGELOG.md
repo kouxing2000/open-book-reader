@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-09-19
+
+- **Reading on a phone or tablet: the middle of the screen now does something.** Tapping near
+  the left or right edge has always turned the page, but the wide band between them did nothing
+  at all — and on a phone, where the reader shows a single page filling the screen, that dead
+  band sat over the whole article. Tapping where you were reading appeared to do nothing, with
+  no scrollbar to fall back on, so the reader looked stuck on its first page. The middle now
+  brings the toolbar in and out, which is also the first way to reach the toolbar by touch at
+  all; the footer tells you so instead of listing keyboard shortcuts you don't have. Page turns
+  respond immediately now, too, rather than waiting to see whether you meant to double-tap.
+
+- **The toolbar no longer stays stuck over the text.** After tapping one of its buttons the
+  toolbar could stay on screen for the rest of the page, covering what you were reading, with
+  no way to dismiss it. It now fades out on its own as it always did with a mouse, and it waits
+  a little longer before doing so when you are using touch — there is no hovering to bring it
+  back, so it should not vanish the moment you look away.
+
 ## [1.8.2] - 2026-09-06
 
 - **Downloading a gallery ZIP no longer hands the archive back through the page.** The link
@@ -354,7 +371,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.8.2...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.8.3...HEAD
+[1.8.3]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.3
 [1.8.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.2
 [1.8.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.1
 [1.8.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.0
