@@ -7,9 +7,9 @@
 #   ./scripts/test-locale.sh de              # German
 #   ./scripts/test-locale.sh ja https://...  # Japanese UI on your own test page
 #
-# locale: en | de | es | fr | ja | ru | pt-BR | zh-CN   (default en; use the BCP-47
-#         tag "pt-BR"/"zh-CN" here, NOT the on-disk folder name "pt_BR"/"zh_CN" —
-#         Chrome maps pt-BR -> pt_BR and zh-CN -> zh_CN)
+# locale: any folder under _locales/ (default en), with the folder's underscore
+#         written as a HYPHEN — this argument goes to macOS AppleLanguages, which
+#         takes a BCP-47 tag, so the folder zh_TW is passed here as "zh-TW".
 # url:    any article to test on               (default: a text+image Wikipedia page)
 #
 # It uses "Chrome for Testing" (the automation build Playwright installed) — a

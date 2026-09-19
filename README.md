@@ -61,7 +61,7 @@ src/content/
 src/options/             options page (html + js)
 src/welcome.html         first-run page · src/report.html  report a problem
 src/blocked.html         "not available on this page" · src/permission.html  optional-permission ask
-_locales/                8 locales; the manifest's __MSG_*__ (store title + summary) resolve here
+_locales/                one dir per UI language; the manifest's __MSG_*__ (store title + summary) resolve here
 icons/                   16/32/48/128
 ```
 

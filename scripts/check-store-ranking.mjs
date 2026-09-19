@@ -76,6 +76,17 @@ const KEYWORDS = {
   ru: ['Режим чтения', 'читалка', 'галерея изображений'],
   ja: ['リーダーモード', 'リーダービュー', '画像ギャラリー', '縦読み'],
   'zh-CN': ['阅读模式', '阅读器', '阅读视图', '图片画廊'],
+  ko: ['읽기 모드', '리더 모드', '이미지 갤러리', '웹툰 뷰어', '세로 읽기'],
+  'zh-TW': ['閱讀模式', '閱讀器', '雙頁閱讀器', '圖片畫廊', '漫畫閱讀'],
+  pl: ['tryb czytania', 'czytnik artykułów', 'galeria obrazów', 'czytanie bez rozpraszania'],
+  tr: ['okuma modu', 'okuyucu görünümü', 'resim galerisi', 'dikkat dağıtmadan okuma'],
+
+  // `probe` only needs `?hl=`, so the store answers for a locale whether or not we ship
+  // it: a locale listed here with no `_locales/` dir is a market being measured for a
+  // winnable (sub-10) term before its catalog is worth translating. Each set pairs the
+  // head terms (expected back capped) with the gallery term and the long-tail bets —
+  // the long tail is where every #1 we hold actually sits.
+  it: ['modalità lettura', 'lettore articoli', 'galleria immagini', 'lettura senza distrazioni'],
 };
 
 async function probe(keyword, hl) {
