@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-20
+
+- **Four more languages: Korean, Turkish, Polish and Traditional Chinese.** The reader, the
+  gallery, the options page and every message the extension shows now read in all four,
+  bringing it to twelve languages. Chrome picks one from your browser's own setting, so there
+  is nothing to switch on — if your Chrome is in Korean, the reader is too. Traditional Chinese
+  is the one that changes most: it fell all the way back to English before, and it is written
+  in Taiwan vocabulary rather than converted character-by-character from Simplified.
+
 ## [1.8.3] - 2026-09-19
 
 - **Reading on a phone or tablet: the middle of the screen now does something.** Tapping near
@@ -371,7 +380,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.8.3...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.9.0
 [1.8.3]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.3
 [1.8.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.2
 [1.8.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.1
