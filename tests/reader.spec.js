@@ -147,6 +147,24 @@ test('fills the window width by default (no cap)', async ({ page }) => {
   expect(paperW).toBeGreaterThan(vw - 60); // ~full window minus the small edge margin
 });
 
+/* The phone layout narrows the book's margins (reader.js layout()) and re-lays the footer
+ * (the max-width:840px block). Both are scoped so a desktop window is byte-identical to
+ * before; this pins that, because a regression there is invisible in the touch spec. */
+test('the desktop layout keeps its wide margins and centred footer', async ({ page }) => {
+  await openReader(page);
+  const s = await page.evaluate(() => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const paper = getComputedStyle(sr.querySelector('.obr-paper'));
+    const foot = getComputedStyle(sr.querySelector('.obr-footer'));
+    return { pad: paper.paddingLeft, padR: paper.paddingRight,
+             justify: foot.justifyContent, vw: window.innerWidth };
+  });
+  expect(s.vw).toBeGreaterThan(840);    // otherwise the narrow block applies and this proves nothing
+  expect(s.pad).toBe('44px');
+  expect(s.padR).toBe('44px');
+  expect(s.justify).toBe('center');
+});
+
 test('an external maxBookWidth change applies live to an open reader', async ({ page }) => {
   await openReader(page);
   const before = await paperWidth(page);

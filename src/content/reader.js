@@ -1689,11 +1689,14 @@
     const cols = Math.max(2, Math.min(4, settings.columns || 2)); // 2, 3, or 4 per spread
     pagesPerSpread = vw < settings.singlePageBelow ? 1 : cols;
 
-    const outerMargin = 24;  // gap from the window edge to the book
+    // Desktop margins are generous on purpose; on a phone the SAME pixels are a quarter of
+    // the screen (24 + 44*2 = 112px of 412px), so the single-page layout gets its own pair.
+    // Keyed off pagesPerSpread so there is one definition of "phone" — settings.singlePageBelow.
+    const outerMargin = pagesPerSpread === 1 ? 8 : 24;  // gap from the window edge to the book
     // Fill the window by default; maxBookWidth (when set) is an optional readability cap.
     const fullW = vw - outerMargin;
     const bookW = settings.maxBookWidth ? Math.min(fullW, settings.maxBookWidth) : fullW;
-    const sidePad = 44;
+    const sidePad = pagesPerSpread === 1 ? 14 : 44;
     const visibleW = bookW - sidePad * 2;
     colGap = settings.gutter;
     colW = pagesPerSpread === 1

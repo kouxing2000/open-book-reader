@@ -157,3 +157,59 @@ test('a drag-selection still suppresses the page turn on touch', async ({ page }
 
   expect((await readState(page)).translateX).toBe(start.translateX);
 });
+
+/* Reported by the same user after 1.8.3 made the reader usable on a phone at all: the text
+ * block floats between wide dead margins. layout()'s 24px outer margin + 44px side padding
+ * are 8% of a desktop window and 27% of a 412px phone, and the same constant is why capping
+ * maxBookWidth on Android never yields the width you set. */
+test('the phone layout spends its width on text, not on desktop-sized margins', async ({ page }) => {
+  const m = await page.evaluate(() => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const paper = sr.querySelector('.obr-paper');
+    return { pad: getComputedStyle(paper).paddingLeft,
+             text: sr.querySelector('.obr-pages').getBoundingClientRect().width,
+             vw: window.innerWidth };
+  });
+  expect(m.pad).toBe('14px');
+  // Was 300/412 = 73%. Anything below ~85% means a desktop constant leaked back in.
+  expect(m.text / m.vw).toBeGreaterThan(0.85);
+});
+
+test('the wrapped toolbar is opaque behind its buttons, and the footer splits hint from count',
+  async ({ page }) => {
+    const s = await page.evaluate(() => {
+      const sr = document.getElementById('obr-host').shadowRoot;
+      const bar = sr.querySelector('.obr-topbar');
+      const foot = sr.querySelector('.obr-footer');
+      const btn = sr.querySelector('.obr-controls .obr-btn');
+      return {
+        bg: getComputedStyle(bar).backgroundImage,
+        barH: bar.getBoundingClientRect().height,
+        btnTop: btn.getBoundingClientRect().top,
+        justify: getComputedStyle(foot).justifyContent,
+        hintOrder: getComputedStyle(sr.querySelector('.obr-hint')).order,
+      };
+    });
+    // The controls really did wrap onto a second row -- otherwise the gradient bug can't occur
+    // and the assertion below would pass against a layout that was never broken.
+    expect(s.btnTop).toBeGreaterThan(40);
+    expect(s.barH).toBeGreaterThan(70);
+    expect(s.justify).toBe('space-between');
+    expect(s.hintOrder).toBe('-1');   // hint left, page count right
+    // GEOMETRY, not the declaration. Asserting the gradient string passes for any fade length,
+    // including one whose tail swallows a whole button row -- which is what it was doing: the
+    // fade is anchored 18px above the bar's bottom while the base padding left the buttons only
+    // 6px above it, so the last row sat 12px inside the tail with article text showing through.
+    const gap = await page.evaluate(() => {
+      const sr = document.getElementById('obr-host').shadowRoot;
+      const bar = sr.querySelector('.obr-topbar').getBoundingClientRect();
+      let lowest = 0;
+      for (const b of sr.querySelectorAll('.obr-controls .obr-btn')) {
+        lowest = Math.max(lowest, b.getBoundingClientRect().bottom);
+      }
+      return Math.round(bar.bottom - lowest);       // clear space under the last button row
+    });
+    const fade = Number(/calc\(100% - (\d+)px\)/.exec(s.bg)[1]);
+    expect(fade).toBeGreaterThan(0);                 // the bar really does fade at its bottom
+    expect(gap).toBeGreaterThanOrEqual(fade);        // ...and no button reaches into the fade
+  });

@@ -62,6 +62,18 @@
     @media (max-width: 840px) {
       .obr-topbar { flex-wrap: wrap; }
       .obr-controls { flex-basis: 100%; flex-wrap: wrap; }
+      /* The one-row gradient above fades out by 100% of the bar's height, so once the
+         controls wrap the whole button row sits in the transparent tail and the article
+         reads straight through the buttons. Anchor the fade to a fixed 18px instead of a
+         percentage, so it survives however many rows the bar grows to — and give the bar
+         18px of bottom padding to match, or the fade tail still overlaps the last row:
+         the base rule's 6px leaves the buttons 12px inside it, which measured as ~900
+         article pixels still showing through Report / Settings / Close. */
+      .obr-topbar {
+        background: linear-gradient(to bottom,
+          rgb(var(--obr-bg)) calc(100% - 18px), rgba(var(--obr-bg),0) 100%);
+        padding-bottom: 18px;
+      }
     }
     .obr-btn {
       border: none; cursor: pointer; padding: 6px 10px; border-radius: 6px;
@@ -165,6 +177,16 @@
     }
     .obr-hint { opacity: .55; }
     .obr-doc-meta { opacity: .5; font-size: .92em; margin-left: 10px; white-space: nowrap; }
+    /* Centred, the hint and the page count read as one run-on string on a narrow screen.
+       Split them to opposite ends; the order property puts the hint first without touching the
+       DOM, so the desktop layout stays source-order and centred. This block must stay BELOW
+       .obr-footer above — same specificity, so source order is what decides the override. */
+    @media (max-width: 840px) {
+      .obr-footer { justify-content: space-between; gap: 10px; padding: 0 14px; }
+      .obr-hint { order: -1; min-width: 0; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+      .obr-indicator { flex: none; }
+    }
 
     /* Subtle reading-progress hairline pinned to the very bottom edge. Lives
        OUTSIDE the auto-hiding footer so it stays glanceable, but kept deliberately

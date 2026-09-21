@@ -25,6 +25,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **No more empty gap between pictures that sit directly on top of each other.** The spacing
   that belongs between paragraphs was being drawn between two pictures with no words in
   between; the spacing around pictures next to actual text is unchanged.
+- **The reader now uses the whole width of a phone screen.** The margins around the book were
+  sized for a desktop window: generous there, but a quarter of a 412px phone, so the text sat
+  in a narrow strip with wide empty bands on either side. On a phone they are much smaller and
+  roughly a quarter more of each line is text. This is also why setting a maximum book width
+  never seemed to do anything useful on a phone — the fixed margins were subtracted after the
+  cap. Desktop spacing is unchanged.
+- **The toolbar no longer shows the article through its buttons on a narrow screen.** When the
+  window is too narrow to fit the buttons beside the title they drop onto their own row, and
+  the toolbar's soft fade — sized for a single row — left that whole row see-through, with the
+  page text running behind the labels. The bar is now solid behind every button, however many
+  rows it grows to, keeping the soft edge below them.
+- **The footer reads as two things instead of one run-on line on a phone**: the keyboard/touch
+  hint sits on the left, the page count on the right.
+- **"Page turn" is now "Page-turn animation", and its "Off" choice is "None".** The old wording
+  read as a way to switch paging off altogether and scroll the article instead, which it never
+  was — it only chooses how the page moves.
 
 ## [1.9.0] - 2026-09-20
 
