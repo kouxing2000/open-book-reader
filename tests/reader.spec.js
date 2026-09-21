@@ -1724,14 +1724,34 @@ test.describe('plate pages', () => {
       }
       return { cols, shots, perCol, prose };
     });
-    let r = await read();                      // settle, as elsewhere in this file
-    for (let i = 0; i < 20; i++) {
+    // THREE consecutive identical reads, not two. The reader re-lays-out asynchronously, so
+    // right after a viewport change there is a window where the geometry has not been
+    // recomputed yet -- measured directly: 60ms after a resize to 1600 the column height still
+    // read 688 while innerHeight already read 1600. Two matching reads can therefore lock onto
+    // a transient plateau inside that window, which is how this produced a stable-looking but
+    // wrong 0.78 on a loaded CI runner while passing every time on a fast machine.
+    let r = await read();
+    let same = 0;
+    for (let i = 0; i < 40 && same < 2; i++) {
       await page.waitForTimeout(100);
       const cur = await read();
-      if (JSON.stringify(cur) === JSON.stringify(r)) break;
+      same = JSON.stringify(cur) === JSON.stringify(r) ? same + 1 : 0;
       r = cur;
     }
     return r;
+  }
+
+  /** Wait until the reader has actually REACTED to a viewport change, rather than trusting a
+   *  fixed sleep. --obr-colh is set by layout(), so it changing is the reader's own signal that
+   *  the new geometry is in force; polling for that turns a race into a wait. */
+  async function relayout(page, size) {
+    const before = await page.evaluate(() => getComputedStyle(
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-pages'))
+      .getPropertyValue('--obr-colh').trim());
+    await page.setViewportSize(size);
+    await page.waitForFunction((prev) => getComputedStyle(
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-pages'))
+      .getPropertyValue('--obr-colh').trim() !== prev, before, { timeout: 15000 });
   }
 
   for (const shape of SHAPES) {
@@ -2013,8 +2033,7 @@ test.describe('plate pages', () => {
     // wobble leaves --obr-colh fixed and proves nothing about that; it stayed green through
     // a classification that flipped 0/30 -> 30/30 on a 740 -> 1600 -> 740 round trip.
     for (const h of [1600, 740, 400, 740]) {
-      await page.setViewportSize({ width: 1980, height: h });
-      await page.waitForTimeout(300);
+      await relayout(page, { width: 1980, height: h });
     }
     // settle(), NOT pages(): the same live document that just went through four relayouts.
     // classifyPlates re-runs on every one of them, so a rule that accumulated instead of
@@ -2029,10 +2048,8 @@ test.describe('plate pages', () => {
     // stable-but-history-dependent classification satisfies every idempotency check and
     // still shows two users different documents on the same article and window size.
     const direct = await pages(page, 'webtoon-run.html');
-    await page.setViewportSize({ width: 1980, height: 1600 });
-    await page.waitForTimeout(400);
-    await page.setViewportSize({ width: 1980, height: 740 });
-    await page.waitForTimeout(400);
+    await relayout(page, { width: 1980, height: 1600 });
+    await relayout(page, { width: 1980, height: 740 });
     const viaResize = await settle(page);
     expect(viaResize.shots.map((s) => s.frac)).toEqual(direct.shots.map((s) => s.frac));
   });
