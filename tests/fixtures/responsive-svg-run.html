@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>A Run Of Responsive SVGs</title>
+</head>
+<body>
+  <!-- The same 4:1 run as webtoon-run.html, except the SVG file declares only a viewBox and
+       the <img> carries no width/height either. That is not an edge case: omitting px
+       dimensions is what MAKES an SVG responsive, so it is the standard export from Figma,
+       Illustrator, Datawrapper and D3, and a markdown/MDX pipeline emitting ![](diagram.svg)
+       produces exactly this <img>.
+       Chrome has no way to report "this resource has no size of its own". It applies the CSS
+       DEFAULT OBJECT SIZE of 300x150, fitted to the ratio, so naturalWidth/naturalHeight come
+       back as concrete, wrong, SMALL numbers - here 38x150. Since width = min(300, 150*a) and
+       height = min(150, 300/a), min(w,h) is at most 150 for EVERY aspect ratio, which is under
+       the 160 decoration floor. So a rule reading intrinsic size calls every responsive SVG an
+       icon, and a run of them never plates - the browser meanwhile draws them perfectly.
+       Every other SVG in this directory carries px width/height on its root, which is the same
+       authored-honestly blindness that hid width="100%". -->
+  <article>
+    <h1>A Run Of Responsive SVGs</h1>
+    <figure><img src="responsive-panel.svg" alt="Scales 1"><figcaption>Scales 1</figcaption></figure>
+    <figure><img src="responsive-panel.svg" alt="Scales 2"><figcaption>Scales 2</figcaption></figure>
+    <figure><img src="responsive-panel.svg" alt="Scales 3"><figcaption>Scales 3</figcaption></figure>
+    <figure><img src="responsive-panel.svg" alt="Scales 4"><figcaption>Scales 4</figcaption></figure>
+    <figure><img src="responsive-panel.svg" alt="Scales 5"><figcaption>Scales 5</figcaption></figure>
+    <figure><img src="responsive-panel.svg" alt="Scales 6"><figcaption>Scales 6</figcaption></figure>
+  </article>
+</body>
+</html>

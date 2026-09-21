@@ -182,6 +182,63 @@
     .obr-pages a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
     .obr-pages img, .obr-pages figure, .obr-pages video, .obr-pages svg, .obr-pages iframe, .obr-pages table { max-width: 100%; height: auto; break-inside: avoid; }
     .obr-pages figure { margin: 1em 0; }
+    /* Wrappers that hold a picture and no words (reader.js marks them): between two of them
+       the paragraph margin is a gap with nothing in it, and on a short window those few pixels
+       spill past a column edge and push the next picture's page down. Adjacent-sibling only —
+       where a picture meets prose the margin stays. Deliberately not the has() selector: the
+       pairing is decided in JS, which keeps this working on any Chrome the manifest allows.
+       Bottom margin only: the marking loop marks p and div, .obr-pages p already sets
+       margin-top 0 and a bare div has none, so a companion margin-top rule matches nothing.
+       The one .obr-pages rule carrying a top margin is figure, and a figure is never marked. */
+    .obr-pages .obr-media-run { margin-bottom: 0; }
+    /* A picture in a RUN of pictures IS the page (reader.js marks it). Exactly one column tall
+       and unbreakable, so it cannot share a column with anything — which means "is it alone on
+       its page" never has to be detected, measured or verified. The 2px keeps a subpixel
+       rounding from pushing the box to the next column and leaving an empty one behind.
+       max-height repeats the height rather than saying none: it is what releases the global
+       --obr-imgcap ceiling, AND it is the one bound here that holds no matter what the picture
+       is nested inside. Without it, a shape the rules below do not reach has NO height bound at
+       all and renders at its natural size — measured at 1271px inside a 688px page.
+       scale-down, not contain: contain would stretch a picture smaller than the page up to fill
+       it, which is the upscaling this feature promises never to do. The BOX still takes the
+       whole page, so a small picture owns its page and is centred in it. */
+    .obr-pages img.obr-plate, .obr-pages svg.obr-plate {
+      height: calc(var(--obr-colh, 82vh) - 2px);
+      max-height: calc(var(--obr-colh, 82vh) - 2px);
+      width: auto; max-width: 100%; object-fit: scale-down; margin: 0 auto; break-inside: avoid;
+    }
+    /* When the picture has a caption the FIGURE is the page, and the picture takes whatever
+       height the caption leaves. flex + min-height:0 is what lets a replaced element shrink
+       inside a fixed-height box; without it the image keeps its own height and overflows. */
+    .obr-pages .obr-plate-box {
+      height: calc(var(--obr-colh, 82vh) - 2px); margin: 0; break-inside: avoid;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    /* The picture is often NOT a direct child of its box — WordPress wraps it in an <a>, Blogger
+       in a <div>, a responsive image in a <picture>. reader.js marks each element between the
+       two, and each one passes the box's height straight through, so the picture is the flex
+       item that actually shrinks however deep it sits. A rule that simply targeted the image
+       would not do this: flex and min-height bind to the FLEX ITEM, and with a wrapper in the
+       way that item is the wrapper, so both silently stop applying.
+       No line-height: 0 here, unlike .obr-plate-wrap below. A flex container's block children
+       generate no line boxes and whitespace-only text generates no flex item, so it does
+       nothing for the stray-inline-box problem it looks like it is solving — a dead property
+       whose only effect is INHERITANCE into any text the wrapper holds. A photo credit beside
+       the picture then reserved no height and painted its glyphs across the picture's bottom
+       edge and over the caption; link text inside an <a> painted above the top of the page. */
+    .obr-pages .obr-plate-box .obr-plate-pass {
+      display: flex; flex-direction: column; justify-content: center;
+      flex: 1 1 auto; min-height: 0; margin: 0;
+    }
+    .obr-pages .obr-plate-box img.obr-plate, .obr-pages .obr-plate-box svg.obr-plate {
+      flex: 1 1 auto; min-height: 0; height: auto;
+    }
+    .obr-pages .obr-plate-box figcaption { flex: 0 0 auto; line-height: 1.4; }
+    /* A wordless wrapper holding plates contributes nothing of its own: no margin to spill
+       into the next column, no line-height to put a stray inline box under a picture. Applied
+       only where the wrapper really has no words — line-height: 0 collapses a caption that is
+       an ordinary <p> rather than a <figcaption> to zero height, i.e. invisible text. */
+    .obr-pages .obr-plate-wrap { margin: 0; line-height: 0; }
     /* width:auto RELEASES a legacy <img width="220"> attribute. Readability strips the width
        attribute only on TABLE/TH/TD/HR/PRE (DEPRECATED_SIZE_ATTRIBUTE_ELEMS) and strips the style
        attribute everywhere, but an IMG's own width/height attributes survive untouched — so a

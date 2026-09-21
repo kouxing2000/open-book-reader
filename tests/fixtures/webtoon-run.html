@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>A Run Of Tall Panels</title>
+</head>
+<body>
+  <!-- A vertical webtoon / manga scan / tall infographic: a run of panels FAR taller than
+       they are wide. Every other picture fixture here is between 1.42:1 and 2.10:1, which is
+       a band I chose without ever asking what happens outside it - so the whole suite could
+       stay green while the headline use case got nothing.
+       Why the shape matters, and not just the size: the un-plated cap
+       (max-height: --obr-colh * --obr-imgcap) binds on HEIGHT, so the taller the aspect the
+       narrower the picture is squeezed. Past roughly 3:1 the squeezed WIDTH drops under the
+       decoration floor, and a rule that measures the rendered box then classifies a
+       photograph as an icon - which switches plating off for the entire run, silently.
+       300x1200 is 4:1, comfortably past the cut-off at every viewport the suite uses. -->
+  <article>
+    <h1>A Run Of Tall Panels</h1>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 1"><figcaption>Panel 1</figcaption></figure>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 2"><figcaption>Panel 2</figcaption></figure>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 3"><figcaption>Panel 3</figcaption></figure>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 4"><figcaption>Panel 4</figcaption></figure>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 5"><figcaption>Panel 5</figcaption></figure>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 6"><figcaption>Panel 6</figcaption></figure>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 7"><figcaption>Panel 7</figcaption></figure>
+    <figure><img src="webtoon-panel.svg" width="300" height="1200" alt="Panel 8"><figcaption>Panel 8</figcaption></figure>
+  </article>
+</body>
+</html>

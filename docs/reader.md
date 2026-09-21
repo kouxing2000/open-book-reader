@@ -296,6 +296,146 @@ selection / picker / saved-pick specs in `reader.spec.js`.
   - `OBR._fitPass = false` is the test seam that A/Bs the pass; `reader.spec.js` asserts the blank-tail
     SIGNAL (and idempotence across relayouts), never the inline styles.
 
+## GOTCHA — a picture in a RUN owns its page, by construction
+
+- **A run of pictures is paginated as PLATES, and that is a declarative rule, not a measured
+  one.** `classifyPlates()` in `reader.js` marks each qualifying image `obr-plate` (and its
+  `<figure>` / single-picture wrapper `obr-plate-box`); the stylesheet gives that box a height
+  of exactly one column. An unbreakable box that tall cannot share a column, so the question
+  "is this picture alone on its page?" is never asked. Runs before `fitTallFigures()`, which
+  skips plates — a plate never shares a column, so it has no slack to be shrunk into.
+  - **Qualifying is three conditions, all cheap and all DOM-level.** (1) The picture is in a
+    RUN: several pictures inside one wordless wrapper, or a picture container adjacent to its
+    own — which is what keeps a lone screenshot on the same page as the paragraph explaining
+    it. (2) At its
+    natural size, bounded by the column width, it would already reach the `--obr-imgcap`
+    ceiling. (3) Its box holds it ALONE — a `<figure>` carrying two images is one box for both,
+    and plating it puts two half-height pictures on one page. Natural size falls back to the
+    `width`/`height` attributes so a plate is decided at the FIRST layout instead of waiting
+    for the settle window.
+  - **"How many pictures are here" is asked in four places and must have ONE answer —
+    `pictures()`.** Decoration is an image too, and answering it inconsistently broke plating in
+    both directions at once: a 48x48 badge counted as a second picture, so a lone chart seized a
+    page from the paragraph explaining it; and a 20x20 zoom glyph counted against the
+    one-picture-per-box rule, so a genuine run of figures carrying that glyph stopped plating
+    altogether — measured at 0 of 12, silently, every picture back at the 0.72 cap.
+    - `isFurniture()` judges the **short** edge, because a 760x8 divider rule clears any
+      long-edge threshold; and the **intrinsic** size, because that is the only input here the
+      plate feature does not itself move. Two inputs it must never read, each of which has
+      already shipped a silent total outage:
+      - The `width`/`height` **attributes**. They are equally legal as a layout instruction and
+        `parseFloat` cannot tell the two apart — it reads `width="100%"` as the number 100, so
+        a whole run of photographs falls under the floor. Real articles only; every fixture here
+        was hand-authored with honest integers. `real-world-attrs.html` reproduces it (the same
+        420x880 file nine times under `width="100%"`, a lazy loader's leftover `width="1"`, and
+        no attributes). `attrPx()` is the guarded form — bare integers only, reached just for an
+        image with no intrinsic size yet, so the first layout still decides.
+      - The **rendered box**. The un-plated cap `max-height: --obr-colh * --obr-imgcap` binds on
+        height, so the taller the aspect the narrower the box: past roughly 3:1 a photograph
+        measures under the floor and a webtoon or manga run gets nothing (`webtoon-run.html`,
+        300x1200, measured 0 of 30 plated at three viewports). Worse, `.obr-plate` replaces that
+        cap, so the same picture measures wider plated than unplated — the class feeding the
+        measurement that picks the class, with two stable fixed points. A reader who maximised
+        the window once saw plates; the same article at the same size did not, for someone who
+        had not. `the same viewport renders the same document whatever the resize history` pins
+        it, and the convergence test varies **height** for the same reason — a width-only wobble
+        leaves `--obr-colh` fixed and never drives the loop.
+    - **`intrinsic()` returns a THIRD answer — `known: false` — and that is the feature's
+      scope, not an edge case.** Chrome cannot report "this resource has no size of its own":
+      an SVG declaring only a `viewBox` gets the CSS **default object size** (300x150 fitted to
+      its ratio), so `naturalWidth`/`naturalHeight` come back concrete, small and fictional.
+      Since `w = min(300, 150a)` and `h = min(150, 300/a)`, one axis always lands exactly on
+      the bound — reliable as a tell, and **not** reliable in reverse: a genuine 760x150 or
+      300x80 SVG trips it too, one pixel either way. So the size is never guessed at.
+      **Both guesses have shipped a defect**, which is why standing aside is the answer:
+      - read as decoration → every responsive SVG is an icon. That is the standard
+        Figma / Illustrator / D3 export and what `![](diagram.svg)` emits: a 100% failure for a
+        whole content type (`responsive-svg-run.html`, measured 0 of 6).
+      - read as content → a `viewBox`-only 16x16 glyph took a whole page at **686x686** and
+        handed the chart beside it a run it should not have, seizing that page from the
+        paragraph explaining it (`plate-furniture.html`, SIZELESS and BANNER bands).
+      An unknown size is therefore neutral everywhere: `pictures()` excludes it, so it neither
+      CREATES a run nor DESTROYS one, and the plate gate rejects it outright. The cost is
+      stated plainly — **a run of responsive SVG diagrams gets no full pages** — and is pinned
+      as a deliberate limit rather than left to rot as a silent outage.
+    - Intrinsic size is not a *constant*, only uncontaminated: `srcset` makes it
+      viewport-dependent (300x1200 at a wide window, 110x440 at a narrow one). It round-trips
+      and matches what the reader draws, so it is not the feedback loop above.
+    - **The standing risk.** This predicate has now had four separate "the number I read is not
+      the number I think it is" defects — `parseFloat` on a percentage, a rect clamped by the
+      feature's own cap, that rect forming a feedback loop, and the default object size — and
+      each passed a full green suite before review found it. The root cause is that every
+      number available here is *derived*; none is *observed*. The one observed size is the box
+      the author gave the image on their own page, which `.obr-pages img { width: auto }`
+      deliberately discards. If a fifth instance turns up, **do not add a fifth guard**: measure
+      that box during extraction, where `parseBaseDoc` still holds the live laid-out document
+      beside its clone, stamp it on the clone, and delete `intrinsic()` and this whole section.
+    - **Consequence, accepted: a @2x icon counts as a picture when its FILE clears the floor.**
+      Page CSS does not cross the shadow boundary and inline `style` is stripped, so a 192x192
+      file authored at 64x64 renders at 192 here. Exposure is small — a 2x asset needs a ≥160px
+      file, i.e. a ≥80px displayed icon, which is picture-sized anyway.
+    - It is deliberately NOT the plate gate. The gate asks "does this need a page of its own",
+      the floor asks "is it a picture at all", and they are different thresholds. Merging them
+      is tempting — the gate is computed one line away — but it costs a real picture its page
+      whenever its NEIGHBOUR is merely too small for a page: on `consecutive-figures.html`,
+      Bare 12 sits beside a 600x450 that fails the gate and would lose its own page to the
+      merge. Keep two thresholds.
+    - Size cannot separate every case and is not meant to. A 300x250 ad slot and a 300x250
+      photograph are the same DOM; an author portrait above the floor beside a lone
+      illustration will still read as a run. The floor removes icons, badges, rules and
+      spacers, which is the overwhelming majority, and nothing DOM-visible distinguishes the
+      rest.
+  - **It owns a page; it does not necessarily FILL one.** The box is always exactly one column
+    tall, which is what makes it own the page, but the picture inside uses `object-fit:
+    scale-down` and so is never drawn larger than its own pixels. A landscape picture is
+    centred with bands above and below; a picture that only just clears the 0.72 gate is
+    centred at its own size. `contain` would stretch both, and since the gate admits anything
+    from 0.72 upward that is an upscale of up to 1/0.72 — visible blur, measured at 1.383x.
+  - **The BOX is the figure when there is a caption**, so the caption rides on the picture's
+    page and the picture takes the height the caption leaves (`flex` + `min-height: 0`, which
+    is what lets a replaced element shrink inside a fixed-height box). It is the wrapper only
+    when that wrapper holds this one picture: an article with its whole gallery in a single
+    `<p>` would otherwise squeeze every picture onto one page.
+  - **The picture is usually NOT the box's own child, and every height rule here binds to the
+    child.** WordPress wraps it in an `<a>`, Blogger in a `<div class="separator">`, a
+    responsive image in a `<picture>`. `flex` and `min-height` apply to the FLEX ITEM, so with
+    a wrapper in the way they bind to the wrapper and silently stop constraining the picture —
+    measured at 1271px inside a 688px page, cropped top and bottom, caption a page late, and
+    green against every test in the suite. Two independent guards: `classifyPlates` marks each
+    element between picture and box `obr-plate-pass`, which hands the height down; and the
+    picture's own `max-height` repeats the box height, so a shape the marking ever misses is
+    bounded to one page instead of unbounded. Do not replace that `max-height` with `none`.
+  - **Do NOT reimplement this as a pass that measures a page, writes a size, and verifies it.**
+    That is the obvious-looking design and it cannot be made to work: each DOM shape a real
+    article produces breaks a different assumption in it. An adjustment budget runs out
+    mid-book. A column index shifts under one overflow and the verify reverts the whole tail.
+    A bare `<img>` is its own block, so anything derived from "the block's width" is the
+    image's own width and every unwrapped picture reads as width-bound. Centring padding eats
+    the picture it frames, because `max-height` caps the BORDER box. A wrapper's trailing line
+    box makes one picture's growth reach the next page, so every second one is handed back. A
+    page-count backstop reverts everything on any honest length change. A gallery in one `<p>`
+    collapses 23 pictures into 3 fragmented blocks whose union rects mean nothing. Seven
+    distinct failures, every one of them shipped and found by a reader; none can happen to a
+    class. The cheap version of this argument: a measuring pass has to ask whether a picture
+    is alone on its page, and a one-column-tall unbreakable box makes that unaskable.
+  - The fixtures are one per shape from that list, so none is redundant: `figure-run.html`
+    (captioned, back to back), `p-wrapped-plates.html` (one wordless `<p>` each),
+    `contagious-plates.html` (a wrapper that also carries a line box), `gallery-in-one-p.html`
+    (everything in a single `<p>`), `consecutive-figures.html` (mixed, including a picture too
+    small to qualify), `plate-edge-shapes.html` (the picture wrapped in a link / a div / a
+    `<picture>`, a picture inside the upscale band, a `<figure>` captioned with a `<p>`, and one
+    `<figure>` holding two pictures), `icon-beside-chart.html` (a decorative badge beside a lone
+    illustration). The specs assert what a reader sees — the height the picture PAINTS, and
+    what else is on that page — never the class, so the next implementation of the same promise
+    still passes.
+  - **Measure the PAINT, and bound it on BOTH sides.** `object-fit: scale-down` means the
+    element box is not what the reader sees: paint is
+    `min(rect.height, rect.width * naturalH/naturalW, naturalHeight)`. A box measurement
+    reports a full page for a letterboxed sliver, and dropping the natural-size term reports a
+    full page for a picture merely centred in it. A lower bound alone is just as blind: `frac >
+    0.9` is satisfied by a picture 1.85x its page, cropped top and bottom, which is how the
+    wrapped-picture defect above stayed green. Assert `over <= 2` as well.
+
 ## GOTCHA — an `<img width>` attribute survives extraction and pins images small
 
 - **An `<img width>`/`height` ATTRIBUTE survives extraction and pins images small.** Readability

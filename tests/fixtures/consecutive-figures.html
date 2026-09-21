@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Figures Back To Back</title>
+  <meta name="author" content="Jane Quill">
+</head>
+<body>
+  <!-- Prose interrupted by figures that follow EACH OTHER with no text between them: the
+       photo-essay / manga / scanned-pages shape. tall-figures.html cannot reach any of it —
+       it separates every figure with a paragraph, so nothing in it is part of a run. The
+       MIXED fixture: one document carrying every combination, so a rule that is right about
+       portraits and wrong about the rest cannot pass by being run on portraits only.
+         - two TALL portraits (Figures 1-2): the plain case, a page each.
+         - two WIDE landscapes (Figures 3-4): a landscape cannot fill a portrait page whatever
+           is done to it, so when it does take a page it is CENTRED there, never stretched.
+           Whether it takes one at all is the gate's call: a 1600x900 qualifies only while
+           colW * 0.5625 >= 0.72 * colH, so this pair plates at a wide window and not at a tall
+           narrow one. Either outcome is correct; do not pin one of them here.
+         - a WIDE then a TALL (Figures 5-6): the two kinds adjacent, each still its own page.
+         - two BARE <img> with no <figure> wrapper (Bare 7-8): what Readability emits for an
+           article that never wrapped its images — no wrapper and no caption to size against,
+           just the picture.
+         - a BARE WIDE then a BARE TALL (Bare 9-10): the same, landscape.
+         - a BARE MID then a BARE TALL (Bare 11-12): Bare 11 is the picture that must be LEFT
+           ALONE. At 600x450 inside an ~894px column it is already smaller than the page, so
+           giving it a page would upscale it — worse than the blank it would fill. It is the
+           only picture in any of these fixtures that must NOT take a page, and the one that
+           keeps "fills the page" from being satisfiable by stretching everything. -->
+  <!-- Tuning note: Bare 11 works only while its natural height stays under the --obr-imgcap
+       ceiling at the spec's viewport. Enlarging mid-figure.svg silently turns it into an
+       ordinary full-page picture and retires the case without failing anything. -->
+  <article>
+    <h1>Figures Back To Back</h1>
+    <p class="byline">By Jane Quill</p>
+
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="Figure 1"><figcaption>Figure 1</figcaption></figure>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="Figure 2"><figcaption>Figure 2</figcaption></figure>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+    <figure><img src="wide-figure.svg" width="1600" height="900" alt="Figure 3"><figcaption>Figure 3</figcaption></figure>
+    <figure><img src="wide-figure.svg" width="1600" height="900" alt="Figure 4"><figcaption>Figure 4</figcaption></figure>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+    <figure><img src="wide-figure.svg" width="1600" height="900" alt="Figure 5"><figcaption>Figure 5</figcaption></figure>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="Figure 6"><figcaption>Figure 6</figcaption></figure>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+    <img src="tall-figure.svg" width="420" height="880" alt="Bare 7">
+    <img src="tall-figure.svg" width="420" height="880" alt="Bare 8">
+    <img src="wide-figure.svg" width="1600" height="900" alt="Bare 9">
+    <img src="tall-figure.svg" width="420" height="880" alt="Bare 10">
+    <img src="mid-figure.svg" width="600" height="450" alt="Bare 11">
+    <img src="tall-figure.svg" width="420" height="880" alt="Bare 12">
+  </article>
+</body>
+</html>

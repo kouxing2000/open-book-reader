@@ -1166,6 +1166,20 @@
       img.remove();
       if (fig && !fig.querySelector('img, picture, video, svg, iframe') && !fig.textContent.trim()) fig.remove();
     });
+    // A <p>/<div> holding a picture and NO WORDS is a container, not a paragraph, but it still
+    // carries a paragraph's bottom margin — which between two of them is a gap with nothing in
+    // it. The stylesheet drops it only BETWEEN such wrappers: where a picture meets real prose
+    // the margin is doing its job. Marked rather than unwrapped, so any styling the author put
+    // on the wrapper survives, and so the plate rules below have a wrapper to bind to.
+    pagesEl.querySelectorAll('.obr-content p, .obr-content div').forEach((el) => {
+      if (el.textContent.trim()) return;                        // has words: an ordinary block
+      if (!el.querySelector('img, picture, video, svg')) return; // nothing visual: not ours
+      el.classList.add('obr-media-only');
+    });
+    pagesEl.querySelectorAll('.obr-content .obr-media-only').forEach((el) => {
+      const next = el.nextElementSibling;
+      if (next && next.classList.contains('obr-media-only')) el.classList.add('obr-media-run');
+    });
     // Colophon inputs reset with every content render: the word count is of the EXTRACTED
     // text (what the user actually reads — selections and picks count too); the cached
     // colophon element died with pagesEl.innerHTML above; per-article time/finish state
@@ -1360,6 +1374,180 @@
     }
   }
 
+  /* ------------------------------------------------------------ plate pages
+   * A picture inside a RUN of pictures owns its page BY CONSTRUCTION: the class gives its box
+   * a height of exactly one column, and an unbreakable box that tall cannot share a column
+   * with anything — so "is this picture alone on its page?" never has to be asked. Do NOT
+   * replace this with a pass that measures the page and writes a size: that is what it
+   * replaces, and every DOM shape a real article produced broke a different assumption in it
+   * (docs/reader.md lists all seven).
+   *
+   * This runs BEFORE fitTallFigures, which then skips plates: a plate never needs shrinking
+   * into slack, because it never shares a column to begin with.
+   *
+   * RUN, not every tall picture: a lone screenshot inside an article keeps the paragraph that
+   * explains it on the same page. A picture qualifies when it sits with other pictures —
+   * either as one of several inside one wordless wrapper (a gallery in a single <p>), or with
+   * a wordless picture wrapper next to its own. */
+  /** The element that becomes one page. A <figure> takes its caption along, so the figure is
+   *  the box and the picture flexes inside it. A wordless wrapper qualifies only when it holds
+   *  THIS one picture — an article that puts its whole gallery in a single <p> would otherwise
+   *  squeeze every picture onto one page. Failing both, the picture is its own box. */
+  function plateBox(el) {
+    const fig = el.closest('figure');
+    if (fig) return fig;
+    const wrap = el.closest('.obr-media-only');
+    return wrap && pictures(wrap).length === 1 ? wrap : el;
+  }
+
+  /** Is this picture one of several, rather than a lone illustration inside prose? Either it
+   *  shares a wordless wrapper with other pictures, or a picture container sits next to its
+   *  own. This is what keeps a single screenshot on the same page as the paragraph about it. */
+  function inPictureRun(el) {
+    // Unwrapped is the third real shape: extraction often leaves a picture as a direct child
+    // with no container at all, in which case the picture is its own neighbour-of-record.
+    const wrap = el.closest('figure') || el.closest('.obr-media-only') || el;
+    if (pictures(wrap).length > 1) return true;
+    return isPictureContainer(wrap.previousElementSibling)
+      || isPictureContainer(wrap.nextElementSibling);
+  }
+
+  /* ONE definition of "a picture", for every place that counts them. Answering this question
+   * separately in each caller is what produced both halves of the decoration defect, in
+   * opposite directions: a 48x48 badge counted as a second picture, so a lone chart seized a
+   * page from the paragraph explaining it; and a 20x20 zoom glyph counted against the
+   * one-picture-per-box rule, so a genuine run of figures carrying that glyph stopped plating
+   * altogether — measured at 0 of 12, silently, with every picture back at the 0.72 cap. */
+  const FURNITURE_MAX = 160; // px on the SHORT edge; under this it is an icon, not a picture
+
+  /** The real pictures inside `node`, decoration excluded. */
+  function pictures(node) {
+    const all = node.querySelectorAll ? node.querySelectorAll('img, svg') : [];
+    const out = [];
+    // Decoration AND anything of untrustworthy size are both excluded, so an image with no
+    // size of its own neither CREATES a run (a viewBox-only glyph beside a lone chart) nor
+    // DESTROYS one (the same glyph riding inside each figure of a genuine run).
+    for (let i = 0; i < all.length; i++) if (isContent(all[i])) out.push(all[i]);
+    return out;
+  }
+
+  /** A width/height attribute, but only when it states a size. The attribute is equally legal
+   *  as a layout instruction, and parseFloat cannot tell the two apart: it reads width="100%"
+   *  as the number 100. Bare integers only, so the rest fall through to a real measurement. */
+  function attrPx(el, name) {
+    const v = el.getAttribute(name);
+    return v && /^\d+$/.test(v.trim()) ? parseFloat(v) : 0;
+  }
+
+  /** A picture big enough to be content rather than an icon, a badge, a divider rule or a
+   *  spacer. Judged on the SHORT edge, because a 760x8 divider clears any long-edge threshold;
+   *  and on the INTRINSIC size, because that is the only input here the feature's own output
+   *  cannot move. (The VIEWPORT still can, via srcset: the same picture reports 300x1200 at a
+   *  wide window and 110x440 at a narrow one. That round-trips and matches what the reader
+   *  actually draws, so it is not a loop — but intrinsic is not a constant either.)
+   *  Two inputs it must never read, each of which has already shipped a silent total outage:
+   *    - the width/height ATTRIBUTES. A CMS writes width="100%", parseFloat returns 100, and
+   *      a whole run of photographs falls under the floor. attrPx is the guarded form.
+   *    - the RENDERED box. The un-plated cap (max-height: --obr-colh * --obr-imgcap) binds on
+   *      height, so the taller the aspect the narrower the box: past roughly 3:1 a photograph
+   *      measures under the floor and a webtoon run gets nothing. Worse, .obr-plate replaces
+   *      that cap, so a plated picture measures WIDER than the same picture unplated — the
+   *      class feeding the measurement that picks the class, with two stable fixed points.
+   *  Deliberately NOT the plate gate below: that asks "does this need a page of its own", this
+   *  asks "is it a picture at all". Merging them would cost a real picture its page whenever
+   *  its neighbour is merely too small for a page — measured on consecutive-figures.html, where
+   *  Bare 12 sits beside a 600x450 that fails the gate, and would lose its page to the merge. */
+  function isContent(el) {
+    const { w, h, known } = intrinsic(el);
+    return known && Math.min(w, h) >= FURNITURE_MAX;
+  }
+
+  /** The picture's OWN size, and whether it HAS one. `known: false` is a third answer, not a
+   *  small size, and every caller treats it as neutral — neither decoration nor a candidate
+   *  for a page. That is the whole scope of this feature: it acts only where the size can be
+   *  trusted, and stands aside everywhere else.
+   *  Why the third answer is needed. Chrome cannot report "this resource is dimensionless": an
+   *  SVG declaring only a viewBox gets the CSS DEFAULT OBJECT SIZE (300x150, fitted to its
+   *  ratio), so naturalWidth/naturalHeight come back concrete, small and fictional. Since
+   *  w = min(300, 150a) and h = min(150, 300/a), one axis always lands exactly on the bound —
+   *  that is the tell, and it is reliable in that direction. It is NOT reliable in reverse: a
+   *  genuine 760x150 or 300x80 SVG trips it too, one pixel either way. So an unknown size is
+   *  never guessed at, in either direction. Reading it as content made a 16x16 glyph take a
+   *  whole page and handed its neighbour a run; reading it as decoration made every responsive
+   *  SVG an icon. Standing aside is the only answer that is wrong in neither direction. */
+  function intrinsic(el) {
+    const src = el.currentSrc || el.getAttribute('src') || '';
+    const isSvg = /\.svg(\?|#|$)/i.test(src) || /^data:image\/svg\+xml/i.test(src);
+    const fiction = isSvg && (el.naturalWidth === 300 || el.naturalHeight === 150);
+    const w = (fiction ? 0 : el.naturalWidth) || attrPx(el, 'width') || 0;
+    const h = (fiction ? 0 : el.naturalHeight) || attrPx(el, 'height') || 0;
+    return { w, h, known: w > 0 && h > 0 };
+  }
+
+  function isPictureContainer(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.tagName === 'IMG' || node.tagName === 'SVG') return isContent(node);
+    if (!node.querySelector('img, svg, picture, video')) return false;
+    if (node.tagName !== 'FIGURE' && node.textContent.trim()) return false; // prose, not a picture
+    if (pictures(node).length) return true;
+    // "Holds nothing we can size" and "holds only furniture" are different answers: a <picture>
+    // or <video> with no measurable image still counts, a <p> holding one divider rule does not.
+    return !node.querySelector('img, svg');
+  }
+
+  function classifyPlates(colW, colH) {
+    const contentRoot = pagesEl.querySelector('.obr-content');
+    if (!contentRoot) return;
+    // The ceiling the stylesheet already applies to every picture, read from its own variable
+    // so the two cannot drift; the literal is inert while that stylesheet is attached.
+    const cap = parseFloat(getComputedStyle(pagesEl).getPropertyValue('--obr-imgcap')) || 0.72;
+    const media = contentRoot.querySelectorAll('img, svg');
+    const touched = new Set();
+    for (let i = 0; i < media.length; i++) {
+      const el = media[i];
+      // Natural size, falling back to the attributes while the image is still decoding — so a
+      // plate is decided at the FIRST layout rather than waiting for the settle window.
+      const { w: nw, h: nh, known } = intrinsic(el);
+      // The height this picture would take across the column, never stretched past its own
+      // pixels. A picture whose size is NOT known is not a candidate at all: it is the one
+      // case where this cannot be computed without inventing a number, and inventing one gave
+      // a 16x16 glyph a whole page of the book.
+      const shownH = known ? Math.min(colW, nw) * nh / nw : 0;
+      const box = plateBox(el);
+      // Only a picture the global cap is actually holding back becomes a plate: at its natural
+      // size, bounded by the column's width, it would already fill most of a page. And only
+      // when its box holds it ALONE — a <figure> carrying two images is one box for both, so
+      // plating it puts two half-height pictures on the same page.
+      const plate = known && inPictureRun(el)
+        && shownH >= colH * cap
+        && (box === el || pictures(box).length === 1);
+      el.classList.toggle('obr-plate', plate);
+      // Everything between the picture and its box hands the box's height down (see the
+      // obr-plate-pass rule): the picture is frequently wrapped in an <a>, a <picture> or a
+      // <div>, and the flex rules bind to the box's own child, not to the picture.
+      // Guarded on box !== el, because for a bare picture the box IS the picture and the walk
+      // would never meet its terminator -- it ran to the top of the shadow tree and marked the
+      // reader's own chrome, .obr-pages included, on every layout.
+      if (box !== el) {
+        for (let n = el.parentElement; n && n !== box; n = n.parentElement) {
+          n.classList.toggle('obr-plate-pass', plate);
+        }
+      }
+      if (box !== el) touched.add(box);
+      const wrap = el.closest('.obr-media-only');
+      if (wrap) touched.add(wrap);
+    }
+    // Idempotent for the containers too: this re-runs every layout, and a viewport change can
+    // take a plate back out (a short window makes the same picture too small to qualify).
+    touched.forEach((n) => {
+      const holds = !!n.querySelector('.obr-plate');
+      n.classList.toggle('obr-plate-box', holds && plateBox(n.querySelector('.obr-plate')) === n);
+      // Wordless is checked, not assumed: the class kills line-height, which would collapse a
+      // caption written as an ordinary <p> instead of a <figcaption> to invisible.
+      n.classList.toggle('obr-plate-wrap', holds && !n.textContent.trim());
+    });
+  }
+
   /* ------------------------------------------- per-figure shrink-to-slack
    * A tall figure carrying `break-inside: avoid` that doesn't fit the space left in its
    * column BUMPS to the next column, leaving the remainder blank (measured on a 5-tall-image
@@ -1418,6 +1606,8 @@
     const blocks = [];
     const seen = new Set();
     for (let i = 0; i < media.length; i++) {
+      // A plate already owns its whole page, so there is no slack beside it to shrink into.
+      if (media[i].classList.contains('obr-plate')) continue;
       const block = media[i].closest('figure') || media[i];
       if (seen.has(block)) continue;
       seen.add(block);
@@ -1536,9 +1726,12 @@
     // would distort the blank-page detection below.
     if (colophonEl && colophonEl.parentNode) colophonEl.remove();
     void pagesEl.offsetWidth; // force reflow before measuring
-    // Shrink any figure that bumped to a new column back into the slack it left behind, so
-    // the column count below (and the colophon fit, and the anchor restore) all measure the
-    // CORRECTED flow. Runs after the colophon removal so a back-cover page never skews it.
+    // Give each picture in a run its own page, then shrink any figure that bumped to a new
+    // column back into the slack it left behind — so the column count below (and the colophon
+    // fit, and the anchor restore) all measure the CORRECTED flow. Both run after the colophon
+    // removal so a back-cover page never skews them, and plates first because the shrink pass
+    // skips them. --obr-colh, which the plate height is expressed in, is set just above.
+    classifyPlates(colW, colH);
     fitTallFigures(colW, colGap, colH);
     const total = pagesEl.scrollWidth;
     totalColumns = Math.max(1, Math.round((total + colGap) / (colW + colGap)));

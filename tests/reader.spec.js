@@ -1631,6 +1631,434 @@ test.describe('tall-figure shrink-to-slack', () => {
   });
 });
 
+/* ---------------------------------------------------------------- plate pages
+ * A picture in a RUN of pictures owns its page, and it does so BY CONSTRUCTION: reader.js
+ * marks it and the stylesheet gives it a height of exactly one column, so an unbreakable box
+ * that tall cannot share a column with anything. These tests therefore assert the OUTCOME a
+ * reader sees - how much of the page the picture PAINTS, and what else is on that page -
+ * never the class or the mechanism, so the next implementation of the same promise still
+ * passes. The fixtures look near-identical on purpose: each is one DOM shape that a measuring
+ * implementation of this rule got wrong (docs/reader.md lists what each one broke), so none
+ * of them is redundant with the others. */
+test.describe('plate pages', () => {
+  test.use({ viewport: { width: 1980, height: 740 } });
+
+  // One entry per picture shape a real article produces. All four must behave identically.
+  const SHAPES = [
+    { file: 'figure-run.html', what: 'a scanned book: <figure> + <figcaption>, back to back' },
+    { file: 'p-wrapped-plates.html', what: 'each picture in its own wordless <p>' },
+    { file: 'contagious-plates.html', what: 'a wrapper carrying a trailing line box too' },
+    { file: 'gallery-in-one-p.html', what: 'the whole gallery inside ONE wordless <p>' },
+  ];
+
+  async function pages(page, file) {
+    await gotoFixture(page, file);
+    await injectReader(page);
+    await openReader(page);
+    return settle(page);
+  }
+
+  /* Measures the OPEN reader without touching the document. Split out from pages() because a
+   * convergence check has to measure the same live page it just resized - re-navigating would
+   * throw away the relayouts under test and compare two cold loads, which any amount of
+   * ratcheting would pass. */
+  async function settle(page) {
+    const read = () => page.evaluate(() => {
+      const sr = document.getElementById('obr-host').shadowRoot;
+      const P = sr.querySelector('.obr-pages'), cs = getComputedStyle(P);
+      const colW = parseFloat(cs.columnWidth), gap = parseFloat(cs.columnGap);
+      const colH = parseFloat(cs.height), pr = P.getBoundingClientRect();
+      const colOf = (x) => Math.round((x - pr.left) / (colW + gap));
+      const cols = Math.max(1, Math.round((P.scrollWidth + gap) / (colW + gap)));
+      const perCol = new Array(cols).fill(0);
+      const shots = [];
+      for (const i of sr.querySelectorAll('.obr-content img')) {
+        const r = i.getBoundingClientRect();
+        if (r.width < 1) continue;
+        const c = colOf(r.left);
+        perCol[c] = (perCol[c] || 0) + 1;
+        // PAINT, not the element box: a box measurement reports a full page for a picture the
+        // reader sees as a letterboxed sliver, and that is what hid this bug twice.
+        // The natural-size term is applied ONLY under scale-down, because it is the fit that
+        // applies it. Clamping unconditionally would bake the property under test into the
+        // measurement -- switching the stylesheet back to contain then reads as unchanged,
+        // while the reader sees a blown-up picture. (It did; this comment is that mutation.)
+        const ratio = i.naturalWidth && i.naturalHeight ? i.naturalHeight / i.naturalWidth : 0;
+        const fit = getComputedStyle(i).objectFit;
+        const shown = ratio ? Math.min(r.height, r.width * ratio) : r.height;
+        const paint = ratio && (fit === 'scale-down' || fit === 'none')
+          ? Math.min(shown, i.naturalHeight) : shown;
+        shots.push({ col: c, alt: i.alt, w: Math.round(r.width), h: Math.round(r.height),
+                     natH: i.naturalHeight, over: Math.round(r.bottom - pr.bottom),
+                     paint: Math.round(paint), frac: +(paint / colH).toFixed(2) });
+      }
+      // Prose that lands on the same page as a picture, counted per column. A figcaption is
+      // words on the page, so it counts: that is how "the caption rides along" is measured.
+      const prose = new Array(cols).fill(0);
+      for (const n of sr.querySelectorAll('.obr-content p, .obr-content h1, .obr-content li,'
+        + ' .obr-content figcaption')) {
+        if (!n.textContent.trim()) continue;
+        for (const r of n.getClientRects()) {
+          if (r.width < 1 || r.height < 1) continue;
+          const c = colOf(r.left);
+          if (prose[c] != null) prose[c]++;
+        }
+      }
+      return { cols, shots, perCol, prose };
+    });
+    let r = await read();                      // settle, as elsewhere in this file
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(100);
+      const cur = await read();
+      if (JSON.stringify(cur) === JSON.stringify(r)) break;
+      r = cur;
+    }
+    return r;
+  }
+
+  for (const shape of SHAPES) {
+    test(`fills every page of a run - ${shape.what}`, async ({ page }) => {
+      const r = await pages(page, shape.file);
+      expect(r.shots.length).toBeGreaterThan(4);            // the fixture is really a run
+      // EVERY picture, not most of them: the failure this replaces was always partial - some
+      // pages filled and others left at the 0.72 global cap, in whatever pattern that
+      // article's DOM happened to produce (every other page, or everything after the 20th).
+      // So the assertion is on the WORST page, named, rather than on an average.
+      const worst = r.shots.reduce((a, b) => (b.frac < a.frac ? b : a));
+      expect({ alt: worst.alt, filled: worst.frac > 0.9 }).toEqual({ alt: worst.alt, filled: true });
+      // ...and NOT past the page either. Without an upper bound "fills the page" is satisfied
+      // by a picture 1.85x the page height, cropped top and bottom - which is exactly what a
+      // nested <img> did while this assertion stayed green.
+      const tallest = r.shots.reduce((a, b) => (b.over > a.over ? b : a));
+      expect({ alt: tallest.alt, insidePage: tallest.over <= 2 })
+        .toEqual({ alt: tallest.alt, insidePage: true });
+      // ...and one picture per page, which is what "owns its page" means.
+      expect(Math.max(...r.perCol)).toBe(1);
+    });
+  }
+
+  test('a run still plates when the width/height attributes are not pixel sizes', async ({ page }) => {
+    // Every other fixture here writes honest integers into width/height because I authored
+    // them. A real CMS writes width="100%", or leaves a lazy placeholder's width="1" behind
+    // after swapping the real image in - and the furniture floor reads those attributes. The
+    // whole run then reads as decoration and NOTHING plates, which no fixture of mine could
+    // see. All nine pictures are the same 420x880 file; only the attributes differ.
+    const r = await pages(page, 'real-world-attrs.html');
+    expect(r.shots.length).toBe(9);
+    const worst = r.shots.reduce((a, b) => (b.frac < a.frac ? b : a));
+    expect({ alt: worst.alt, filled: worst.frac > 0.9 }).toEqual({ alt: worst.alt, filled: true });
+    // Named per band, so a failure says which attribute shape broke rather than just "worst".
+    const dead = r.shots.filter((s) => s.frac <= 0.9).map((s) => s.alt);
+    expect(dead).toEqual([]);
+    expect(Math.max(...r.perCol)).toBe(1);
+  });
+
+  test('a caption rides on its picture\'s page', async ({ page }) => {
+    // A plate that seized the page and left its caption behind on the next one would satisfy
+    // every fill assertion above and be useless to read, so this is its own check: every
+    // column holding a picture also holds words.
+    const r = await pages(page, 'figure-run.html');
+    expect(r.shots.length).toBeGreaterThan(20);
+    const captionless = r.shots.filter((s) => !r.prose[s.col]).map((s) => s.alt);
+    expect(captionless).toEqual([]);
+  });
+
+  test('illustrations separated by prose are NOT plated', async ({ page }) => {
+    // The other half of the promise, and the reason plates are restricted to RUNS: a picture
+    // with prose on either side of it must not seize a page, so the paragraph that explains it
+    // can stay alongside. tall-figures.html puts a paragraph between every figure, so nothing
+    // in it qualifies - and the shrink pass, which serves exactly those shared pages, keeps
+    // working on it (its own tests above run on the same fixture).
+    const r = await pages(page, 'tall-figures.html');
+    expect(r.shots.length).toBeGreaterThan(3);
+    // A plate covers its whole page; the global cap leaves these at ~0.72 or less.
+    expect(Math.max(...r.shots.map((s) => s.frac))).toBeLessThan(0.85);
+    // And the page each one sits on still carries the prose it belongs to - which is the
+    // POINT of not plating, and the part a size assertion alone would not notice.
+    for (const s of r.shots) expect({ alt: s.alt, sharesWithProse: r.prose[s.col] > 0 })
+      .toEqual({ alt: s.alt, sharesWithProse: true });
+  });
+
+  /* The shapes a real CMS emits that the five run fixtures above do not: the picture wrapped in
+   * something. Every one of these put the picture at 1271px inside a 688px page - cropped top
+   * and bottom, edge to edge, with the caption a page late - while every assertion above stayed
+   * green, because a rule that needs the picture to be the box's own child silently stops
+   * applying when anything is in between. */
+  test('a picture wrapped in a link, a div or a <picture> still fits its page', async ({ page }) => {
+    const r = await pages(page, 'plate-edge-shapes.html');
+    const wrapped = r.shots.filter((s) => /^(A linked|B blogger|C picture)/.test(s.alt));
+    expect(wrapped.length).toBe(6);                 // the fixture really carries all three
+    for (const s of wrapped) {
+      // Inside its page, and painting most of it - not the 1.85x crop these produced.
+      expect({ alt: s.alt, inside: s.over <= 2, fills: s.frac > 0.9 })
+        .toEqual({ alt: s.alt, inside: true, fills: true });
+    }
+    expect(Math.max(...r.perCol)).toBe(1);
+  });
+
+  test('a caption written as a <p> is not collapsed to invisible', async ({ page }) => {
+    // obr-plate-wrap kills line-height so a wordless wrapper adds no stray inline box. Applied
+    // to a <figure> whose caption is an ordinary <p>, it collapsed that caption to 0px.
+    await gotoFixture(page, 'plate-edge-shapes.html');
+    await injectReader(page);
+    await openReader(page);
+    const caps = await page.evaluate(() => {
+      const c = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content');
+      return [...c.querySelectorAll('figure p, figcaption')]
+        .filter((n) => n.textContent.trim())
+        .map((n) => ({ txt: n.textContent.trim().slice(0, 12),
+                       h: Math.round(n.getBoundingClientRect().height) }));
+    });
+    expect(caps.length).toBeGreaterThan(2);
+    expect(caps.filter((c) => c.h === 0)).toEqual([]);
+  });
+
+  test('a <figure> holding two pictures does not put both on one page', async ({ page }) => {
+    // One box cannot be two pages. Plating it made each picture half-height on a shared page,
+    // which is the one-per-page invariant broken by the feature meant to guarantee it.
+    const r = await pages(page, 'plate-edge-shapes.html');
+    const pair = r.shots.filter((s) => /^F two/.test(s.alt));
+    expect(pair.length).toBe(2);
+    expect(pair[0].col).not.toBe(pair[1].col);
+    expect(Math.max(...r.perCol)).toBe(1);
+  });
+
+  /* Decoration is an image too, and "how many pictures are here" gets asked in four places.
+   * Answering it inconsistently broke plating in BOTH directions at once, so this fixture
+   * carries one shape per direction and they must all hold together. */
+  test('decoration does not create a run, and does not destroy one', async ({ page }) => {
+    const r = await pages(page, 'plate-furniture.html');
+    const by = (p) => r.shots.filter((s) => s.alt.startsWith(p));
+
+    // A 48x48 icon sharing the chart's OWN wrapper: counted raw it reads as a second picture,
+    // so the chart becomes a "run" of one chart plus one icon and seizes a page.
+    const same = by('SAMEWRAP chart')[0];
+    expect({ plated: same.frac > 0.9, sharesWithProse: r.prose[same.col] > 0 })
+      .toEqual({ plated: false, sharesWithProse: true });
+
+    // A 760x8 divider rule as the neighbour. Clears any LONG-edge floor at 760.
+    const rule = by('RULE chart')[0];
+    expect({ plated: rule.frac > 0.9, sharesWithProse: r.prose[rule.col] > 0 })
+      .toEqual({ plated: false, sharesWithProse: true });
+
+    // A viewBox-only glyph, and a genuine 760x150 SVG whose real height sits exactly on the
+    // default object size's bound. Neither has a size this code can trust, and guessing was
+    // wrong in BOTH directions -- as content the glyph took a 686x686 page of its own and gave
+    // the chart a run; as decoration every responsive SVG became an icon. Standing aside is
+    // what these two pin, from opposite sides.
+    for (const name of ['SIZELESS chart', 'BANNER chart']) {
+      const c = by(name)[0];
+      expect({ name, plated: c.frac > 0.9, sharesWithProse: r.prose[c.col] > 0 })
+        .toEqual({ name, plated: false, sharesWithProse: true });
+    }
+    // ...and no piece of decoration in this fixture seizes a page for ITSELF. Every one of
+    // them is alt="", which is what the glyph did at 686x686 when its size was guessed at.
+    const fat = r.shots.filter((s) => !s.alt && s.frac > 0.9).map((s) => s.natH);
+    expect(fat).toEqual([]);
+
+    // ...and the other direction: a 16x16 glyph inside each <figure> of a REAL run must not
+    // count against the one-picture-per-box rule. This silently disabled the whole feature.
+    const badges = by('BADGE');
+    expect(badges.length).toBe(3);
+    for (const b of badges) expect({ alt: b.alt, ownsPage: b.frac > 0.9 })
+      .toEqual({ alt: b.alt, ownsPage: true });
+    expect(new Set(badges.map((b) => b.col)).size).toBe(3);   // one per page, not stacked
+  });
+
+  test('a photo credit inside the wrapper keeps its own line', async ({ page }) => {
+    // The credit sits BETWEEN the picture and its box, which is a different element from the
+    // caption and was the one class without a wordless gate. With no height reserved its
+    // glyphs still painted - across the bottom of the photograph and over the caption.
+    await gotoFixture(page, 'plate-furniture.html');
+    await injectReader(page);
+    await openReader(page);
+    const credits = await page.evaluate(() => {
+      const c = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content');
+      return [...c.querySelectorAll('span')]
+        .filter((n) => n.textContent.trim().startsWith('Photo:'))
+        .map((n) => ({ txt: n.textContent.trim().slice(0, 10),
+                       h: Math.round(n.getBoundingClientRect().height),
+                       lh: getComputedStyle(n).lineHeight }));
+    });
+    expect(credits.length).toBe(2);
+    for (const c of credits) expect({ txt: c.txt, hasHeight: c.h > 0, lh: c.lh })
+      .toEqual({ txt: c.txt, hasHeight: true, lh: expect.not.stringMatching(/^0px$/) });
+  });
+
+  test('the pass-through mark never escapes onto the reader\'s own chrome', async ({ page }) => {
+    // The one check here that pins a MECHANISM rather than an outcome, because this defect has
+    // no outcome yet: the marking walk terminates at the picture's box, and for a bare picture
+    // the box IS the picture, so the walk ran to the top of the shadow tree. Harmless only
+    // while the rule stays scoped under .obr-plate-box -- and one of the elements it marked is
+    // .obr-pages, the multi-column container, where the rule's own display:flex would end
+    // pagination entirely. That is a whole-feature outage one selector edit away.
+    await gotoFixture(page, 'gallery-in-one-p.html');   // bare pictures: box === el throughout
+    await injectReader(page);
+    await openReader(page);
+    await page.waitForTimeout(400);
+    const escaped = await page.evaluate(() => {
+      const sr = document.getElementById('obr-host').shadowRoot;
+      return [...sr.querySelectorAll('.obr-plate-pass')]
+        .filter((n) => !n.closest('.obr-plate-box'))
+        .map((n) => n.className || n.tagName);
+    });
+    expect(escaped).toEqual([]);
+  });
+
+  test('a lone figure at the very END of an article keeps its prose', async ({ page }) => {
+    // Nothing else pins this. A picture whose next sibling is null has only one neighbour, and
+    // any rule phrased over "both sides" reads a missing sibling as permission - which would
+    // hand the last illustration in every article a page of its own.
+    const r = await pages(page, 'lone-figure-at-end.html');
+    const last = r.shots[r.shots.length - 1];
+    expect({ plated: last.frac > 0.9, sharesWithProse: r.prose[last.col] > 0 })
+      .toEqual({ plated: false, sharesWithProse: true });
+  });
+
+  test('a decorative icon beside an illustration does not make it a run', async ({ page }) => {
+    // A 48x48 badge is furniture, not a picture. Counting it as a neighbour let a lone chart
+    // seize a page away from the prose it belongs to - the exact failure the RUN restriction
+    // exists to prevent, triggered by one of the commonest shapes on the web.
+    const r = await pages(page, 'icon-beside-chart.html');
+    const chart = r.shots.find((s) => s.alt === 'The chart');
+    expect(chart).toBeTruthy();
+    expect({ plated: chart.frac > 0.9, sharesWithProse: r.prose[chart.col] > 0 })
+      .toEqual({ plated: false, sharesWithProse: true });
+  });
+
+  test('a picture too small to fill a page is left at its natural size', async ({ page }) => {
+    // Plating a picture that cannot fill the page would UPSCALE it, which is worse than the
+    // blank. consecutive-figures.html carries one deliberately: Bare 11 is mid-figure.svg at
+    // 600x450, well under the 894px column, so the reader must show it at exactly that -
+    // neither stretched up to the page nor shrunk by a pass that thinks it collided.
+    const r = await pages(page, 'consecutive-figures.html');
+    const mid = r.shots.find((s) => s.alt === 'Bare 11');
+    expect(mid).toBeTruthy();
+    expect({ w: mid.w, h: mid.h }).toEqual({ w: 600, h: 450 });
+    // Its neighbours in the same document ARE plated: both behaviours from one pass.
+    expect(Math.max(...r.shots.map((s) => s.frac))).toBeGreaterThan(0.9);
+  });
+
+  test('a picture that DOES take a page is still never upscaled to fill it', async ({ page }) => {
+    // The test above proves the REJECT path; this one proves the accept path, and they are not
+    // the same code. A picture only has to reach 0.72 of the page to qualify, so everything in
+    // [0.72, 1.0) is admitted and then asked to fill a whole page - a blow-up of up to 1/0.72.
+    // It gets the page, centred, at its own size instead. plate-edge-shapes.html carries one
+    // deliberately: "D band" is 700x520, inside the band at an ~894px column.
+    const r = await pages(page, 'plate-edge-shapes.html');
+    const band = r.shots.find((s) => s.alt === 'D band');
+    expect(band).toBeTruthy();
+    expect(band.natH).toBe(520);                     // the fixture is still in the band
+    expect(band.frac).toBeLessThan(0.85);            // not stretched to the page
+    expect(band.paint).toBeLessThanOrEqual(band.natH); // nor blown up past its own pixels
+    // It still OWNS its page, which is the point of plating it at all.
+    expect(r.perCol[band.col]).toBe(1);
+  });
+
+  test('a run of FAR taller than wide panels still takes a page each', async ({ page }) => {
+    // Every other picture fixture here is 1.42:1 to 2.10:1 - a band chosen without asking
+    // what lies outside it. A webtoon or manga scan is 4:1 and up, and it is the headline
+    // use case. The trap is that the un-plated cap binds on HEIGHT, so the taller the
+    // aspect the NARROWER the rendered picture, until a rule that measures the rendered box
+    // reads a photograph as an icon and switches the whole run off.
+    const r = await pages(page, 'webtoon-run.html');
+    expect(r.shots.length).toBe(8);
+    const dead = r.shots.filter((s) => s.frac <= 0.9).map((s) => s.alt);
+    expect(dead).toEqual([]);
+    expect(Math.max(...r.perCol)).toBe(1);
+  });
+
+  test('a run of responsive SVGs is left alone rather than guessed at', async ({ page }) => {
+    // This is the SCOPE of the feature, stated as a test. An SVG with only a viewBox reports
+    // Chrome's default object size instead of its own, so its size cannot be trusted in
+    // either direction - and both guesses have shipped a defect. Treating it as content gave
+    // a 16x16 glyph a whole page; treating it as decoration made every diagram an icon.
+    // So these take no pages, and equally they break nothing: the run still renders, the
+    // article still reads, no page is seized. A deliberate limit, not an outage.
+    const r = await pages(page, 'responsive-svg-run.html');
+    expect(r.shots.length).toBe(6);
+    const plated = r.shots.filter((s) => s.frac > 0.9).map((s) => s.alt);
+    expect(plated).toEqual([]);
+    // No picture is pushed off its page, and captions still land beside their pictures.
+    const tallest = r.shots.reduce((a, b) => (b.over > a.over ? b : a));
+    expect({ alt: tallest.alt, insidePage: tallest.over <= 2 })
+      .toEqual({ alt: tallest.alt, insidePage: true });
+    const captionless = r.shots.filter((s) => !r.prose[s.col]).map((s) => s.alt);
+    expect(captionless).toEqual([]);
+  });
+
+  test('converges across relayouts rather than ratcheting', async ({ page }) => {
+    const first = await pages(page, 'gallery-in-one-p.html');
+    // HEIGHT, not just width. --obr-colh is derived from the viewport height and is what the
+    // plate rule sets a picture's box to, so height is the only axis that can drive a
+    // feed-back loop between the class and the measurement that chooses it. A width-only
+    // wobble leaves --obr-colh fixed and proves nothing about that; it stayed green through
+    // a classification that flipped 0/30 -> 30/30 on a 740 -> 1600 -> 740 round trip.
+    for (const h of [1600, 740, 400, 740]) {
+      await page.setViewportSize({ width: 1980, height: h });
+      await page.waitForTimeout(300);
+    }
+    // settle(), NOT pages(): the same live document that just went through four relayouts.
+    // classifyPlates re-runs on every one of them, so a rule that accumulated instead of
+    // recomputing shows up here - and only here.
+    const again = await settle(page);
+    expect(again.cols).toBe(first.cols);
+    expect(again.shots.map((s) => s.frac)).toEqual(first.shots.map((s) => s.frac));
+  });
+
+  test('the same viewport renders the same document whatever the resize history', async ({ page }) => {
+    // Path-dependence, which convergence above cannot see: both runs END at 1980x740, so a
+    // stable-but-history-dependent classification satisfies every idempotency check and
+    // still shows two users different documents on the same article and window size.
+    const direct = await pages(page, 'webtoon-run.html');
+    await page.setViewportSize({ width: 1980, height: 1600 });
+    await page.waitForTimeout(400);
+    await page.setViewportSize({ width: 1980, height: 740 });
+    await page.waitForTimeout(400);
+    const viaResize = await settle(page);
+    expect(viaResize.shots.map((s) => s.frac)).toEqual(direct.shots.map((s) => s.frac));
+  });
+});
+
+// A <p> that wraps a picture and no words is a container, not a paragraph: between two of
+// them its margin is a gap with nothing in it. Where a picture meets real prose the margin
+// still earns its place, so this is adjacent-pairs only - which is the half a "no margins
+// under pictures" rule would get wrong, and the half this test exists to pin.
+// The fixture is small-picture-run.html, NOT p-wrapped-plates.html: there every wrapper is
+// also .obr-plate-box / .obr-plate-wrap, which zero the margin at a higher specificity, so
+// both rules under test can be deleted outright and the assertions stay green. Pictures too
+// small to take a page are what make these rules the only thing setting the margin.
+test('a wordless picture wrapper drops its margin next to another, but not next to prose', async ({ page }) => {
+  await page.setViewportSize({ width: 1980, height: 740 });
+  await gotoFixture(page, 'small-picture-run.html');
+  await injectReader(page);
+  await openReader(page);
+  const r = await page.evaluate(() => {
+    const c = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content');
+    return [...c.querySelectorAll('p')].map((p) => ({
+      words: p.textContent.trim().length,
+      img: !!p.querySelector('img'),
+      alt: p.querySelector('img') ? p.querySelector('img').alt : '',
+      plate: !!p.querySelector('.obr-plate'),
+      mb: parseFloat(getComputedStyle(p).marginBottom),
+    }));
+  });
+  const prose = r.filter((p) => p.words > 0);
+  const pics = r.filter((p) => p.img && !p.words);
+  expect(prose.length).toBeGreaterThan(0);
+  expect(pics.length).toBe(3);                            // the fixture really has a run
+  // Nothing here may plate, or the plate rules supply the margin and this test goes blind
+  // again in exactly the way it did before.
+  expect(pics.filter((p) => p.plate)).toEqual([]);
+  // A picture followed by another picture: the gap between them is empty, so it goes.
+  for (const p of pics.slice(0, -1)) expect({ alt: p.alt, mb: p.mb }).toEqual({ alt: p.alt, mb: 0 });
+  // The LAST picture is followed by prose and KEEPS its margin. This is the assertion a
+  // blanket "no margins under pictures" rule fails, and the reason the rule is adjacent-pairs.
+  const last = pics[pics.length - 1];
+  expect({ alt: last.alt, spaced: last.mb > 0 }).toEqual({ alt: last.alt, spaced: true });
+  for (const p of prose) expect(p.mb).toBeGreaterThan(0); // prose spacing is untouched
+});
+
 /* ------------------------------------------------ back-cover colophon + engagement */
 
 // The engagement/colophon state persists in the shimmed (localStorage-backed) storage

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>A Figure At The End</title></head>
+<body>
+  <!-- One illustration, and it is the LAST element in the article. Its next sibling is null,
+       which is the case a run test can get wrong in either direction: read a missing sibling as
+       "nothing there, so not a run" and it behaves; read it as "no prose after me, so I am free"
+       and the closing illustration of every article on the web takes a page of its own away from
+       the paragraph that introduces it. The prose is deliberately short enough that the figure
+       and the paragraph before it FIT on one page together, so a failure is unambiguous. -->
+  <article>
+    <h1>A Figure At The End</h1>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum.</p>
+    <p>CLOSING lorem elit labore ad laboris adipiscing ut enim ullamco.</p>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="The last figure"><figcaption>The last figure</figcaption></figure>
+  </article>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Probe Shapes</title></head>
+<body>
+  <!-- Shapes the five plate fixtures do not cover: a linked image, a Blogger separator div, a <picture>, a picture in the upscale band, a <figure> captioned with a <p>, and one <figure> holding two images. -->
+  <article>
+    <h1>Probe Shapes</h1>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation.</p>
+    <!-- A: linked image inside a figure (WordPress "link to media file") -->
+    <figure><a href="#x"><img src="plate-1.svg" width="900" height="1280" alt="A linked"></a><figcaption>A caption</figcaption></figure>
+    <figure><a href="#x"><img src="plate-2.svg" width="900" height="1280" alt="A linked 2"></a><figcaption>A caption 2</figcaption></figure>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris.</p>
+    <!-- B: Blogger separator shape: div > a > img, no words -->
+    <div class="separator"><a href="#x"><img src="plate-1.svg" width="900" height="1280" alt="B blogger"></a></div>
+    <div class="separator"><a href="#x"><img src="plate-2.svg" width="900" height="1280" alt="B blogger 2"></a></div>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris.</p>
+    <!-- C: picture element wrapper -->
+    <p><picture><img src="plate-1.svg" width="900" height="1280" alt="C picture"></picture></p>
+    <p><picture><img src="plate-2.svg" width="900" height="1280" alt="C picture 2"></picture></p>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris.</p>
+    <!-- D: upscale band - natural height just over 0.72 of an ~688px column -->
+    <img src="band-figure.svg" width="700" height="520" alt="D band">
+    <img src="plate-1.svg" width="900" height="1280" alt="D neighbour">
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris.</p>
+    <!-- E: figure whose caption is a <p>, not a <figcaption> -->
+    <figure><img src="plate-1.svg" width="900" height="1280" alt="E pcap"><p>E caption in a p</p></figure>
+    <figure><img src="plate-2.svg" width="900" height="1280" alt="E pcap 2"><p>E caption in a p 2</p></figure>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris.</p>
+    <!-- F: one figure, two images -->
+    <figure><img src="plate-1.svg" width="900" height="1280" alt="F two a"><img src="plate-2.svg" width="900" height="1280" alt="F two b"><figcaption>F caption</figcaption></figure>
+    <figure><img src="plate-3.svg" width="900" height="1280" alt="F next"><figcaption>F next caption</figcaption></figure>
+  </article>
+</body>
+</html>

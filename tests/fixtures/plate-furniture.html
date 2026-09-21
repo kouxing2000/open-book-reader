@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Pictures And Furniture</title></head>
+<body>
+  <!-- Decorative furniture mixed in with real pictures. Icons, badges, credit lines and divider
+       rules sit beside content images constantly, and every one of them is a wordless element
+       containing a picture, so a rule that counts pictures naively gets all four of these wrong
+       - in BOTH directions. What each shape pins:
+         - CREDIT: text INSIDE the element between the picture and its box. The box's own caption
+           is a sibling, which is a different path; this one is the wrapper itself, and killing
+           its line-height renders the credit at 0px - invisible. This is the Guardian / NYT /
+           Medium figure shape, and Readability rewrites the inner div to a <p>, so it survives
+           extraction.
+         - SAMEWRAP: a big picture and a 48x48 icon inside ONE wrapper. Counting raw children
+           says "two pictures, therefore a run" and the chart seizes a page from its explainer -
+           the same defect as icon-beside-chart.html, reached by a different branch.
+         - BADGE: a genuine three-figure run where each figure also holds a 16x16 inline SVG (a
+           zoom affordance, a CC mark). Counting raw children says "this box holds two pictures,
+           so do not plate" and the whole run silently stops working.
+         - RULE: a 760x8 divider as the neighbour. A floor on the LONG edge admits it at 760;
+           only a floor on the short edge or the area rejects it.
+         - SIZELESS: a viewBox-only glyph as the neighbour - the canonical way an icon ships,
+           since omitting px dimensions is what lets CSS size it. It reports Chrome's default
+           object size instead of its own, so BOTH guesses are wrong: called content it takes
+           a whole page of the book at 686x686 and hands the chart a run it should not have;
+           called decoration, every responsive SVG diagram becomes an icon. It must be neither.
+         - BANNER: a genuine 760x150 SVG. Its real height is exactly the default object size's
+           bound, so any tell based on that bound fires on it too - one pixel either way flips
+           the verdict. Proof that the unknown-size case cannot be guessed in reverse. -->
+
+
+  <article>
+    <h1>Pictures And Furniture</h1>
+
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt.</p>
+    <figure>
+      <p class="media"><img src="plate-1.svg" width="900" height="1280" alt="CREDIT pic"><span>Photo: A Stringer / Agency</span></p>
+      <figcaption>CREDIT caption</figcaption>
+    </figure>
+    <figure>
+      <p class="media"><img src="plate-2.svg" width="900" height="1280" alt="CREDIT pic 2"><span>Photo: Another Stringer</span></p>
+      <figcaption>CREDIT caption 2</figcaption>
+    </figure>
+
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim.</p>
+    <p><img src="tall-figure.svg" width="420" height="880" alt="SAMEWRAP chart"><img src="badge-icon.svg" width="48" height="48" alt=""></p>
+    <p>SAMEWRAP EXPLAINER the chart above shows lorem elit labore.</p>
+
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim.</p>
+    <figure><img src="plate-1.svg" width="900" height="1280" alt="BADGE 1"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#888"/></svg><figcaption>Badge 1</figcaption></figure>
+    <figure><img src="plate-2.svg" width="900" height="1280" alt="BADGE 2"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#888"/></svg><figcaption>Badge 2</figcaption></figure>
+    <figure><img src="plate-3.svg" width="900" height="1280" alt="BADGE 3"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#888"/></svg><figcaption>Badge 3</figcaption></figure>
+
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim.</p>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="RULE chart"><figcaption>Rule chart</figcaption></figure>
+    <p><img src="divider-rule.svg" width="760" height="8" alt=""></p>
+    <p>RULE EXPLAINER the chart above shows lorem elit labore.</p>
+
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim.</p>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="SIZELESS chart"><figcaption>Sizeless chart</figcaption></figure>
+    <p><img src="glyph-viewbox.svg" alt=""></p>
+    <p>SIZELESS EXPLAINER the chart above shows lorem elit labore.</p>
+
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim.</p>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="BANNER chart"><figcaption>Banner chart</figcaption></figure>
+    <p><img src="banner-150.svg" alt=""></p>
+    <p>BANNER EXPLAINER the chart above shows lorem elit labore.</p>
+  </article>
+</body>
+</html>

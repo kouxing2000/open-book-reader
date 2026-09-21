@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Paragraph Wrapped Plates</title></head>
+<body>
+  <!-- Every picture is a BARE <img> inside its own <p>: what Readability leaves when an article
+       wraps each image in a paragraph, and the shape a real reader report was filed against.
+       Portrait, one per page, no captions. Two things here that no other fixture has: the
+       picture has no <figure> of its own, so the wrapper is all there is to size; and that
+       wrapper carries a paragraph's bottom margin, a few pixels riding below the picture
+       inside the same block. Those pixels are the whole difference between a page that fits
+       and one that spills — so this is also the fixture the margin-trimming rule is pinned
+       against (see the wordless-wrapper test in reader.spec.js). -->
+  <article>
+    <h1>Paragraph Wrapped Plates</h1>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation.</p>
+    <p><img src="plate-2.svg" width="900" height="1280" alt="Plate 1"></p>
+    <p><img src="plate-3.svg" width="900" height="1280" alt="Plate 2"></p>
+    <p><img src="plate-1.svg" width="900" height="1280" alt="Plate 3"></p>
+    <p><img src="plate-2.svg" width="900" height="1280" alt="Plate 4"></p>
+    <p><img src="plate-3.svg" width="900" height="1280" alt="Plate 5"></p>
+    <p><img src="plate-1.svg" width="900" height="1280" alt="Plate 6"></p>
+  </article>
+</body>
+</html>

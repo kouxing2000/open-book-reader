@@ -82,6 +82,24 @@ async function measure() {
     // a lookalike ratio of its own would be measuring the sweep, not the product.
     out.suspect = globalThis.OBR._wholeExtractionSuspect({ content: '<p>x</p>', textContent: bodyText });
 
+    /* Plate pagination — a picture inside a RUN of pictures takes a whole page. Counted from
+     * the engine's own class, not re-derived, for the same reason as `suspect` above. This is
+     * the only place the feature meets markup nobody here authored: every fixture under
+     * tests/fixtures/ has hand-written pixel integers in width/height, which is precisely how
+     * a total regression once shipped green (width="100%" parsed as 100, fell under the
+     * decoration floor, and silently switched plating off for whole articles). */
+    out.plates = content.querySelectorAll('.obr-plate').length;
+    // The pass-through mark walks up from the picture to its box. If it ever escapes its
+    // terminator it lands on the reader's own chrome, which no fixture can show and which
+    // would give the toolbar a page's height. Non-zero is always a defect, never a site.
+    out.plateLeak = host.shadowRoot.querySelectorAll('.obr-plate-pass, .obr-plate-box').length
+      - content.querySelectorAll('.obr-plate-pass, .obr-plate-box').length;
+    // A plate decided from the attributes alone holds a whole page for bytes that never came.
+    // Usually the frozen snapshot (hotlink protection, data-src) rather than the engine, so it
+    // is reported and never graded — same rule as SNAPSHOT.
+    out.platesUndecoded = Array.from(content.querySelectorAll('img.obr-plate'))
+      .filter((i) => !i.naturalWidth).length;
+
     globalThis.OBR.close();
     await new Promise((r) => setTimeout(r, 200));
     globalThis.OBR.toggleGallery();
@@ -187,6 +205,7 @@ function grade(r) {
       `${row.grade.padEnd(8)} ${String(row.cat).padEnd(9)} kept=${String(row.kept ?? '-').padStart(6)}` +
       ` live=${String(row.live ?? '-').padStart(6)} ratio=${String(row.ratio ?? '-').padStart(5)}` +
       ` a/100w=${String(row.linksPer100w ?? '-').padStart(5)} img=${String(row.imgs ?? '-').padStart(3)}` +
+      ` plate=${String(row.plates ?? '-').padStart(3)}${row.plateLeak ? '!' : ' '}` +
       ` tiles=${String(row.tiles ?? '-').padStart(3)}  ${row.url.slice(0, 62)}`
     );
   }
@@ -199,6 +218,20 @@ function grade(r) {
   // about the sites. Refuse to write a report rather than publish 42 confident FAILs.
   if (results.length > 2 && !results.some((r) => r.ok)) {
     throw new Error('sweep self-check failed — not one page produced a readable overlay. Check the .obr-* class names in measure() before reading anything into these grades.');
+  }
+
+  // Plate summary, separate from the grades: there is no correct plate count for an arbitrary
+  // article, so this is evidence to read rather than a verdict. The leak line is the exception
+  // — it is a defect in this repo's code whatever the site did.
+  const leaks = results.filter((r) => r.plateLeak > 0);
+  const plating = results.filter((r) => r.plates > 0);
+  console.log(`\nplates: ${plating.length} of ${results.filter((r) => r.ok).length} readable sites`
+    + ` had at least one full-page picture`
+    + ` (${results.reduce((a, r) => a + (r.plates || 0), 0)} pages total);`
+    + ` ${results.reduce((a, r) => a + (r.platesUndecoded || 0), 0)} sized from attributes only`);
+  if (leaks.length) {
+    console.log(`!! plate classes escaped .obr-content on ${leaks.length} site(s)`
+      + ` — this is a bug here, not a site: ${leaks.map((r) => r.url).slice(0, 3).join(' ')}`);
   }
 
   const tally = results.reduce((a, r) => ((a[r.grade] = (a[r.grade] || 0) + 1), a), {});

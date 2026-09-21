@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Icon Beside A Chart</title></head>
+<body>
+  <!-- A lone captioned chart with a 48x48 decorative badge as its next sibling. The badge is a
+       wordless element containing a picture, so a neighbour test with NO SIZE FLOOR reads it as
+       "another picture", the chart counts as part of a run, and it seizes a page of its own
+       away from the prose around it. Share icons, sponsor badges, spacer GIFs and tracking
+       pixels all have this shape, and they sit beside content images constantly.
+       What this pins: the chart is NOT plated, and its page still carries words. -->
+  <article>
+    <h1>Icon Beside A Chart</h1>
+    <!-- Deliberately short: the chart and its EXPLAINER must FIT on one page together, or the
+         test cannot tell "the icon stole the page" from "the page was simply full". -->
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt.</p>
+    <figure><img src="tall-figure.svg" width="420" height="880" alt="The chart"><figcaption>Chart 1</figcaption></figure>
+    <div class="badge"><img src="badge-icon.svg" width="48" height="48" alt=""></div>
+    <p>EXPLAINER the chart above shows lorem elit labore ad laboris adipiscing.</p>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim.</p>
+  </article>
+</body>
+</html>

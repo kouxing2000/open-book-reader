@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **In a comic, photo essay or scanned book, each picture now gets a whole page to itself.**
+  Where an article runs pictures back to back with no text between them, every picture was
+  held to about three quarters of the page and the rest of that page was left blank — so a
+  scanned book read smaller than it needed to, page after page. Each picture in such a run now
+  gets its own page, as large as that page allows, with its caption below it. A picture that
+  is smaller than the page still gets the page, centred at its own size — never blown up and
+  never blurred. A single illustration inside an article is unchanged: it stays on the page
+  with the paragraph that explains it, and a decorative icon or badge sitting next to it does
+  not change that. One deliberate limit: artwork saved to scale with the page rather than at a
+  fixed size — most often a diagram exported as SVG — is left where it is, because nothing in
+  such a file says how big it was meant to be.
+- **No more empty gap between pictures that sit directly on top of each other.** The spacing
+  that belongs between paragraphs was being drawn between two pictures with no words in
+  between; the spacing around pictures next to actual text is unchanged.
+
 ## [1.9.0] - 2026-09-20
 
 - **Four more languages: Korean, Turkish, Polish and Traditional Chinese.** The reader, the

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Plates With A Trailing Line</title></head>
+<body>
+  <!-- Every picture is a bare <img> in its own <p>, and each wrapper ends with a <br>: a line
+       box with NO WORDS in it. That empty line is real layout — it needs a line's height in
+       the column — so a wrapper sized to the picture alone overflows by exactly it, and the
+       overflow lands at the top of the NEXT column and pushes that picture down in turn. One
+       page's error therefore reaches the page after it, which is what makes a failure here
+       alternate rather than appear once. Also the fixture that keeps the wordless-wrapper
+       rule honest: a <br> is not words, so these wrappers must still count as picture-only. -->
+  <article>
+    <h1>Plates With A Trailing Line</h1>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation.</p>
+    <p><img src="plate-2.svg" width="900" height="1267" alt="Plate 1"><br></p>
+    <p><img src="plate-3.svg" width="900" height="1274" alt="Plate 2"><br></p>
+    <p><img src="plate-1.svg" width="900" height="1281" alt="Plate 3"><br></p>
+    <p><img src="plate-2.svg" width="900" height="1288" alt="Plate 4"><br></p>
+    <p><img src="plate-3.svg" width="900" height="1295" alt="Plate 5"><br></p>
+    <p><img src="plate-1.svg" width="900" height="1262" alt="Plate 6"><br></p>
+    <p><img src="plate-2.svg" width="900" height="1269" alt="Plate 7"><br></p>
+    <p><img src="plate-3.svg" width="900" height="1276" alt="Plate 8"><br></p>
+    <p><img src="plate-1.svg" width="900" height="1283" alt="Plate 9"><br></p>
+    <p><img src="plate-2.svg" width="900" height="1290" alt="Plate 10"><br></p>
+    <p><img src="plate-3.svg" width="900" height="1297" alt="Plate 11"><br></p>
+    <p><img src="plate-1.svg" width="900" height="1264" alt="Plate 12"><br></p>
+  </article>
+</body>
+</html>

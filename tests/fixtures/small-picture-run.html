@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Small Pictures Back To Back</title>
+</head>
+<body>
+  <!-- Wordless picture wrappers in a RUN whose pictures are too small to take a page. That
+       combination is what makes the margin rules observable: on p-wrapped-plates.html every
+       wrapper also ends up .obr-plate-box / .obr-plate-wrap, and those already set margin:0
+       at a higher specificity - so deleting both margin rules outright leaves that fixture's
+       assertions green and the test proves nothing.
+       500x250 clears the decoration floor on its short edge (250 > 160) but reaches only
+       ~0.36 of the column height, far under the 0.72 plate gate, so these stay ordinary
+       in-flow pictures.
+       The LAST picture is followed by PROSE and must KEEP its bottom margin: that is the
+       half a blanket "no margins under pictures" rule gets wrong, and the only assertion
+       here that can tell the two designs apart. -->
+  <article>
+    <h1>Small Pictures Back To Back</h1>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim.</p>
+    <p><img src="wide-small.svg" width="500" height="250" alt="Small 1"></p>
+    <p><img src="wide-small.svg" width="500" height="250" alt="Small 2"></p>
+    <p><img src="wide-small.svg" width="500" height="250" alt="Small 3"></p>
+    <p>lorem elit labore ad laboris adipiscing ut enim ullamco consectetur incididunt ut exercitation amet tempor aliqua nostrud sit eiusmod magna quis dolor do dolore veniam ipsum sed et minim lorem elit labore ad laboris adipiscing ut enim.</p>
+  </article>
+</body>
+</html>

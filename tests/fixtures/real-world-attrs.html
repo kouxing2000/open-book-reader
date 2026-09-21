@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>A Run Whose Attributes Lie</title>
+</head>
+<body>
+  <!-- The same run as figure-run.html, except the width/height ATTRIBUTES do not state the
+       picture's pixel size. Every other plate fixture writes honest integers there, because I
+       authored them; a real CMS does not, and that gap is invisible to a suite built only out
+       of my own fixtures. All nine pictures here are the identical 420x880 file and all nine
+       must take a page - only the attributes differ.
+         - PCT: width="100%", no height. The attribute is a LAYOUT instruction, not a size, and
+           parseFloat reads it as the number 100. Substack, mail-derived HTML and older
+           WordPress themes emit this constantly.
+         - LAZY: width="1" height="1" left behind by a lazy-loading placeholder after the real
+           image has swapped in. The attributes describe a tracking pixel that no longer exists.
+         - BARE: no attributes at all - the control. This band passes either way, so a failure
+           confined to it means something other than attribute parsing is wrong. -->
+  <article>
+    <h1>A Run Whose Attributes Lie</h1>
+
+    <figure><img src="tall-figure.svg" width="100%" alt="PCT 1"><figcaption>Pct 1</figcaption></figure>
+    <figure><img src="tall-figure.svg" width="100%" alt="PCT 2"><figcaption>Pct 2</figcaption></figure>
+    <figure><img src="tall-figure.svg" width="100%" alt="PCT 3"><figcaption>Pct 3</figcaption></figure>
+
+    <figure><img src="tall-figure.svg" width="1" height="1" alt="LAZY 1"><figcaption>Lazy 1</figcaption></figure>
+    <figure><img src="tall-figure.svg" width="1" height="1" alt="LAZY 2"><figcaption>Lazy 2</figcaption></figure>
+    <figure><img src="tall-figure.svg" width="1" height="1" alt="LAZY 3"><figcaption>Lazy 3</figcaption></figure>
+
+    <figure><img src="tall-figure.svg" alt="BARE 1"><figcaption>Bare 1</figcaption></figure>
+    <figure><img src="tall-figure.svg" alt="BARE 2"><figcaption>Bare 2</figcaption></figure>
+    <figure><img src="tall-figure.svg" alt="BARE 3"><figcaption>Bare 3</figcaption></figure>
+  </article>
+</body>
+</html>
