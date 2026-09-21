@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-21
+
 - **In a comic, photo essay or scanned book, each picture now gets a whole page to itself.**
   Where an article runs pictures back to back with no text between them, every picture was
   held to about three quarters of the page and the rest of that page was left blank — so a
@@ -411,7 +413,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.10.0
 [1.9.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.9.0
 [1.8.3]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.3
 [1.8.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.2
