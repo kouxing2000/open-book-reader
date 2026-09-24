@@ -119,7 +119,7 @@ while editing a feature belongs beside that feature.
 
 | area | doc |
 | --- | --- |
-| Text reader — pagination, page-turn animation, print/PDF, progress fractions, content override (selection / picker / saved pick), tall-figure fitting, image sizing, why there is no text-wrap-around-image | `docs/reader.md` |
+| Text reader — pagination, page-turn animation, print/PDF, progress fractions, content override (selection / picker / saved pick), split article bodies, tall-figure fitting, image sizing, why there is no text-wrap-around-image | `docs/reader.md` |
 | Image gallery — lazy hydration, Wall + Ordered layouts, lightbox, avatar/noise filter, ZIP downloads | `docs/gallery.md` |
 | Auto-open — the sentinel's decision ladder, permission model, registration | `docs/auto-open-spec.md` |
 | Service worker — context-menu + sentinel-registration serialization, debug timing and trigger tracing | `docs/background-worker.md` |

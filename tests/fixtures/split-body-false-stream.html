@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>The village bakery reopens</title>
+</head>
+<body>
+  <!-- NOT a split story: an infinite-scroll page that appended the NEXT story from the same
+       template. Both bodies are div.copy under article.item, so only the story
+       boundary (a different <article>) keeps the merge from running the
+       second story on after the first. The test hands the merge a read that kept exactly the
+       first story's div.copy. -->
+  <div id="stream">
+    <article class="item">
+      <h1>The village bakery reopens</h1>
+      <div class="copy">
+        <p>STORY-ONE-MARKER The village bakery reopened on Saturday after a year of repairs, and the queue for the first loaves reached past the post office before the doors had even been unlocked at seven.</p>
+        <p>The new owners kept the old brick oven, which the builders had to shore up with steel bands, because the regulars insisted that no other oven could produce the same dark and chewy crust.</p>
+        <p>They have added a small counter for coffee and a single long table by the window, where the first customers lingered over warm rolls and argued cheerfully about which bread was best.</p>
+        <p>The owners say they will bake through the winter and hope to take on an apprentice from the village school, so that the skills needed to run the old oven are not lost again.</p>
+      </div>
+    </article>
+    <article class="item">
+      <h1>A different story: the bridge repairs</h1>
+      <div class="copy">
+        <p>STORY-TWO-MARKER Repairs to the old stone bridge will close the river road for three weeks from Monday, and the council has asked drivers to follow the signed diversion through the neighbouring valley.</p>
+        <p>Engineers found that two of the arches had shifted slightly during the winter floods, and the work will reset the stones before the heavier harvest traffic begins to use the road again.</p>
+      </div>
+    </article>
+  </div>
+</body>
+</html>

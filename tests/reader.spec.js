@@ -119,6 +119,89 @@ test('recovers an image-dominant forum post Readability would otherwise drop', a
   expect(r.hasReplyText).toBe(true);                // replies kept too, not lost
 });
 
+test('reads an article split across two same-class containers whole, in page order', async ({ page }) => {
+  // Ars Technica's layout: one story in two div.post-content blocks under separate wrappers.
+  // Readability keeps only the larger block, so without the merge the reader silently starts
+  // mid-story. Each decoy shares the story's markup and pins one rule: a different parent, a
+  // superset class list, an <aside>, a hidden panel, a nested <article>; comments sit outside.
+  const DECOYS = ['TEASER-MARKER', 'NEWSLETTER-MARKER', 'ASIDE-MARKER', 'HIDDEN-MARKER', 'NESTED-MARKER', 'COMMENT-MARKER'];
+  await gotoFixture(page, 'split-body-article.html');
+  await injectReader(page);
+  const bare = await page.evaluate(() => new Readability(document.cloneNode(true)).parse().textContent);
+  expect(bare, 'the fixture must reproduce the defect').not.toContain('PART-ONE-MARKER');
+  for (const d of DECOYS) expect(bare, `${d} must be missing from the bare read`).not.toContain(d);
+  await openReader(page);
+
+  const text = (await readState(page)).contentText;
+  expect(text).toContain('PART-ONE-MARKER');
+  expect(text).toContain('PART-TWO-MARKER');
+  expect(text.indexOf('PART-ONE-MARKER')).toBeLessThan(text.indexOf('PART-TWO-MARKER'));
+  for (const d of DECOYS) expect(text).not.toContain(d);
+  expect(text.split('PART-TWO-MARKER').length, 'the kept block must not be duplicated').toBe(2);
+});
+
+test('a merged half is Readability output, never the raw markup a pick would get', async ({ page }) => {
+  // The missing half carries a share <button> and an image strip Readability drops. Taken raw
+  // (the pick path's fallback), the button text would land in the default read.
+  await gotoFixture(page, 'split-body-raw-peer.html');
+  await injectReader(page);
+  const bare = await page.evaluate(() => new Readability(document.cloneNode(true)).parse().textContent);
+  expect(bare, 'the fixture must reproduce the defect').not.toContain('RAW-ONE-0');
+  await openReader(page);
+  const text = (await readState(page)).contentText;
+  expect(text, 'the missing half is merged').toContain('RAW-ONE-0');
+  expect(text).not.toContain('SHARE-MARKER');
+});
+
+for (const [fixture, keptSel, verdict] of [
+  // identical layout wrappers stack a "more" block and the comments beside an unsplit story:
+  // the container is the nearest classed box, which has no peer (climbing further would reach
+  // div.container, outside any <article>, and say so instead)
+  ['split-body-false-wrappers.html', '.copy', 'no peer container'],
+  // an infinite-scroll page appended the NEXT story from the same template, in its own <article>
+  ['split-body-false-stream.html', 'article:first-of-type .copy', 'no peer container'],
+  // one <article> holding many same-markup cards is a list, not a split story
+  ['split-body-false-cards.html', '.card:first-of-type .card-body', 'repeated cards'],
+]) {
+  test(`does not merge same-class blocks that are not one story (${fixture})`, async ({ page }) => {
+    // Handed a read that kept exactly the story — the precondition these shapes need. Driving
+    // it through a full open would test Readability's own sibling rules, which on these
+    // synthetic pages already climb to the shared wrapper.
+    await gotoFixture(page, fixture);
+    await injectReader(page);
+    const found = await page.evaluate((sel) =>
+      OBR._splitBodyParts({ content: document.querySelector(sel).outerHTML }), keptSel);
+    expect(found.kept, 'the story must map back to the page').toBeGreaterThan(0);
+    expect(found.missing, 'there must be missing prose for a guard to reject').toBeGreaterThan(0);
+    expect(found.parts).toBeNull();
+    expect(found.verdict).toBe(verdict);
+  });
+}
+
+for (const [fixture, markers, absent] of [
+  // Readability strips each transcript line's timestamp <button>, so the kept transcript looks
+  // missing on the live page — the merge must not add it a second time
+  ['split-body-transcript.html', ['NOTES-0', 'TRANSCRIPT-0'], []],
+  // a same-markup teaser inside the story's <article>, under a related-posts wrapper
+  ['split-body-false-related.html', ['MAIN-0', 'RELATED-MARKER'], ['RELATED-MARKER']],
+  // a forum thread with no <article>: replies must not be folded into the first post
+  ['split-body-false-thread.html', ['POST-A-0', 'POST-B-0', 'POST-C-0'], ['POST-B-0', 'POST-C-0']],
+]) {
+  test(`the split-body merge leaves a correct read as it was (${fixture})`, async ({ page }) => {
+    await gotoFixture(page, fixture);
+    await injectReader(page);
+    const bare = await page.evaluate(() => new Readability(document.cloneNode(true)).parse().textContent);
+    expect(bare.split(markers[0]).length - 1, 'the story must be in the read to begin with').toBe(1);
+    // …and what the merge must not add must be MISSING from it, or the test proves nothing.
+    for (const m of absent) expect(bare, `${m} must be missing from the bare read`).not.toContain(m);
+    await openReader(page);
+    const text = (await readState(page)).contentText;
+    for (const m of markers) {
+      expect(text.split(m).length - 1, `${m}: as many times as Readability had it`).toBe(bare.split(m).length - 1);
+    }
+  });
+}
+
 test('caps an over-tall image to the column height so it is not clipped', async ({ page }) => {
   // tall.png is 40x1400 — taller than a column. Wait for it to load, then assert
   // it was scaled down to fit (rather than rendered at full height and clipped).

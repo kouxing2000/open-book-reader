@@ -258,6 +258,55 @@ CLONE of `el`, so baseURI/relative-URL resolution survives and the live page is 
 `tests/fixtures/wrong-content.html` (a genuine `#real-article` vs a larger `#decoy`) drives the
 selection / picker / saved-pick specs in `reader.spec.js`.
 
+## Split article bodies — one story in several same-class containers
+
+Some layouts cut one article into several containers that share a class list: Ars Technica sets
+each story as two `div.post-content` blocks, each in its own grid row. Readability's sibling merge
+only looks inside the chosen node's own parent, so it keeps ONE block and the reader silently
+drops the other — measured at ~45% of the article on both Ars pages in the sweep, and on one of
+them the dropped block is the opening, so the reader started mid-story.
+
+`extractArticle` (whole-page reads only) runs `mergeSplitBody` after the parse; a throw inside it
+keeps the unmerged read. `splitBodyParts` maps the kept prose blocks back to the live page and takes
+the NEAREST classed box holding all of them (walking up through classless boxes only, at most
+`SPLIT_CLIMB`), then looks for PEERS. Each peer's own Readability extraction is added before or
+after the original, in page order — the original stays whole, so a merge can only add text. Each
+rule names the fixture whose test goes red without it; the ARIA-role, `<footer>` and nested-peer
+checks have no fixture of their own (the last is also covered by the duplicate-piece check):
+
+- **One `<article>`.** The box must sit in an `<article>` and every peer in that same one — not in
+  a nested `<article>` either. This is the story boundary, and it closes a whole class at once:
+  forum replies (phpBB carries no `<article>`; Discourse gives each post its own), Q&A answers, the
+  next story of an infinite-scroll page (`split-body-false-{thread,stream}.html`; the nested case
+  is `NESTED-MARKER` in `split-body-article.html`). Both Ars halves share one `<article>`. Cost: a
+  split story on a site that uses no `<article>` stays unfixed.
+- **The nearest classed box, never a wrapper above it.** Identical layout wrappers
+  (`div.container.mx-auto`) would find a comments wrapper as a "peer" (`split-body-false-wrappers.html`,
+  which asserts the verdict `no peer container`).
+- **Exact class list, not a superset** — `querySelectorAll` alone would match a
+  `.post-content.newsletter-cta` promo (`NEWSLETTER-MARKER`) — and **a parent of the same
+  signature** — a teaser box reusing the class (`TEASER-MARKER`).
+- **Nothing Readability would have dropped anyway** (`splitRejected`, on every ancestor below the
+  one shared with the box): a class/id among its `unlikelyCandidates` (a related-posts wrapper,
+  `split-body-false-related.html`), an `<aside>`/`<footer>` tag (`ASIDE-MARKER`), an unlikely ARIA
+  role, or content that is not visible (`HIDDEN-MARKER`, an inactive tab panel).
+- **Readability output only, never the raw fallback.** `extractFromNode` falls back to a block's raw
+  markup — right for a user's pick, wrong for a block nobody picked: it carries share buttons,
+  inputs and embeds into the default read (`split-body-raw-peer.html`). An empty piece is dropped.
+- **No piece the read (or an earlier piece) already has.** "Missing" is decided on LIVE text, and
+  Readability strips some of it (a timestamp `<button>`), so a kept block can look missing; a piece
+  sharing any prose block with what is already merged — compared extraction to extraction — is
+  dropped (`split-body-transcript.html`). Peers nested in another peer are dropped too.
+- **At most `SPLIT_MAX_PEERS` peers** — more is repeated cards (`split-body-false-cards.html`).
+
+A pick or a selection is never merged — it is exactly what the user pointed at. Debug mode
+(`OBR.debugTiming(true)`) logs each decision as `split body: merged N part(s)` or `none`, with the
+kept/missing block counts, the signature, dropped duplicate/empty pieces and the verdict. The
+full-open tests first assert what bare Readability kept and missed, so they cannot pass
+vacuously; the wrappers, stream and cards fixtures call `OBR._splitBodyParts` with a read that kept
+exactly the story, because Readability's own sibling rules already climb to the shared wrapper on
+those synthetic pages.
+
 ## GOTCHA — tall images force blank pages
 
 - **Tall images force blank pages — fixed per-FIGURE, not by the CSS cap alone.** A portrait image

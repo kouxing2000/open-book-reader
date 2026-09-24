@@ -641,11 +641,132 @@
 
   function extractArticle() {
     try {
-      return parseBaseDoc(document.cloneNode(true));
+      const article = parseBaseDoc(document.cloneNode(true));
+      try { return mergeSplitBody(article) || article; } catch (e) { return article; } // never lose the read
     } catch (e) {
       console.warn('[OpenBookReader] Readability failed:', e);
     }
     return null;
+  }
+
+  /* A SPLIT article body. Some layouts cut one story into several containers sharing a class
+   * list — Ars Technica sets each article as two `div.post-content` blocks, each under its own
+   * wrapper. Readability's sibling merge looks only at the chosen node's own parent, so it
+   * reads ONE block and the reader silently drops the other: measured at ~45% of the article,
+   * and on some pages the part dropped is the opening. splitBodyParts finds the container the
+   * whole-page read came from — the NEAREST classed box holding every kept block — and merges
+   * its PEERS only inside ONE <article>: the box must sit in an <article>, and every peer in
+   * that same one. The <article> is the story boundary, and it is what keeps out the whole
+   * class of wrong merges that cross one: forum replies (phpBB carries no <article>, Discourse
+   * gives each post its own), Q&A answers, the next story of an infinite-scroll page, and
+   * layout wrappers that stack comments beside the story. Inside it a peer must also have the
+   * exact same tag + class list (not a superset), a parent of the same signature, must not sit
+   * inside another peer, and must hold prose the read lacks that Readability would not have
+   * dropped anyway — see splitRejected. More than SPLIT_MAX_PEERS peers reads as repeated
+   * cards, not a split story. Whole-page reads only: a pick or a selection is exactly what the
+   * user pointed at. */
+  const SPLIT_MIN_WORDS = 20;  // the bar _proseStats counts a block at
+  const SPLIT_CLIMB = 4;       // classless levels to walk up from the kept blocks' common box
+  const SPLIT_MAX_PEERS = 5;
+  function splitSig(el) {
+    return el ? CSS.escape(el.tagName.toLowerCase()) + Array.from(el.classList || []).map((c) => '.' + CSS.escape(c)).join('') : '';
+  }
+  const splitKey = (el) => el.textContent.replace(/\s+/g, ' ').trim().slice(0, 80);
+  const splitProse = (root) => Array.from(root.querySelectorAll('p, blockquote, li')).filter((el) =>
+    !el.querySelector('p, blockquote, li') && countWords(el.textContent) >= SPLIT_MIN_WORDS);
+  const splitKeysOf = (html) => splitProse(new DOMParser().parseFromString(html, 'text/html').body).map(splitKey);
+  // Would Readability have dropped missing block `m` on its own? Mirrors its rejection rules —
+  // a class/id among its unlikely candidates (comment, related, footer…), an <aside> or
+  // <footer> tag, an unlikely ARIA role, or content that is not visible — on every ancestor
+  // below the one `m` shares with `box`. A peer whose missing prose Readability rejects is
+  // chrome that happens to share the story's markup (a bio, a teaser, an inactive tab panel).
+  function splitRejected(m, box) {
+    const R = globalThis.Readability && Readability.prototype;
+    const re = R && R.REGEXPS && R.REGEXPS.unlikelyCandidates;
+    const roles = (R && R.UNLIKELY_ROLES) || [];
+    if (typeof m.checkVisibility === 'function' && !m.checkVisibility()) return true;
+    for (let n = m; n && !n.contains(box); n = n.parentElement) {
+      if (n.tagName === 'ASIDE' || n.tagName === 'FOOTER') return true;
+      if (roles.includes(n.getAttribute('role'))) return true;
+      if (n.hasAttribute('hidden') || n.getAttribute('aria-hidden') === 'true') return true;
+      if (n.style && (n.style.display === 'none' || n.style.visibility === 'hidden')) return true;
+      if (re && re.test((typeof n.className === 'string' ? n.className : '') + ' ' + (n.id || ''))) return true;
+    }
+    return false;
+  }
+  function splitBodyParts(article) {
+    const body = document.body;
+    if (!article || !article.content || !body) return null;
+    const keptKeys = new Set(splitKeysOf(article.content));
+    const live = splitProse(body);
+    const kept = live.filter((el) => keptKeys.has(splitKey(el)));
+    const why = { kept: kept.length, missing: live.length - kept.length };
+    if (!kept.length || kept.length === live.length) return Object.assign(why, { parts: null });
+    let box = kept[0].parentElement;
+    while (box && box !== body && !kept.every((el) => box.contains(el))) box = box.parentElement;
+    // Walk up through classless boxes only: the first classed one IS the container.
+    for (let i = 0; box && box !== body && !box.classList.length && i < SPLIT_CLIMB; i++) box = box.parentElement;
+    if (!box || box === body || !box.classList.length) return Object.assign(why, { parts: null, verdict: 'no classed container' });
+    const story = box.closest('article');
+    if (!story) return Object.assign(why, { parts: null, verdict: 'no <article>' });
+    const missing = live.filter((el) => story.contains(el) && !keptKeys.has(splitKey(el)));
+    const sig = splitSig(box), psig = splitSig(box.parentElement);
+    const found = [];
+    for (const el of story.querySelectorAll(sig)) {
+      if (el === box || el.contains(box) || box.contains(el)) continue;
+      if (splitSig(el) !== sig || splitSig(el.parentElement) !== psig || el.closest('article') !== story) continue;
+      if (!missing.some((m) => el.contains(m) && !splitRejected(m, box))) continue;
+      found.push(el);
+      if (found.length > SPLIT_MAX_PEERS * 2) break; // enough to call it repeated cards
+    }
+    const peers = found.filter((el) => !found.some((o) => o !== el && o.contains(el))); // outermost only
+    if (!peers.length) return Object.assign(why, { parts: null, sig, verdict: 'no peer container' });
+    if (peers.length > SPLIT_MAX_PEERS) return Object.assign(why, { parts: null, sig, peers: peers.length, verdict: 'repeated cards' });
+    const before = (el) => !!(el.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return Object.assign(why, { sig, parts: { before: peers.filter(before), after: peers.filter((el) => !before(el)) } });
+  }
+  OBR._splitBodyParts = splitBodyParts; // for tests: the guards, given a read Readability would return
+  // Adds each peer's own Readability extraction before or after the whole-page read, in page
+  // order. The original is kept whole, so a merge can only ADD text — never trade away a lead
+  // image or a sibling block Readability had already pulled in. Pieces are Readability output
+  // ONLY, never extractFromNode's rawFallback: that keeps a block's raw markup ("you see exactly
+  // what you picked"), which is right for a user's pick and wrong for a block nobody picked —
+  // it would carry share buttons, inputs, embeds and hidden panels into the default read. A
+  // piece that comes back empty is dropped, and so is one sharing any prose block with the
+  // read or with an earlier piece: "missing" is decided on LIVE text, which Readability strips
+  // (a timestamp <button>, a hidden span), so a kept block can look missing, and only
+  // extraction-to-extraction compares like with like.
+  function mergeSplitBody(article) {
+    let found;
+    try { found = splitBodyParts(article); } catch (e) { found = { parts: null, verdict: 'threw: ' + e.message }; }
+    const parts = found && found.parts;
+    const seen = parts ? new Set(splitKeysOf(article.content)) : null;
+    let dupes = 0, empty = 0;
+    const piece = (el) => {
+      let a = null;
+      try { a = parseBaseDoc(scopedBaseDoc(el)); } catch (e) { a = null; }
+      const keys = a && a.content ? splitKeysOf(a.content) : [];
+      if (!keys.length) { empty++; return null; }
+      if (keys.some((k) => seen.has(k))) { dupes++; return null; }
+      keys.forEach((k) => seen.add(k));
+      return a;
+    };
+    const pre = parts ? parts.before.map(piece).filter(Boolean) : [];
+    const post = parts ? parts.after.map(piece).filter(Boolean) : [];
+    if (OBR._debug && found) {
+      try {
+        console.log('[OBR reader] split body: ' + (pre.length + post.length ? 'merged ' + (pre.length + post.length) + ' part(s)' : 'none')
+          + ' ' + JSON.stringify({ kept: found.kept, missing: found.missing, sig: found.sig, peers: found.peers, dupes: dupes, empty: empty, verdict: found.verdict }));
+      } catch (e) { /* console unavailable */ }
+    }
+    if (!pre.length && !post.length) return null;
+    const all = pre.concat([article], post);
+    const textContent = all.map((a) => a.textContent).join('\n');
+    return Object.assign({}, article, {
+      content: all.map((a) => a.content).join(''),
+      textContent: textContent,
+      length: textContent.length,
+    });
   }
 
   // Build a full-document clone whose <body> is exactly `el` (a clone of it). We
