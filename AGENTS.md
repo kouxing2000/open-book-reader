@@ -200,6 +200,8 @@ npx playwright install chromium                # first run only
   orderings), a host the page's own re-render deleted, an iframe, and the banner's replace-not-stack
   behaviour. These are the failures that look identical to a dead extension.
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
+- `uninstall-survey.spec.js` — `site/uninstall.html`: what the form POSTs. The stamped page
+  (`#url=`) is sent only for a site reason and only with "Report the problem site" checked.
 - **The suite shells out to `unzip`** (`packaging.spec.js` for `dist.zip`, `gallery.spec.js` for
   `OBR._buildZip`'s bytes). **Extracting and listing are different oracles — the ZIP test needs
   both.** A STORE entry extracts from its LOCAL header, so `unzip -t`/`-p`/`-x` are clean on an

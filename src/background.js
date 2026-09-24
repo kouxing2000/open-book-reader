@@ -247,6 +247,7 @@ async function showReloadNotice(tabId) {
 // "Auto-opened" chip.
 async function invokeReader(tabId, url, mode, opts) {
   if (!tabId) { swLog('invokeReader: NO TAB ID — nothing to inject into'); return; }
+  stampUninstallSurvey(url, opts ? opts.incognito : undefined);
   const failure = await runInvoke(tabId, url, mode, opts);
   if (!failure) return;
   // Show the state only for a real user GESTURE — an auto-open has nobody waiting on a click,
@@ -821,17 +822,47 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // The uninstall survey (a static GitHub Pages form) is our only window into WHY people
 // leave — the extension itself collects nothing, so a churned user is otherwise invisible.
-// Chrome opens this URL in a tab on uninstall; the page transmits only what the user chooses
-// to type (see site/uninstall.html). Param-free by design — the extension appends NO
-// version/usage data. (Opening the page still makes the browser's own request to GitHub
-// Pages, as any navigation does — but the extension itself sends nothing.)
+// Chrome opens this URL in a tab on uninstall; the page transmits only what the user submits
+// (see site/uninstall.html). The one thing the extension adds is `#url=`: the last page the
+// reader was opened on, cut to origin+pathname by the same rule ⚠ Report uses, because "it
+// didn't work on the sites I read" cannot be acted on without the site. It rides the
+// FRAGMENT, which the browser never sends to the server; the survey shows it as a checked,
+// editable "Report the problem site" field, and it leaves the device only if the user submits
+// with that box on. No version or usage data is ever appended.
 const UNINSTALL_SURVEY_URL = 'https://openbook.peach-studio.com/uninstall.html';
+const UNINSTALL_URL_MAX = 1023; // Chrome rejects a longer uninstall URL outright
+
+// The survey URL naming `pageUrl`, or null to keep the current one: an incognito read must
+// leave no trace (the stamp outlives the session, like a saved position would), and a
+// non-web page has no site to report. Fails CLOSED — only an explicit `incognito === false`
+// (every trigger passes `tab.incognito`) stamps, so a future caller that forgets the flag
+// stamps nothing rather than a private page. A path too long for Chrome's cap degrades to
+// the origin.
+function uninstallSurveyUrl(pageUrl, incognito) {
+  if (incognito !== false || !/^https?:/i.test(pageUrl || '')) return null;
+  const withPage = UNINSTALL_SURVEY_URL + '#url=' + encodeURIComponent(OBR._reportPageUrl(pageUrl));
+  if (withPage.length <= UNINSTALL_URL_MAX) return withPage;
+  return UNINSTALL_SURVEY_URL + '#url=' + encodeURIComponent(new URL(pageUrl).origin + '/');
+}
+
+function stampUninstallSurvey(pageUrl, incognito) {
+  let url = null;
+  try { url = uninstallSurveyUrl(pageUrl, incognito); } catch (e) { /* a side effect must never block the open */ }
+  swLog('survey stamp:', url ? 'page' : (incognito !== false ? 'skipped (incognito or unknown)' : 'skipped (not a web page)'));
+  if (!url) return;
+  try { chrome.runtime.setUninstallURL(url).catch((e) => console.warn('[OpenBookReader] setUninstallURL:', e && e.message)); }
+  catch (e) { /* */ }
+}
 
 chrome.runtime.onInstalled.addListener((details) => {
   createMenus();
   syncSentinelRegistration(); // registration persists, but an update may change the rules/logic
-  // Set on install AND update so a changed survey URL propagates with the next version.
-  try { chrome.runtime.setUninstallURL(UNINSTALL_SURVEY_URL); } catch (e) { /* */ }
+  // Set on install AND extension update so a changed survey URL propagates with the next
+  // version. Not on 'chrome_update' / 'shared_module_update': those fire on every browser
+  // update and would wipe the #url= stamp for nothing, since they cannot change the survey URL.
+  if (details && (details.reason === 'install' || details.reason === 'update')) {
+    try { chrome.runtime.setUninstallURL(UNINSTALL_SURVEY_URL); } catch (e) { /* */ }
+  }
   // First install only: open a one-screen WELCOME page — pin the icon, the two shortcuts, a
   // sample article — so a brand-new user reaches first value in one glance. (Not on
   // updates/reloads — reason would be 'update'.) The old flow opened the OPTIONS page, i.e.

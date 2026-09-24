@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
   <title>Open Book Reader — sorry to see you go</title>
-  <meta name="description" content="Tell us why you uninstalled Open Book Reader. The extension collects nothing; this form sends only what you type." />
+  <meta name="description" content="Tell us why you uninstalled Open Book Reader. The extension collects nothing; this form sends only what you see on it, when you click send." />
   <link rel="icon" href="img/icon.png" />
   <style>
     :root {
@@ -55,13 +55,17 @@
     .opt:hover { background: var(--chip); }
     .opt:has(input:checked) { background: var(--sel); border-color: var(--accent); }
     .opt input { margin-top: 3px; accent-color: var(--accent); flex: none; }
-    textarea, input[type=email] {
+    textarea, input[type=email], #site {
       width: 100%; margin-top: 12px; resize: vertical;
       font-family: system-ui, sans-serif; font-size: 14px; color: var(--ink);
       background: var(--paper); border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px;
     }
     textarea { min-height: 70px; }
-    textarea:focus, input[type=email]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    textarea:focus, input[type=email]:focus, #site:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    #site:disabled { opacity: .45; }
+    .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-family: system-ui, sans-serif; font-size: 14px; cursor: pointer; }
+    .check input { accent-color: var(--accent); margin: 0; }
+    .fine { font-family: system-ui, sans-serif; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
     .rescue { display: block; margin-top: 16px; margin-bottom: -2px; font-family: system-ui, sans-serif; font-size: 13.5px; color: var(--ink); }
     .rescue .opt-hint { color: var(--muted); font-weight: 400; }
     .actions { margin-top: 18px; }
@@ -100,7 +104,16 @@
           <label class="opt"><input type="radio" name="reason" value="Just trying it out"> I was just trying it out</label>
           <label class="opt"><input type="radio" name="reason" value="Other"> Something else</label>
         </fieldset>
-        <textarea id="note" placeholder="Anything else? Which site, what went wrong — whatever helps (optional)"></textarea>
+        <!-- Shown only for the two site-specific reasons. Prefilled from #url= when the extension
+             stamped the last page it was opened on (src/background.js: uninstallSurveyUrl). -->
+        <div id="siteBox" class="hidden">
+          <label class="rescue" for="site">Site / URL that had the issue <span class="opt-hint">(optional)</span></label>
+          <label id="siteShare" class="check hidden"><input type="checkbox" id="siteOn" checked /> Report the problem site</label>
+          <!-- text, not type=url: constraint validation would block Send on a bare "example.com/page". -->
+          <input type="text" inputmode="url" id="site" placeholder="example.com/the-article" autocomplete="off" />
+          <p id="siteNote" class="fine hidden">The last page you opened in Open Book Reader. It is sent only if this box is checked when you click send — edit it or uncheck it to leave it out.</p>
+        </div>
+        <textarea id="note" placeholder="Anything else? What went wrong — whatever helps (optional)"></textarea>
         <label class="rescue" for="email">If it's something we can fix, leave your email and we'll let you know — we'd love to have you back. <span class="opt-hint">(optional)</span></label>
         <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
         <div class="actions">
@@ -108,7 +121,7 @@
         </div>
       </form>
 
-      <p class="privacy">🔒 We collect nothing automatically. This form sends only what you type, only when you click send.
+      <p class="privacy">🔒 We collect nothing automatically. This form sends only what you see on it, only when you click send.
       Prefer email? Write to <a id="mailLink" href="#">the developer</a>.</p>
     </div>
 
@@ -143,6 +156,37 @@
     var send = document.getElementById('send');
     var noteEl = document.getElementById('note');
     var emailEl = document.getElementById('email');
+    var siteBox = document.getElementById('siteBox');
+    var siteEl = document.getElementById('site');
+    var siteOn = document.getElementById('siteOn');
+
+    // The reasons a site would explain. Any other reason keeps the site box hidden AND unsent,
+    // so a prefilled page never rides along with "I was just trying it out".
+    var SITE_REASONS = ["Didn't work on the sites I read", 'Picked the wrong text / looked broken'];
+
+    // The extension stamps the last page the reader was opened on into the fragment (never
+    // sent to the server). Only a web address is accepted, and the fragment is dropped from
+    // the address bar once read so it isn't carried along if this tab's URL is copied.
+    var prefill = (function () {
+      try {
+        var u = new URLSearchParams(location.hash.slice(1)).get('url') || '';
+        if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+        return /^https?:\/\//i.test(u) && u.length <= 1000 ? u : '';
+      } catch (e) { return ''; }
+    })();
+    if (prefill) {
+      siteEl.value = prefill;
+      document.getElementById('siteShare').classList.remove('hidden');
+      document.getElementById('siteNote').classList.remove('hidden');
+    }
+    siteOn.addEventListener('change', function () { siteEl.disabled = !siteOn.checked; });
+
+    // What the site box will actually send: nothing unless it is showing, its box is on, and
+    // it holds a value.
+    function siteToSend() {
+      if (SITE_REASONS.indexOf(selectedReason()) === -1 || !siteOn.checked) return '';
+      return siteEl.value.trim().slice(0, 1000);
+    }
 
     // Require a reason before Send. The categorized reason is the signal we actually
     // triage on, and — since the form POST goes into an opaque cross-origin iframe we
@@ -151,6 +195,7 @@
     // free-text note stays optional (there's an "Other" reason for anything unlisted).
     function refresh() {
       send.disabled = !form.querySelector('input[name="reason"]:checked');
+      siteBox.classList.toggle('hidden', SITE_REASONS.indexOf(selectedReason()) === -1);
     }
     form.addEventListener('change', refresh);
     noteEl.addEventListener('input', refresh);
@@ -164,7 +209,8 @@
     // Used by BOTH the form POST (as the single collector field) and the mailto, so both paths are
     // byte-identical. reportSource:'uninstall-survey' keeps it separable; the note becomes the prose
     // above the divider.
-    function buildBody(reason, note, email) {
+    // `pageUrl` is the same key the in-app report uses for the page, so triage reads both alike.
+    function buildBody(reason, note, email, site) {
       var meta = {
         app: 'open-book-reader',
         platform: 'chrome',
@@ -172,23 +218,25 @@
         reason: reason || null,
         reporterEmail: email || null,   // opt-in: a reply address if they'd like to hear back, else no-reply
       };
-      return [
+      if (site) meta.pageUrl = site;
+      var lines = [
         note || '[No additional detail provided]',
         '', '---',
         'App: ' + meta.app,
         'Reason: ' + (reason || '(none selected)'),
-        'Source: ' + meta.reportSource,
-        '', '[feedback-meta v1]', JSON.stringify(meta),
-      ].join('\n');
+      ];
+      if (site) lines.push('Page: ' + site);
+      lines.push('Source: ' + meta.reportSource, '', '[feedback-meta v1]', JSON.stringify(meta));
+      return lines.join('\n');
     }
-    function mailtoHref(reason, note, email) {
+    function mailtoHref(reason, note, email, site) {
       return 'mailto:' + FEEDBACK_EMAIL +
         '?subject=' + encodeURIComponent('Open Book Reader — uninstall feedback') +
-        '&body=' + encodeURIComponent(buildBody(reason, note, email));
+        '&body=' + encodeURIComponent(buildBody(reason, note, email, site));
     }
     document.getElementById('mailLink').addEventListener('click', function (e) {
       e.preventDefault();
-      window.location.href = mailtoHref(selectedReason(), noteEl.value.trim(), emailEl.value.trim());
+      window.location.href = mailtoHref(selectedReason(), noteEl.value.trim(), emailEl.value.trim(), siteToSend());
     });
 
     function done() {
@@ -201,6 +249,7 @@
       var reason = selectedReason();
       var note = noteEl.value.trim();
       var email = emailEl.value.trim();
+      var site = siteToSend();
 
       if (GFORM_ACTION && GFORM_ENTRY_REPORT) {
         // Fire-and-forget POST into the hidden iframe (Google Forms answers with an opaque
@@ -208,14 +257,14 @@
         var f = document.createElement('form');
         f.action = GFORM_ACTION; f.method = 'POST'; f.target = 'gform_sink';
         var i = document.createElement('input');
-        i.type = 'hidden'; i.name = GFORM_ENTRY_REPORT; i.value = buildBody(reason, note, email);
+        i.type = 'hidden'; i.name = GFORM_ENTRY_REPORT; i.value = buildBody(reason, note, email, site);
         f.appendChild(i);
         document.body.appendChild(f);
         f.submit();
         done();
       } else {
         // No form configured → open the user's mail client with everything prefilled.
-        window.location.href = mailtoHref(reason, note, email);
+        window.location.href = mailtoHref(reason, note, email, site);
         done();
       }
     });

@@ -65,12 +65,23 @@ Passive rate/star links also sit in the welcome + options footers.
 
 **Feedback pipeline** (`site/uninstall.html`, `src/report.html`, `tools/feedback-form/`): the report page and
 the **uninstall survey** (opened by `chrome.runtime.setUninstallURL` on uninstall — a static GitHub Pages
-page, param-free so the extension appends nothing) each build a `[feedback-meta v1]` body and POST it to ONE
+page) each build a `[feedback-meta v1]` body and POST it to ONE
 shared "feedback collector" Google Form (single field). An `onFeedbackSubmit` Apps Script bridge
 (`tools/feedback-form/feedback-form.gs`) emails each submission verbatim to the developer's feedback inbox
 (address in `.meta/feedback.json`), so form feedback lands in the same inbox as a `mailto:` report. Reporter
 identity travels IN the marker (`reporterEmail`: `null` = anonymous/no-reply for the uninstall survey; the
 user's optional email for a repliable report; absent on a mailto → a reply goes to the envelope From).
+**The survey's site field.** The extension appends exactly one thing to the survey URL: `#url=<page>`, the
+last page the reader was opened on (`background.js`: `uninstallSurveyUrl`, re-stamped by `invokeReader` on
+every trigger). The page is cut by `OBR._reportPageUrl` — the SAME origin+pathname rule ⚠ Report uses, so
+there is one definition of what an address may carry off the device. It rides the fragment, which never
+reaches the server; the survey shows it only for the two site-specific reasons, as a checked, editable
+"Report the problem site" box, and sends it as `pageUrl` only on submit with the box on. Incognito and
+non-web pages keep the previous stamp, and so does a trigger that passes no `incognito` flag — the
+stamp fails closed, firing only on an explicit `incognito: false`. `onInstalled` resets to the bare URL on install and extension update only (a browser update fires
+it too, as `chrome_update`, and must not wipe the stamp), so an extension update clears the stamp
+until the next read. Disclosed in `site/privacy.html` (Uninstall survey + the on-device list) — keep the
+two in step.
 **GOTCHA** — Apps Script strings must be ASCII or `\uXXXX`-escaped; a raw em dash/curly quote/CJK mangles to
 `â??` mojibake when pasted into the Apps Script editor.
 

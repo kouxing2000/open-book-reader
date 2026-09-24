@@ -50,7 +50,7 @@
     <div class="top"><a href="index.html">← Open Book Reader</a></div>
     <div class="card">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 2026-08-24</p>
+      <p class="updated">Last updated: 2026-09-23</p>
 
       <p class="lead">Open Book Reader is designed to be completely private.</p>
 
@@ -69,11 +69,12 @@
       </ul>
       <p>Either way, the message includes the address of the page you were on (path only — any <code>?query</code> string is stripped), the mode you were using, and the extension version, so the bug can be reproduced. Your email address is included only if you choose to add it for a reply. <strong>The extension never transmits anything on its own</strong> — nothing leaves your device until you submit.</p>
 
-      <h2>Uninstall survey</h2>
+      <h2 id="uninstall">Uninstall survey</h2>
       <p>When you remove the extension, your browser may open a short one-question page asking why you left. Answering is optional and works exactly like reporting a problem (a Google Form, or your own email — only what you choose to send). You <strong>may</strong> add your email if you'd like us to let you know when we fix what made you leave, but it is <strong>never required</strong> — leave it blank and the feedback stays anonymous.</p>
+      <p>So that "it didn't work on this site" can be fixed, the survey link your browser holds carries the address of the <strong>last page you opened (or tried to open) the reader on</strong> (path only — any <code>?query</code> string is stripped; never a page from an incognito window). It sits after a <code>#</code> in the link, the part a browser never sends to a server, so opening the survey transmits nothing. If you say the extension didn't work on a site or grabbed the wrong text, the survey shows that address in a <strong>Report the problem site</strong> box, checked and editable. It is sent only if you submit the form with the box checked — uncheck it, or clear it, and it is left out. Like any page you open, the survey tab's address — that page address included — is recorded in your browser history.</p>
 
       <h2>Data stored on your device</h2>
-      <p>Everything below is written by your own browser and is <strong>never sent to the developer</strong>. Removing the extension clears all of it.</p>
+      <p>Everything below is written by your own browser and is <strong>never sent to the developer</strong> — except the survey link's page address, and only if you choose to send it with the survey. Removing the extension clears all of it.</p>
       <p class="sub-label">Synced across your signed-in Chrome devices (Chrome's <code>storage.sync</code>, through your own Google account — never through us):</p>
       <ul>
         <li><strong>Reading preferences</strong> — font size, theme, book width, spine width, line height, and your gallery layout choices.</li>
@@ -83,6 +84,10 @@
       <ul>
         <li><strong>Reading positions</strong> — where you stopped in an article and how long you spent on it, so the reader can offer to resume. An entry records the site and the page path (any <code>?query</code> string is dropped), which makes it a record of the articles you opened the reader on. It stays on this device.</li>
         <li><strong>Your own counters</strong> — articles finished and total reading time, used only to show your stats on the back-cover page and to decide whether to ask you for a rating.</li>
+      </ul>
+      <p class="sub-label">Held by Chrome itself:</p>
+      <ul>
+        <li><strong>The uninstall-survey link</strong> — it names the last page you opened the reader on (see <a href="#uninstall">Uninstall survey</a>). Each new page replaces it, and it is used only if you remove the extension.</li>
       </ul>
       <p><strong>Incognito windows leave no reading record.</strong> Reading in one saves no position, no reading time and no counters — nothing about it outlives the session. Changes you make deliberately there, such as switching the theme, still save as preferences.</p>
 

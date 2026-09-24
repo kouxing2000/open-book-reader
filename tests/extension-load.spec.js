@@ -512,6 +512,48 @@ test('a report never carries a local path — origin+pathname is not a strip on 
   expect(built.join(' ')).not.toContain('private note');
 });
 
+test('invokeReader stamps the uninstall survey with the page — never incognito, never a query, not without the flag', async ({ serviceWorker, page }) => {
+  // Driven through invokeReader, the one path every trigger shares. Each trigger listener passes
+  // { incognito: tab.incognito }; one that stopped passing it would stamp nothing (fail closed),
+  // which this test does not see — it pins the stamp rule, not the listeners' wiring.
+  await serviceWorker.evaluate(() => {
+    globalThis.__navTab = null;
+    chrome.tabs.onUpdated.addListener((id, info) => { if (info && info.status === 'loading') globalThis.__navTab = id; });
+  });
+  await page.goto('/');
+  const tabId = await serviceWorker.evaluate(() => globalThis.__navTab);
+  expect(tabId).toBeTruthy();
+
+  const stamps = await serviceWorker.evaluate(async (id) => {
+    await chrome.storage.local.set({ obr_blocked_seen: 1 }); // suppress the once-per-profile tab
+    const seen = [];
+    const realSet = chrome.runtime.setUninstallURL;
+    const realExec = chrome.scripting.executeScript;
+    chrome.runtime.setUninstallURL = async (u) => { seen.push(u); };
+    chrome.scripting.executeScript = async () => { throw new Error('Cannot access contents of the page'); };
+    try {
+      await invokeReader(id, 'https://news.test/story/7?session=abc#frag', 'auto', { incognito: false });
+      await invokeReader(id, 'https://private.test/secret-article', 'text', { incognito: true });
+      await invokeReader(id, 'https://unflagged.test/page', 'auto', {}); // a caller that forgot the flag
+      await invokeReader(id, 'chrome://settings/', 'auto', { incognito: false });
+      await invokeReader(id, 'file:///Users/me/notes.html', 'auto', { incognito: false });
+      await invokeReader(id, 'https://long.test/' + 'a'.repeat(1200), 'images', { incognito: false });
+    } finally {
+      chrome.runtime.setUninstallURL = realSet;
+      chrome.scripting.executeScript = realExec;
+    }
+    return seen;
+  }, tabId);
+
+  const SURVEY = 'https://openbook.peach-studio.com/uninstall.html#url=';
+  expect(stamps).toEqual([
+    SURVEY + 'https%3A%2F%2Fnews.test%2Fstory%2F7', // query + fragment stripped
+    SURVEY + 'https%3A%2F%2Flong.test%2F',          // over Chrome's 1023-char cap → origin only
+  ]);
+  expect(stamps.join(' ')).not.toContain('private.test');   // the incognito read left no trace
+  expect(stamps.join(' ')).not.toContain('unflagged.test'); // no flag means no stamp: fails closed
+});
+
 test('the report path survives a page the reader cannot draw on: menu item + worker-built meta', async ({ serviceWorker }) => {
   // Every ⚠ Report button lives inside an overlay, so the failures worth reporting are exactly
   // the ones that hide it. This entry point runs entirely in the worker — no content script.

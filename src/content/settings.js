@@ -327,13 +327,9 @@
   // human-readable metadata block, then the marker + a one-line JSON that IS this object.
   // ctx: { source, mode, imageCount?, proseWords? }. The page URL is stripped to origin+pathname
   // (no query/hash) so session tokens can't leak even into a user-reviewed draft.
-  OBR._buildReportMeta = function (ctx) {
-    ctx = ctx || {};
-    // ctx.pageUrl overrides the ambient location: the service worker builds this too (the
-    // context-menu "report this page" entry, which must work with no content script alive),
-    // and there `location` is the WORKER's own chrome-extension:// URL.
-    let pageUrl = '';
-    const src = ctx.pageUrl || (globalThis.location ? location.href : 'about:blank');
+  // The ONE rule for what a page address may carry when it leaves the device — the report
+  // page and the uninstall survey's "report the problem site" both go through it.
+  OBR._reportPageUrl = function (src) {
     try {
       const u = new URL(src);
       // Allowlist the two schemes where origin+pathname IS a strip. Everywhere else it is the
@@ -345,10 +341,18 @@
       // Node reports "null", so an origin-string test passes in a unit harness and leaks in the
       // browser (tests/extension-load.spec.js runs this one in a real service worker for exactly
       // that reason).
-      pageUrl = /^https?:$/.test(u.protocol)
+      return /^https?:$/.test(u.protocol)
         ? u.origin + u.pathname
         : (u.protocol === 'file:' ? '(local file)' : '(' + u.protocol.replace(':', '') + ' URL)');
-    } catch (e) { pageUrl = String(src || '').split(/[?#]/)[0]; }
+    } catch (e) { return String(src || '').split(/[?#]/)[0]; }
+  };
+
+  OBR._buildReportMeta = function (ctx) {
+    ctx = ctx || {};
+    // ctx.pageUrl overrides the ambient location: the service worker builds this too (the
+    // context-menu "report this page" entry, which must work with no content script alive),
+    // and there `location` is the WORKER's own chrome-extension:// URL.
+    const pageUrl = OBR._reportPageUrl(ctx.pageUrl || (globalThis.location ? location.href : 'about:blank'));
 
     const meta = {
       app: 'open-book-reader',

@@ -176,6 +176,12 @@ outbound links on the welcome page. No beacons, sockets, or remote scripts. Each
 described on the public privacy page (`site/privacy.html:58-99`). Debug timing writes
 `obr_debug` to `storage.local` only (`settings.js:122`).
 
+**Correction, 2026-09-23:** the uninstall URL now carries one parameter, `#url=` — the last page
+the reader was opened on (origin+pathname, never incognito), in the fragment, which the browser does
+not send to the server. It leaves the device only when the user submits the survey with "Report the
+problem site" checked. Disclosed in `site/privacy.html` (Uninstall survey); mechanism in
+`docs/engagement.md` → The survey's site field.
+
 **V2 · Info · CONFIRMED — storage is bounded and incognito-gated where it should be.**
 Every passive per-page write goes through `skipPassiveWrite()` (`settings.js:856,865,877,1085,
 1093,1361`; `reader.js:1284`). Positions are LRU-capped (`POSITIONS_MAX`, `settings.js:843`);
