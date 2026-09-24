@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>The lighthouse keepers' last logbook</title>
+  <style>#alt-lang { visibility: hidden; }</style>
 </head>
 <body>
   <header><nav>Home · News · About</nav></header>
@@ -12,10 +13,11 @@
       <!-- Ars Technica's shape: ONE story set as two div.post-content blocks, each in its own grid
            row beside an ad rail, the second sharing its column with an author bio and share tools.
            The OPENING block is the smaller one, so Readability keeps the second and drops the
-           first — the case where the reader starts mid-story. -->
+           first — the case where the reader starts mid-story. Its class list is written in the
+           other order: the same class set, so still the same container. -->
       <div class="story-row">
         <div class="story-col">
-          <div class="post-content post-content-double">
+          <div class="post-content-double post-content">
             <p>PART-ONE-MARKER The final logbook from the island lighthouse arrived at the county archive last week, wrapped in oilcloth and tied with the same frayed twine the last keeper used on every parcel he ever sent ashore.</p>
             <p>Archivists expected weather notes and lamp hours, and they found those, but they also found forty years of small observations about birds, boats, and the slow habits of the people who rowed out with supplies.</p>
             <p>The early entries are terse and practical, written in a hurried hand that suggests the keeper was writing while the kettle boiled and the lamp still needed trimming before the evening light came on.</p>
@@ -39,8 +41,8 @@
       </div>
       <!-- Decoys INSIDE the story's <article> that share the story's markup and must stay out,
            one per rule: a different parent (a teaser box), a superset class list (a newsletter
-           promo), an <aside> (author box), a hidden tab panel, and an embedded story in its
-           own nested <article>. -->
+           promo), an <aside> (author box), a hidden tab panel, one hidden by the stylesheet, and
+           an embedded story in its own nested <article>. -->
       <div class="teaser-box">
         <div class="post-content post-content-double">
           <p>TEASER-MARKER Read next: a long feature about the harbour tide tables that two volunteers repaint every spring, and why the fishermen insist that every number on the board stays legible.</p>
@@ -64,6 +66,13 @@
         <div class="story-col">
           <div class="post-content post-content-double">
             <p>HIDDEN-MARKER This panel holds the same story in another language and stays hidden until a reader switches tabs, so it must never appear in the reader as part of the story.</p>
+          </div>
+        </div>
+      </div>
+      <div class="story-row" id="alt-lang">
+        <div class="story-col">
+          <div class="post-content post-content-double">
+            <p>VEILED-MARKER This panel holds the story's audio transcript, kept invisible by the page's stylesheet until a listener opens it, so it must never appear in the reader either.</p>
           </div>
         </div>
       </div>

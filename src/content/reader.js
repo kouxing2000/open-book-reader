@@ -668,23 +668,34 @@
   const SPLIT_MIN_WORDS = 20;  // the bar _proseStats counts a block at
   const SPLIT_CLIMB = 4;       // classless levels to walk up from the kept blocks' common box
   const SPLIT_MAX_PEERS = 5;
+  // Classes sorted: class="a b" and class="b a" are the same class set.
   function splitSig(el) {
-    return el ? CSS.escape(el.tagName.toLowerCase()) + Array.from(el.classList || []).map((c) => '.' + CSS.escape(c)).join('') : '';
+    return el ? CSS.escape(el.tagName.toLowerCase()) + Array.from(el.classList || []).sort().map((c) => '.' + CSS.escape(c)).join('') : '';
   }
+  // A block's identity is its opening, not its whole text: Readability trims inside a block
+  // (a trailing button, a hidden span). Two blocks sharing an opening then only make the merge
+  // do LESS: neither places the box (splitBodyParts), a missing one reads as kept, and a piece
+  // holding one is dropped as a duplicate.
   const splitKey = (el) => el.textContent.replace(/\s+/g, ' ').trim().slice(0, 80);
   const splitProse = (root) => Array.from(root.querySelectorAll('p, blockquote, li')).filter((el) =>
     !el.querySelector('p, blockquote, li') && countWords(el.textContent) >= SPLIT_MIN_WORDS);
   const splitKeysOf = (html) => splitProse(new DOMParser().parseFromString(html, 'text/html').body).map(splitKey);
-  // Would Readability have dropped missing block `m` on its own? Mirrors its rejection rules —
-  // a class/id among its unlikely candidates (comment, related, footer…), an <aside> or
-  // <footer> tag, an unlikely ARIA role, or content that is not visible — on every ancestor
-  // below the one `m` shares with `box`. A peer whose missing prose Readability rejects is
-  // chrome that happens to share the story's markup (a bio, a teaser, an inactive tab panel).
+  // Is missing block `m` chrome rather than story? Mirrors Readability's rejection rules on every
+  // ancestor below the one `m` shares with `box` — a class/id among its unlikely candidates
+  // (comment, related, footer…), an <aside> or <footer> tag, an unlikely ARIA role, a hidden
+  // attribute or inline hiding — and goes past them on visibility: checkVisibility reads the
+  // rendered page, stylesheet included, which Readability (inline styles only) never sees. A
+  // peer failing any of these is chrome that happens to share the story's markup (a bio, a
+  // teaser, an inactive tab panel).
   function splitRejected(m, box) {
     const R = globalThis.Readability && Readability.prototype;
     const re = R && R.REGEXPS && R.REGEXPS.unlikelyCandidates;
     const roles = (R && R.UNLIKELY_ROLES) || [];
-    if (typeof m.checkVisibility === 'function' && !m.checkVisibility()) return true;
+    // visibilityProperty (checkVisibilityCSS before Chrome 121): without it a pane hidden by the
+    // page's stylesheet with visibility:hidden still counts as visible. Not opacity — content
+    // that fades in on scroll starts at opacity 0.
+    if (typeof m.checkVisibility === 'function'
+        && !m.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true })) return true;
     for (let n = m; n && !n.contains(box); n = n.parentElement) {
       if (n.tagName === 'ASIDE' || n.tagName === 'FOOTER') return true;
       if (roles.includes(n.getAttribute('role'))) return true;
@@ -699,7 +710,11 @@
     if (!article || !article.content || !body) return null;
     const keptKeys = new Set(splitKeysOf(article.content));
     const live = splitProse(body);
-    const kept = live.filter((el) => keptKeys.has(splitKey(el)));
+    // A key two live blocks share cannot say which one the read kept; letting both place the
+    // box would lift it to a wrapper around both (a pull quote repeating the lead's opening).
+    const liveKeys = live.map(splitKey);
+    const shared = new Set(liveKeys.filter((k, i) => liveKeys.indexOf(k) !== i));
+    const kept = live.filter((el, i) => keptKeys.has(liveKeys[i]) && !shared.has(liveKeys[i]));
     const why = { kept: kept.length, missing: live.length - kept.length };
     if (!kept.length || kept.length === live.length) return Object.assign(why, { parts: null });
     let box = kept[0].parentElement;

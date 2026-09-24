@@ -123,8 +123,9 @@ test('reads an article split across two same-class containers whole, in page ord
   // Ars Technica's layout: one story in two div.post-content blocks under separate wrappers.
   // Readability keeps only the larger block, so without the merge the reader silently starts
   // mid-story. Each decoy shares the story's markup and pins one rule: a different parent, a
-  // superset class list, an <aside>, a hidden panel, a nested <article>; comments sit outside.
-  const DECOYS = ['TEASER-MARKER', 'NEWSLETTER-MARKER', 'ASIDE-MARKER', 'HIDDEN-MARKER', 'NESTED-MARKER', 'COMMENT-MARKER'];
+  // superset class list, an <aside>, a hidden panel, one hidden by the stylesheet, a nested
+  // <article>; comments sit outside. The two halves list their classes in different orders.
+  const DECOYS = ['TEASER-MARKER', 'NEWSLETTER-MARKER', 'ASIDE-MARKER', 'HIDDEN-MARKER', 'VEILED-MARKER', 'NESTED-MARKER', 'COMMENT-MARKER'];
   await gotoFixture(page, 'split-body-article.html');
   await injectReader(page);
   const bare = await page.evaluate(() => new Readability(document.cloneNode(true)).parse().textContent);
@@ -162,6 +163,8 @@ for (const [fixture, keptSel, verdict] of [
   ['split-body-false-stream.html', 'article:first-of-type .copy', 'no peer container'],
   // one <article> holding many same-markup cards is a list, not a split story
   ['split-body-false-cards.html', '.card:first-of-type .card-body', 'repeated cards'],
+  // a pull quote repeating the lead's opening must not lift the box to the wrapper around both
+  ['split-body-false-pullquote.html', '.body', 'no peer container'],
 ]) {
   test(`does not merge same-class blocks that are not one story (${fixture})`, async ({ page }) => {
     // Handed a read that kept exactly the story — the precondition these shapes need. Driving

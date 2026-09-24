@@ -270,7 +270,9 @@ them the dropped block is the opening, so the reader started mid-story.
 keeps the unmerged read. `splitBodyParts` maps the kept prose blocks back to the live page and takes
 the NEAREST classed box holding all of them (walking up through classless boxes only, at most
 `SPLIT_CLIMB`), then looks for PEERS. Each peer's own Readability extraction is added before or
-after the original, in page order — the original stays whole, so a merge can only add text. Each
+after the original, in page order — the original stays whole, so a merge can only add text. The
+flip side: a piece added before the read lands above everything the read kept, including a figure
+that sat above that piece on the page. Each
 rule names the fixture whose test goes red without it; the ARIA-role, `<footer>` and nested-peer
 checks have no fixture of their own (the last is also covered by the duplicate-piece check):
 
@@ -282,28 +284,39 @@ checks have no fixture of their own (the last is also covered by the duplicate-p
   split story on a site that uses no `<article>` stays unfixed.
 - **The nearest classed box, never a wrapper above it.** Identical layout wrappers
   (`div.container.mx-auto`) would find a comments wrapper as a "peer" (`split-body-false-wrappers.html`,
-  which asserts the verdict `no peer container`).
-- **Exact class list, not a superset** — `querySelectorAll` alone would match a
-  `.post-content.newsletter-cta` promo (`NEWSLETTER-MARKER`) — and **a parent of the same
-  signature** — a teaser box reusing the class (`TEASER-MARKER`).
+  which asserts the verdict `no peer container`). A block whose opening another live block
+  repeats does not place the box: a pull quote quoting the lead would otherwise lift it to the
+  wrapper around both (`split-body-false-pullquote.html`).
+- **Exact class set, not a superset** — `querySelectorAll` alone would match a
+  `.post-content.newsletter-cta` promo (`NEWSLETTER-MARKER`); the order classes are written in does
+  not count (the two halves of `split-body-article.html` list theirs in opposite orders) — and **a
+  parent of the same signature** — a teaser box reusing the class (`TEASER-MARKER`).
 - **Nothing Readability would have dropped anyway** (`splitRejected`, on every ancestor below the
   one shared with the box): a class/id among its `unlikelyCandidates` (a related-posts wrapper,
   `split-body-false-related.html`), an `<aside>`/`<footer>` tag (`ASIDE-MARKER`), an unlikely ARIA
-  role, or content that is not visible (`HIDDEN-MARKER`, an inactive tab panel).
+  role, or a `hidden` attribute / inline hiding (`HIDDEN-MARKER`, an inactive tab panel). **And
+  nothing the page does not show** — this goes past Readability, which reads inline styles only:
+  `checkVisibility` with `visibilityProperty` reads the rendered page, so a pane the stylesheet
+  hides with `visibility:hidden` stays out (`VEILED-MARKER`; plain `checkVisibility()` misses it).
+  Opacity is not checked, since content that fades in on scroll starts at opacity 0; a reveal that
+  starts at `visibility:hidden` is rejected, so such a half is not merged.
 - **Readability output only, never the raw fallback.** `extractFromNode` falls back to a block's raw
   markup — right for a user's pick, wrong for a block nobody picked: it carries share buttons,
   inputs and embeds into the default read (`split-body-raw-peer.html`). An empty piece is dropped.
 - **No piece the read (or an earlier piece) already has.** "Missing" is decided on LIVE text, and
   Readability strips some of it (a timestamp `<button>`), so a kept block can look missing; a piece
   sharing any prose block with what is already merged — compared extraction to extraction — is
-  dropped (`split-body-transcript.html`). Peers nested in another peer are dropped too.
+  dropped (`split-body-transcript.html`). Peers nested in another peer are dropped too. A block is
+  identified by its first 80 characters; with the box rule above, every collision errs toward
+  merging less. Known limit: a piece holding one duplicated block and some genuinely missing text
+  is dropped whole.
 - **At most `SPLIT_MAX_PEERS` peers** — more is repeated cards (`split-body-false-cards.html`).
 
 A pick or a selection is never merged — it is exactly what the user pointed at. Debug mode
 (`OBR.debugTiming(true)`) logs each decision as `split body: merged N part(s)` or `none`, with the
 kept/missing block counts, the signature, dropped duplicate/empty pieces and the verdict. The
 full-open tests first assert what bare Readability kept and missed, so they cannot pass
-vacuously; the wrappers, stream and cards fixtures call `OBR._splitBodyParts` with a read that kept
+vacuously; the wrappers, stream, cards and pull-quote fixtures call `OBR._splitBodyParts` with a read that kept
 exactly the story, because Readability's own sibling rules already climb to the shared wrapper on
 those synthetic pages.
 
