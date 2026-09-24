@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-24
+
+- **Articles that a site splits into two sections now read whole.** Some news sites, Ars
+  Technica among them, set one story as two separate blocks with an author box or share buttons
+  between them. The reader kept only one of the two, so about half of each article went
+  missing, and sometimes it was the opening, so the story started in the middle. Both halves
+  now appear, in page order. The rule stays narrow on purpose: it joins blocks only inside the
+  same story, so a forum thread, a list of teasers or the next article on an endless-scroll
+  page is never folded into the one you are reading, and anything the page keeps hidden stays
+  out.
+- **The goodbye survey can now say which site didn't work.** If you remove the extension and
+  answer that it didn't work on a site or grabbed the wrong text, the survey offers a "Site / URL
+  that had the issue" box, filled in with the last page you opened the reader on. It is sent
+  only if you submit the survey with "Report the problem site" left checked, and you can edit
+  or clear it first. It never comes from an incognito window, and only the page's address and
+  path are kept (any `?query` is dropped). The privacy policy describes it in full.
+
 ## [1.10.0] - 2026-09-21
 
 - **In a comic, photo essay or scanned book, each picture now gets a whole page to itself.**
@@ -413,7 +430,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.11.0
 [1.10.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.10.0
 [1.9.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.9.0
 [1.8.3]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.8.3
