@@ -2194,6 +2194,23 @@ function resetEngagement(page) {
       chrome.storage.local.set({ obr_usage: {}, obr_lifetime: {}, obr_positions: {} }, res))));
 }
 
+// What a Share click HANDED the clipboard is the outcome under test, so capture writeText's
+// argument instead of reading headless Chromium's clipboard back. `ok:false` refuses the way
+// a plain-http page or a site's permissions policy does.
+function stubClipboard(page, ok) {
+  return page.evaluate((ok) => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: (t) => {
+        window.__copied = t;
+        return ok ? Promise.resolve() : Promise.reject(new DOMException('refused', 'NotAllowedError'));
+      },
+    } });
+  }, ok);
+}
+
+const engageDone = (page) => page.evaluate(() => new Promise((res) =>
+  chrome.storage.sync.get('obr_engage', (d) => res(!!(d.obr_engage || {}).done))));
+
 // Re-open within the same page session. openReader()'s indicator poll would pass
 // instantly on the PREVIOUS open's still-rendered DOM (close only hides the host), so
 // wait on the _opensCompleted hook instead, plus a double rAF for the deferred layout().
@@ -2248,6 +2265,46 @@ test.describe('back-cover colophon', () => {
     });
     expect(again.stats).toMatch(/words/);
     expect(again.askHidden).toBe(true);
+  });
+
+  test('Share copies the end-page invite, confirms, and retires the ask', async ({ page }) => {
+    await resetEngagement(page);
+    await stubClipboard(page, true);
+    await openReader(page);
+    await page.keyboard.press('End');
+    await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-share').click());
+    await expect.poll(() => page.evaluate(() => window.__copied || ''))
+      .toContain('https://openbook.peach-studio.com/?ref=share-end');
+    expect(await page.evaluate(() => window.__copied)).toMatch(/^I’ve been reading articles with Open Book Reader/);
+    expect(await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-ask').textContent)).toContain('Invite copied');
+    await expect.poll(() => engageDone(page)).toBe(true);
+  });
+
+  test('Share hands over the invite, selected, when the page refuses the clipboard', async ({ page }) => {
+    await resetEngagement(page);
+    await stubClipboard(page, false);
+    await openReader(page);
+    await page.keyboard.press('End');
+    await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-share').click());
+    await expect.poll(() => page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const f = root.querySelector('.obr-colo-ask .obr-share-field');
+      if (!f) return null;
+      return { link: f.value.includes('?ref=share-end'), focused: root.activeElement === f,
+        selected: f.selectionStart === 0 && f.selectionEnd === f.value.length };
+    })).toEqual({ link: true, focused: true, selected: true });
+    await expect.poll(() => engageDone(page)).toBe(true);
+    // `done` is already synced, so this field is the ONLY way left to reach the invite: a
+    // relayout (resize, late image, web font) must not hide it.
+    await page.setViewportSize({ width: 1300, height: 800 });
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => {
+      const ask = document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-ask');
+      return !ask.hidden && !!ask.querySelector('.obr-share-field');
+    })).toBe(true);
   });
 
   test('colophon setting off = the article just ends', async ({ page }) => {
@@ -2383,6 +2440,42 @@ test.describe('engagement ask policy', () => {
       chrome.storage.sync.get('obr_engage', (d) => res(d.obr_engage || {}))));
     expect(engage.asks).toBe(1);
     expect(engage.lastAsk).toBeGreaterThan(0);
+  });
+
+  test('the chip\'s Share copies the chip-tagged invite and confirms in place', async ({ page }) => {
+    await resetEngagement(page);
+    await stubClipboard(page, true);
+    await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.set({ obr_usage: { opens: 6, days: 3, lastDay: '2020-01-01' } }, res)));
+    await openReader(page);
+    await page.evaluate(() => OBR.close());
+    await expect.poll(() => page.evaluate(() => !!document.getElementById('obr-engage-chip-host'))).toBe(true);
+    await page.evaluate(() => [...document.getElementById('obr-engage-chip-host').shadowRoot.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Share').click());
+    await expect.poll(() => page.evaluate(() => window.__copied || '')).toContain('?ref=share-chip');
+    expect(await page.evaluate(() =>
+      document.getElementById('obr-engage-chip-host').shadowRoot.querySelector('.msg').textContent)).toContain('Invite copied');
+    await expect.poll(() => engageDone(page)).toBe(true);
+  });
+
+  test('the chip\'s Share hands over the invite, selected, when the page refuses the clipboard', async ({ page }) => {
+    await resetEngagement(page);
+    await stubClipboard(page, false);
+    await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.set({ obr_usage: { opens: 6, days: 3, lastDay: '2020-01-01' } }, res)));
+    await openReader(page);
+    await page.evaluate(() => OBR.close());
+    await expect.poll(() => page.evaluate(() => !!document.getElementById('obr-engage-chip-host'))).toBe(true);
+    await page.evaluate(() => [...document.getElementById('obr-engage-chip-host').shadowRoot.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Share').click());
+    await expect.poll(() => page.evaluate(() => {
+      const root = document.getElementById('obr-engage-chip-host').shadowRoot;
+      const f = root.querySelector('.obr-share-field');
+      if (!f) return null;
+      return { link: f.value.includes('?ref=share-chip'), focused: root.activeElement === f,
+        selected: f.selectionStart === 0 && f.selectionEnd === f.value.length,
+        closable: !!root.querySelector('.x') };
+    })).toEqual({ link: true, focused: true, selected: true, closable: true });
   });
 
   test('a mode switch is not a dismissal — no chip on suppress:false closes', async ({ page }) => {

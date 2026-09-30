@@ -14,3 +14,7 @@ try {
   var lang = globalThis.chrome && chrome.i18n && chrome.i18n.getUILanguage && chrome.i18n.getUILanguage();
   if (lang) document.documentElement.lang = lang;
 } catch (e) { /* */ }
+
+// "Share with a friend" copies the invite (OBR comes from content/settings.js, loaded first).
+// Bound after the localization above, because the link restores its current label.
+try { OBR.bindShareLink(document.getElementById('share-link'), 'welcome'); } catch (e) { /* */ }

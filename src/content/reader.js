@@ -1335,7 +1335,7 @@
    * into the column flow so it fills the final spread's blank page when one exists, or
    * becomes its own back-cover spread one flip past the end — it never covers article
    * text, never auto-navigates, and fades in once when first seen.
-   * Ask retirement: any interaction (Rate / Feedback / ✕) sets `done` in SYNCED engage
+   * Ask retirement: any interaction (Rate / Share / Feedback / ✕) sets `done` in SYNCED engage
    * state — no surface asks again, on any device — and COLOPHON_ASK_SEEN_MAX unacted
    * impressions retire the ask by themselves. The stats page keeps appearing either way
    * (it's a reward, not an ask); the `colophon` setting turns the whole page off. */
@@ -1371,9 +1371,13 @@
 
   // Any interaction with the ask — including dismissing it — means "stop asking",
   // everywhere, forever (synced). The stats page itself is unaffected.
-  function recordAskDone() {
+  function persistAskDone() {
     engageState = Object.assign({}, engageState, { done: true });
     if (OBR.saveEngage) OBR.saveEngage({ done: true });
+  }
+
+  function recordAskDone() {
+    persistAskDone();
     if (colophonEl) {
       const a = colophonEl.querySelector('.obr-colo-ask');
       if (a) a.hidden = true;
@@ -1422,12 +1426,37 @@
       recordAskDone();
       if (OBR.reportBroken) OBR.reportBroken({ source: 'colophon', mode: 'text', proseWords: articleWords });
     });
+    // Share retires the ask like its siblings, but the line stays up to say what happened:
+    // a confirmation for 3s, or — when the page refused the clipboard — the invite itself,
+    // selected, for as long as this article stays rendered.
+    const share = document.createElement('button');
+    share.className = 'obr-colo-share';
+    share.textContent = OBR.t('colophonShare');
+    share.addEventListener('click', () => {
+      const copied = OBR.copyInvite('end');
+      persistAskDone();
+      copied.then((ok) => {
+        ask.textContent = '';
+        if (ok) {
+          const done = document.createElement('span');
+          done.className = 'obr-colo-ok';
+          done.textContent = OBR.t('shareCopied');
+          ask.append(done);
+          setTimeout(() => { ask.hidden = true; }, 3000);
+        } else {
+          const box = OBR._shareFallback('end');
+          ask.append(box);
+          // preventScroll: the pages strip is transformed, and a focus scroll would shear it.
+          box.querySelector('.obr-share-field').focus({ preventScroll: true });
+        }
+      });
+    });
     const x = document.createElement('button');
     x.className = 'obr-colo-x';
     x.textContent = '✕';
     x.title = OBR.t('colophonAskDismiss');
     x.addEventListener('click', recordAskDone);
-    ask.append(q, rate, document.createTextNode('·'), fb, x);
+    ask.append(q, rate, document.createTextNode('·'), share, document.createTextNode('·'), fb, x);
     el.append(fin, stats, life, ask);
     colophonEl = el;
     return el;
@@ -1453,8 +1482,10 @@
           [String(lt.articles || 0), OBR._formatReadingDuration((lt.ms || 0) + readMs)]);
       }
     }
+    // A Share result on the line (the fallback field) outlives `done`: a relayout from a
+    // resize, late image or web font would otherwise hide the only copy of the invite.
     const ask = colophonEl.querySelector('.obr-colo-ask');
-    if (ask) ask.hidden = !colophonAskVisible();
+    if (ask && !ask.querySelector('.obr-share-fallback')) ask.hidden = !colophonAskVisible();
   }
 
   // Reached the last CONTENT spread of a qualifying article: count "articles finished"

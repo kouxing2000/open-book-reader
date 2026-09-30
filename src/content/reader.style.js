@@ -355,14 +355,18 @@
       text-underline-offset: 2px; padding: 0 2px; }
     .obr-colo-hide:hover { opacity: 1; }
     /* The ask is the QUIETEST thing on the page — a footer line, not a banner. */
-    .obr-colo-ask { position: absolute; left: 0; right: 0; bottom: 14px;
-      display: flex; align-items: center; justify-content: center; gap: 7px;
+    .obr-colo-ask { position: absolute; left: 0; right: 0; bottom: 14px; padding: 0 12px;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 7px;
       font-family: ${FONT_STACKS.sans}; font-size: 11.5px; opacity: .6; }
     .obr-colo-ask:hover { opacity: .9; }
     .obr-colo-ask a, .obr-colo-ask button { border: none; background: transparent;
       cursor: pointer; color: inherit; font: inherit; padding: 2px 3px;
       text-decoration: underline; text-underline-offset: 2px; }
     .obr-colo-x { opacity: .65; text-decoration: none !important; }
+    .obr-colo-ok { font-weight: 600; }
+    .obr-colo-ask .obr-share-fallback { width: 86%; display: flex; flex-direction: column; gap: 4px; }
+    .obr-colo-ask .obr-share-field { font: inherit; color: inherit; background: transparent;
+      border: 1px solid currentColor; border-radius: 4px; padding: 3px 6px; }
     .obr-colo-x:hover { opacity: 1; }
     `;
   };

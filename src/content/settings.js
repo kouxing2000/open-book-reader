@@ -87,6 +87,62 @@
   OBR.STORE_URL = 'https://chromewebstore.google.com/detail/kmcomogkbbdjhfocbncljmgcnfmaljca';
   OBR.STORE_REVIEWS_URL = OBR.STORE_URL + '/reviews';
 
+  /* --------------------------------------------------------------- share invite
+   * Every Share button (colophon, engagement chip, welcome + options footers) copies ONE
+   * ready-to-paste invite. It links to the landing page rather than the store: the landing
+   * page unfurls as a picture in chat apps (its Open Graph tags), and its Add to Chrome
+   * button turns `?ref=share-<surface>` into store UTM tags (site/index.html), which is the
+   * only attribution there is. `surface` names the button — the link carries nothing else,
+   * never the page being read. Nothing is sent: the user pastes it, or doesn't. */
+  OBR.SITE_URL = 'https://openbook.peach-studio.com/';
+  OBR.shareInvite = (surface) => OBR.t('shareInvite', [OBR.SITE_URL + '?ref=share-' + surface]);
+
+  // Resolves true once the invite is on the clipboard, false when the page refused it
+  // (a plain-http page has no async clipboard; a site's permissions policy can block it).
+  // writeText runs synchronously inside the caller's click, where the user activation is.
+  OBR.copyInvite = function (surface) {
+    try {
+      return navigator.clipboard.writeText(OBR.shareInvite(surface)).then(() => true, () => false);
+    } catch (e) { return Promise.resolve(false); }
+  };
+
+  // The in-page fallback when copyInvite resolves false: the invite in a read-only field over
+  // a visible "press Ctrl+C" line. Callers insert it, then focus `.obr-share-field`, which
+  // selects the whole invite. Asking for the clipboardWrite permission instead would trip the
+  // Web Store's permission gate for a corner case.
+  OBR._shareFallback = function (surface) {
+    const box = document.createElement('span');
+    box.className = 'obr-share-fallback';
+    const f = document.createElement('input');
+    f.readOnly = true;
+    f.value = OBR.shareInvite(surface);
+    f.className = 'obr-share-field';
+    f.setAttribute('aria-label', OBR.t('shareCopyManual'));
+    f.addEventListener('focus', () => f.select());
+    const hint = document.createElement('span');
+    hint.textContent = OBR.t('shareCopyManual');
+    box.append(f, hint);
+    return box;
+  };
+
+  // Extension pages (welcome, options): a "Share with a friend" link that confirms on
+  // itself. Bind AFTER the page localized the link — its current text is what comes back.
+  // An extension page always has the clipboard, so the fallback is just a prompt() holding
+  // the text.
+  OBR.bindShareLink = function (el, surface) {
+    const label = el.textContent;
+    // role="button" on a link: Space must activate it the way it would a real button.
+    el.addEventListener('keydown', (e) => { if (e.key === ' ') { e.preventDefault(); el.click(); } });
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      OBR.copyInvite(surface).then((ok) => {
+        if (!ok) { globalThis.prompt(OBR.t('shareCopyManual'), OBR.shareInvite(surface)); return; }
+        el.textContent = OBR.t('shareCopied');
+        setTimeout(() => { el.textContent = label; }, 3000);
+      });
+    });
+  };
+
   /* ----------------------------------------------------- debug timing (LOCAL only)
    * A maintainer/field diagnostic for "why is opening slow?". OFF by default and invisible
    * to normal users: the flag lives in chrome.storage.LOCAL (never synced, never shown in
@@ -1246,7 +1302,7 @@
   // one family — same position, same skin).
   const CHIP_CSS = `
     .chip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
-      z-index: 2147483647; display: flex; align-items: center; gap: 9px;
+      z-index: 2147483647; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px;
       padding: 8px 10px 8px 14px; border-radius: 12px;
       font: 12.5px/1.4 -apple-system, system-ui, "PingFang SC", sans-serif;
       background: rgba(24,25,30,.96); color: #eee;
@@ -1258,7 +1314,11 @@
     .alt { background: rgba(255,255,255,.14); color: #ddd; padding: 5px 11px; white-space: nowrap; }
     .alt:hover { background: rgba(255,255,255,.26); }
     .x { background: transparent; color: inherit; opacity: .6; padding: 4px 7px; }
-    .x:hover { opacity: 1; }`;
+    .x:hover { opacity: 1; }
+    .obr-share-fallback { display: flex; flex-direction: column; gap: 4px; opacity: .92; }
+    .obr-share-field { width: min(560px, 80vw); font: inherit; color: inherit;
+      background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.3);
+      border-radius: 7px; padding: 5px 9px; }`;
 
   let chipTimer = null;
   OBR._showAutoChip = function (kind, host) {
@@ -1304,12 +1364,12 @@
   };
 
   /* -------------------------------------------------- one-time engagement chip
-   * "Enjoying Open Book Reader? ★ Rate it · Send feedback" — Rate and Feedback are
-   * EQUAL siblings (deliberately no "enjoying it? yes/no" pre-screen: that's soft
-   * review-gating). Shown only via OBR._maybeEngageAsk on a USER-initiated close —
-   * never during reading — and hard-capped by _shouldAskEngage. Rate opens the store's
-   * review page; Feedback rides the existing report pipeline. Any action marks the
-   * ask done (synced) so no surface ever asks again. */
+   * "Enjoying Open Book Reader? ★ Rate it · Share · Send feedback" — EQUAL siblings
+   * (deliberately no "enjoying it? yes/no" pre-screen: that's soft review-gating). Shown
+   * only via OBR._maybeEngageAsk on a USER-initiated close — never during reading — and
+   * hard-capped by _shouldAskEngage. Rate opens the store's review page; Share copies the
+   * invite; Feedback rides the existing report pipeline. Any action marks the ask done
+   * (synced) so no surface ever asks again. */
   let engageChipTimer = null;
   OBR._showEngageChip = function () {
     try {
@@ -1336,6 +1396,32 @@
         try { globalThis.open(OBR.STORE_REVIEWS_URL, '_blank', 'noopener'); } catch (e) { /* */ }
         gone();
       });
+      // Share confirms IN the chip (or, when the page refused the clipboard, holds the
+      // invite selected for a manual copy), so the chip outlives the click.
+      const share = document.createElement('button');
+      share.className = 'alt';
+      share.textContent = OBR.t('colophonShare');
+      share.addEventListener('click', () => {
+        // The chip sits outside the reader's host, so no door guards it: after an extension
+        // reload OBR.t echoes keys, and the clipboard would get the literal "shareInvite".
+        if (OBR._ctxDead()) { gone(); return; }
+        const copied = OBR.copyInvite('chip');
+        done();
+        copied.then((ok) => {
+          clearTimeout(engageChipTimer);
+          chip.textContent = '';
+          if (ok) {
+            msg.textContent = OBR.t('shareCopied');
+            chip.append(msg);
+            engageChipTimer = setTimeout(gone, 3000);
+          } else {
+            const box = OBR._shareFallback('chip');
+            chip.append(box, x);
+            box.querySelector('.obr-share-field').focus();
+            engageChipTimer = setTimeout(gone, 30000);
+          }
+        });
+      });
       const fb = document.createElement('button');
       fb.className = 'alt';
       fb.textContent = OBR.t('colophonFeedback');
@@ -1349,7 +1435,7 @@
       x.textContent = '✕';
       x.setAttribute('aria-label', OBR.t('autoChipDismiss'));
       x.addEventListener('click', gone); // dismiss ≠ "never": the asks counter caps at 2 anyway
-      chip.append(msg, rate, fb, x);
+      chip.append(msg, rate, share, fb, x);
       root.append(chip);
       // Longer than the auto chip (two choices to read), still transient — the page is
       // the user's again either way.

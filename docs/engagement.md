@@ -36,7 +36,7 @@ ask surfaces, designed reward-first and capped hard. (1) **Back-cover colophon**
 reaches the end of a substantial article (≥300 extracted words, ≥2 content spreads), a back-cover
 page renders — "The End" + words + accumulated reading time, an optional per-device lifetime line
 (from the 3rd finished article; carries its own inline "hide" link → `colophonLifetime:false`),
-and a QUIET footer ask ("Enjoying…? ★ Rate · Send feedback ✕" — equal siblings, deliberately NO
+and a QUIET footer ask ("Enjoying…? ★ Rate · Share · Send feedback ✕" — equal siblings, deliberately NO
 "enjoying it? yes/no" pre-screen, that's soft review-gating). `layout()` appends it INTO the
 column flow (`break-before: column`, sized to one page) AFTER measuring the content alone, so it
 fills the final spread's ALREADY-blank page. It is appended ONLY when it fits that spare page —
@@ -49,7 +49,7 @@ covers text, never auto-navigates, fades in once (reduced-motion: instant). (2) 
 only by `_maybeEngageAsk` on a USER-initiated close (reader or gallery; `suppress:false` paths
 never ask), gated by the pure `_shouldAskEngage`: ≥5 opens across ≥2 distinct days, max 2 asks
 lifetime ≥90 days apart, skipped entirely once the colophon ask has reached the user (one channel
-at a time). **Retirement**: ANY interaction with the colophon ask (Rate/Feedback/✕) sets
+at a time). **Retirement**: ANY interaction with the colophon ask (Rate/Share/Feedback/✕) sets
 `done:true` in SYNCED `obr_engage` — no surface ever asks again, on any device; 10 unacted
 impressions retire the colophon ask by itself; the stats page keeps appearing (reward, not ask).
 **Reading time** is active-time only: the clock pauses while the tab is hidden, each silent gap
@@ -60,6 +60,20 @@ honest), `obr_engage` SYNC (outcomes must follow the user). Zero telemetry — e
 extension storage, consistent with the "collects nothing" disclosure. Rate links point at
 `OBR.STORE_REVIEWS_URL` (canonical store URL now lives in settings.js beside the print-QR's).
 Passive rate/star links also sit in the welcome + options footers.
+
+**Share** (colophon ask, engagement chip, and a permanent "Share with a friend" in the welcome +
+options footers) copies ONE ready-to-paste invite, built by `OBR.shareInvite(surface)` in
+`settings.js`: a localized line plus `OBR.SITE_URL?ref=share-<surface>` (`end` / `chip` /
+`welcome` / `options`). It links to the landing page, not the store, because the landing page
+unfurls as a 1200x630 picture in chat apps (`site/index.html` Open Graph tags, `site/img/og.jpg`)
+and its Add to Chrome button turns the `ref` into `utm_source=share&utm_medium=<surface>` —
+readable in the Web Store dashboard (Analytics > Impressions), the ONLY place a share is counted.
+The extension sends nothing; the link carries only which button made it, never the page being
+read. The in-page surfaces confirm in place for 3s; when the page refuses the async clipboard
+(plain http, a site's permissions policy) they show the invite in a selected read-only field
+(`OBR._shareFallback`) instead — `clipboardWrite` is deliberately not requested, as a new
+permission would hit the Web Store's permission gate for a corner case. The extension pages
+always have the clipboard (`OBR.bindShareLink`, `prompt()` as the fallback).
 
 ## Feedback pipeline
 

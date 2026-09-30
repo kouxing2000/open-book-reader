@@ -822,3 +822,19 @@ test('Site access parses scheme-specific grants, not just the *:// shape', async
   await expect(page.locator('.acc-row')).toHaveCount(1);
   await expect(page.locator('.acc-org').first()).toContainText('i.cdn.test');
 });
+
+// Both extension-page footers carry "Share with a friend". What the click handed the clipboard
+// is the outcome, so capture it, and check each page tags the link with its own surface.
+test('the welcome + options "Share with a friend" links copy their own tagged invite', async ({ page, extensionId }) => {
+  for (const [file, surface] of [['src/welcome.html', 'welcome'], ['src/options/options.html', 'options']]) {
+    await page.goto(`chrome-extension://${extensionId}/${file}`);
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true,
+      value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } } }));
+    const link = page.locator('#share-link');
+    await expect(link).toHaveText('Share with a friend');
+    await link.click();
+    await expect.poll(() => page.evaluate(() => window.__copied || '')).toContain(`?ref=share-${surface}`);
+    await expect(link).toContainText('Invite copied');
+    await expect(link).toHaveText('Share with a friend', { timeout: 5000 }); // the label comes back
+  }
+});
