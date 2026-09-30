@@ -202,6 +202,8 @@ npx playwright install chromium                # first run only
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
 - `uninstall-survey.spec.js` — `site/uninstall.html`: what the form POSTs. The stamped page
   (`#url=`) is sent only for a site reason and only with "Report the problem site" checked.
+- `landing.spec.js` — `site/index.html`, where every Share invite points: `?ref=share-<surface>`
+  becomes store UTM tags on Add to Chrome (and nothing else does), and the link-preview image exists.
 - **The suite shells out to `unzip`** (`packaging.spec.js` for `dist.zip`, `gallery.spec.js` for
   `OBR._buildZip`'s bytes). **Extracting and listing are different oracles — the ZIP test needs
   both.** A STORE entry extracts from its LOCAL header, so `unzip -t`/`-p`/`-x` are clean on an

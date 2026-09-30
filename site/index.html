@@ -6,6 +6,18 @@
   <title>Open Book Reader — read the web like an open book</title>
   <meta name="description" content="A Chrome extension that turns any article into a calm two-page open-book view, with an image-gallery mode. Private and fully local." />
   <link rel="icon" href="img/icon.png" />
+  <link rel="canonical" href="https://openbook.peach-studio.com/" />
+  <!-- Link previews (chat apps, social posts). The extension's Share invites link here. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Open Book Reader" />
+  <meta property="og:title" content="Open Book Reader — read the web like an open book" />
+  <meta property="og:description" content="A free Chrome extension that turns any article into a calm two-page book you flip with the arrow keys, plus an image-gallery mode. Private and fully local." />
+  <meta property="og:url" content="https://openbook.peach-studio.com/" />
+  <meta property="og:image" content="https://openbook.peach-studio.com/img/og.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="A cluttered news article beside the same article as a clean two-page book" />
+  <meta name="twitter:card" content="summary_large_image" />
   <style>
     :root {
       --paper: #faf8f3; --ink: #2b2722; --muted: #6b6358;
@@ -134,5 +146,15 @@
     <a href="https://github.com/mozilla/readability">Mozilla Readability</a> (Apache-2.0)
     <br />Made for calmer reading.
   </footer>
+  <script>
+    // A Share invite links here as ?ref=share-<surface>. Carry it onto Add to Chrome as store
+    // UTM tags: the Web Store dashboard's Impressions view is the only place a share is ever
+    // counted. The strict pattern keeps anything else out of the store URL.
+    (function () {
+      var m = /^share-([a-z]{1,20})$/.exec(new URLSearchParams(location.search).get('ref') || '');
+      var a = document.getElementById('store-link');
+      if (m && a) a.href += '?utm_source=share&utm_medium=' + m[1];
+    })();
+  </script>
 </body>
 </html>
