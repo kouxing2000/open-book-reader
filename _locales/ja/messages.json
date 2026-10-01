@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "読みたいテキストを選択してから、リーダーを開き直すこともできます。" },
   "readerReadingTime": { "message": "約 $MINUTES$ 分", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ ページ", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "記事の終わり" },
+  "readerAtStart": { "message": "記事の先頭" },
 
   "galleryTitle": { "message": "🖼 画像" },
   "gallerySelectAll": { "message": "すべて選択" },

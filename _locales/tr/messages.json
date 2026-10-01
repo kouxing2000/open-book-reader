@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "Ya da istediğiniz metni seçip okuyucuyu yeniden açın." },
   "readerReadingTime": { "message": "~$MINUTES$ dk", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ sayfa", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "Makalenin sonu" },
+  "readerAtStart": { "message": "Makalenin başı" },
 
   "galleryTitle": { "message": "🖼 Resimler" },
   "gallerySelectAll": { "message": "Tümünü seç" },

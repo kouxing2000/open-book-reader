@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "也可以先选中你想读的文字，再打开阅读器。" },
   "readerReadingTime": { "message": "约 $MINUTES$ 分钟", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  共 $TOTAL$ 页", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "已到文末" },
+  "readerAtStart": { "message": "已到开头" },
 
   "galleryTitle": { "message": "🖼 图片" },
   "gallerySelectAll": { "message": "全选" },

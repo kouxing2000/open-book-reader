@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "읽고 싶은 텍스트를 선택한 뒤 리더를 다시 열어 보셔도 됩니다." },
   "readerReadingTime": { "message": "약 $MINUTES$분", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ 페이지", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "글의 끝" },
+  "readerAtStart": { "message": "글의 처음" },
 
   "galleryTitle": { "message": "🖼 이미지" },
   "gallerySelectAll": { "message": "전체 선택" },

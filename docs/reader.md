@@ -49,6 +49,13 @@ shortcuts. `pen` is deliberately not touch — a stylus hovers, so it wants the 
 `tests/reader-touch.spec.js` pins all of it, and is the only spec that runs below
 `singlePageBelow` (720) — i.e. the only coverage of the one-column layout a phone gets.
 
+**A turn past either end is answered, never dropped** (`bumpEdge`, reached from `flip()` for keys,
+edge clicks and taps alike). The book nudges about 10px the way the turn would have gone, and the
+footer comes up with the indicator reading "End of article" / "Start of article" ahead of the page
+count. The label lasts until the next `applySpread()` rewrites the indicator. A full last spread
+gets no colophon (it only fills a blank page), so without this it looks like any other spread and a
+next-key press reads as broken. Reduced motion, or a turn still in flight, skips the nudge but
+keeps the label.
 
 ## Page-turn animation
 
@@ -248,7 +255,8 @@ known paragraph cannot fail this way, which is how the scrolled-past gap first w
 - **An open placed by the page's scroll is not a finish.** It opens on a spread, and opening
   records that spread as the position. But landing on the last spread that way does not mark the
   article finished. Only reading or resuming to it does, so the colophon's lifetime count and the
-  auto-open ask guard stay honest.
+  auto-open ask guard stay honest. A press past the end (`bumpEdge`) counts as reading to it,
+  exactly as End does.
 - **`navigated` resets with the content** (open, a pick, "Use full page"). Close also skips the
   sync when the host is detached: every block then measures at column 0, which reads as "at the
   end".

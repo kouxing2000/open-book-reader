@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "Либо выделите нужный текст и откройте читалку снова." },
   "readerReadingTime": { "message": "~$MINUTES$ мин", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ стр.", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "Конец статьи" },
+  "readerAtStart": { "message": "Начало статьи" },
 
   "galleryTitle": { "message": "🖼 Картинки" },
   "gallerySelectAll": { "message": "Выбрать все" },

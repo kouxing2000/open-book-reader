@@ -49,6 +49,7 @@
     try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; }
   })();
   let currentSpread = 0, totalSpreads = 1, totalColumns = 1;
+  let pageCountText = ''; // the indicator's "3–4 / 12 pages", which bumpEdge prefixes
   let colW = 0, colGap = 0, pagesPerSpread = 2;
   let savedScrollY = 0;
   // Whether the user turned a page this session — the one case close() moves the page to the
@@ -1969,7 +1970,9 @@
     const left = currentSpread * pagesPerSpread + 1;
     const right = Math.min(left + pagesPerSpread - 1, totalColumns);
     const rangeStr = left === right ? `${left}` : `${left}–${right}`;
-    indicatorEl.textContent = OBR.t('readerPageIndicator', [rangeStr, String(totalColumns)]);
+    pageCountText = OBR.t('readerPageIndicator', [rangeStr, String(totalColumns)]);
+    indicatorEl.textContent = pageCountText;
+    indicatorEl.classList.remove('obr-at-edge');
     if (progressFillEl) {
       const pct = totalSpreads <= 1 ? 1 : currentSpread / (totalSpreads - 1);
       progressFillEl.style.width = Math.round(pct * 100) + '%';
@@ -2226,6 +2229,23 @@
     return Math.max(1, Math.round((pagesEl.scrollWidth + colGap) / (colW + colGap)));
   }
 
+  // A turn past either end. Ignoring it silently reads as a dead key, most of all on a FULL last
+  // spread: no blank page means no colophon, so the end looks like any other spread. Answer it —
+  // nudge the book the way the turn would have gone, and reveal the footer naming the edge. The
+  // label stays until the next applySpread rewrites the indicator. A turn in flight keeps its
+  // own motion: the nudge would shake the book under the leaf.
+  function bumpEdge(dir) {
+    restoreAnchor = null; // the user is navigating: stop re-anchoring to the open point
+    if (dir > 0) noteFinish();
+    indicatorEl.textContent = OBR.t(dir > 0 ? 'readerAtEnd' : 'readerAtStart') + '  ·  ' + pageCountText;
+    indicatorEl.classList.add('obr-at-edge');
+    showChrome();
+    if (reduceMotion || activeFlip || !paperEl.animate) return;
+    const d = dir > 0 ? -10 : 10;
+    paperEl.animate([{ transform: 'none' }, { transform: 'translateX(' + d + 'px)' }, { transform: 'none' }],
+      { duration: 260, easing: 'ease-out' });
+  }
+
   // Home / End: a jump, not a turn, so no animation — but still the user navigating.
   function jumpTo(spread) {
     endActiveFlip();
@@ -2261,7 +2281,7 @@
       if (pagesEl) { void pagesEl.offsetWidth; pagesEl.style.transition = ''; }
     }
     const next = currentSpread + dir;
-    if (next < 0 || next >= totalSpreads) return;
+    if (next < 0 || next >= totalSpreads) return void bumpEdge(dir);
     restoreAnchor = null; navigated = true; // user is navigating — stop re-anchoring to the open point
     // The realistic 3D book turn only makes sense when there is a center spine to hinge
     // on — i.e. an even number of columns per spread. Odd (3) / single-page layouts, the

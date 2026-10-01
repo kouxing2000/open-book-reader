@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "Możesz też zaznaczyć potrzebny tekst i otworzyć czytnik ponownie." },
   "readerReadingTime": { "message": "~$MINUTES$ min", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ str.", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "Koniec artykułu" },
+  "readerAtStart": { "message": "Początek artykułu" },
 
   "galleryTitle": { "message": "🖼 Obrazy" },
   "gallerySelectAll": { "message": "Zaznacz wszystko" },

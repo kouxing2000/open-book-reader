@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "Oder markieren Sie den gewünschten Text und öffnen Sie den Lesemodus erneut." },
   "readerReadingTime": { "message": "~$MINUTES$ Min.", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ Seiten", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "Ende des Artikels" },
+  "readerAtStart": { "message": "Anfang des Artikels" },
 
   "galleryTitle": { "message": "🖼 Bilder" },
   "gallerySelectAll": { "message": "Alle auswählen" },

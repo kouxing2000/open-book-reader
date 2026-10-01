@@ -978,6 +978,9 @@ test('opening on the last spread from the page scroll does not count the article
   await page.waitForTimeout(600);
   const fin = () => page.evaluate(() => globalThis.OBR.loadPositionEntry(globalThis.OBR.positionKey()).then((e) => !!(e && e.fin)));
   expect(await fin()).toBe(false);
+  // Pressing on past the end is reading to it, the same as End or a turn would be.
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(fin).toBe(true);
 });
 
 test('closing never leaves a short paragraph from the top of the spread above the page', async ({ page }) => {
@@ -1074,6 +1077,61 @@ test('the progress hairline tracks position (0% at start, 100% at the end)', asy
 
   await page.keyboard.press('Home');
   expect((await readState(page)).progressWidth).toBe('0%');
+});
+
+// A turn past the last (or first) spread used to be silently ignored, which on a full last spread
+// — no blank page, so no colophon — reads as a dead next key.
+const edgeReply = (page) => page.evaluate(() => {
+  const root = document.getElementById('obr-host').shadowRoot;
+  return {
+    indicator: root.querySelector('.obr-indicator').textContent,
+    chromeHidden: root.querySelector('.obr-overlay').classList.contains('obr-chrome-hidden'),
+    nudges: window.__obrNudges || 0,
+  };
+});
+const countNudges = (page) => page.evaluate(() => {
+  const paper = document.getElementById('obr-host').shadowRoot.querySelector('.obr-paper');
+  const orig = paper.animate.bind(paper);
+  window.__obrNudges = 0;
+  paper.animate = (...a) => { window.__obrNudges++; return orig(...a); };
+});
+const hideChrome = (page) => page.evaluate(() =>
+  document.getElementById('obr-host').shadowRoot.querySelector('.obr-overlay').classList.add('obr-chrome-hidden'));
+
+test('a turn past either end names the edge in the footer and nudges the book', async ({ page }) => {
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await openReader(page);
+  await countNudges(page);
+  await page.keyboard.press('End');
+  const last = await readState(page);
+  await hideChrome(page);
+
+  await page.keyboard.press('ArrowRight');
+  const r = await edgeReply(page);
+  expect(r.indicator).toContain('End of article');
+  expect(r.indicator).toContain(last.indicator); // still names the page it is on
+  expect(r.chromeHidden).toBe(false);           // the footer comes up to say so
+  expect(r.nudges).toBe(1);
+  expect((await readState(page)).translateX).toBe(last.translateX); // and nothing turned
+
+  await page.keyboard.press('Home'); // a real move rewrites the indicator
+  expect((await edgeReply(page)).indicator).not.toContain('End of article');
+  await page.keyboard.press('ArrowLeft');
+  expect((await edgeReply(page)).indicator).toContain('Start of article');
+});
+
+test('with reduced motion a turn past the end names the edge without the nudge', async ({ page }) => {
+  // reduceMotion is captured when reader.js loads, so set it before re-injecting.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await gotoArticle(page);
+  await injectReader(page);
+  await openReader(page);
+  await countNudges(page);
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowRight');
+  const r = await edgeReply(page);
+  expect(r.indicator).toContain('End of article');
+  expect(r.nudges).toBe(0);
 });
 
 test('shows an estimated reading time for the article', async ({ page }) => {

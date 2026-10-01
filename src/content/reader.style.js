@@ -176,6 +176,10 @@
       transition: opacity .25s ease, transform .25s ease;
     }
     .obr-hint { opacity: .55; }
+    /* A turn past either end names the edge (bumpEdge); outlined so it reads as an answer to
+       the press rather than as the usual page count. */
+    .obr-indicator.obr-at-edge { font-weight: 600; border: 1px solid currentColor;
+      border-radius: 999px; padding: 3px 11px; }
     .obr-doc-meta { opacity: .5; font-size: .92em; margin-left: 10px; white-space: nowrap; }
     /* Centred, the hint and the page count read as one run-on string on a narrow screen.
        Split them to opposite ends; the order property puts the hint first without touching the

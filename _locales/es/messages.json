@@ -49,6 +49,8 @@
   "readerNoArticleAlt": { "message": "O selecciona el texto que quieras y vuelve a abrir el lector." },
   "readerReadingTime": { "message": "~$MINUTES$ min", "placeholders": { "minutes": { "content": "$1" } } },
   "readerPageIndicator": { "message": "$RANGE$  /  $TOTAL$ páginas", "placeholders": { "range": { "content": "$1" }, "total": { "content": "$2" } } },
+  "readerAtEnd": { "message": "Fin del artículo" },
+  "readerAtStart": { "message": "Inicio del artículo" },
 
   "galleryTitle": { "message": "🖼 Imágenes" },
   "gallerySelectAll": { "message": "Seleccionar todo" },
