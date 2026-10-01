@@ -913,12 +913,15 @@
 
   // Persist the fraction for `key`, LRU-pruning the map to POSITIONS_MAX entries.
   // A merge-update, NOT a replace: the entry also carries the reading-time fields
-  // (`ms`, `fin`), which a replace-write would silently drop.
-  OBR.savePosition = function (key, fraction, now) {
+  // (`ms`, `fin`), which a replace-write would silently drop. `pageKey` fingerprints the
+  // paragraph at the top of the page (reader.js pageSpot), stored as `p` so the next open can
+  // tell whether the page has moved since.
+  OBR.savePosition = function (key, fraction, now, pageKey) {
     if (skipPassiveWrite()) return Promise.resolve(false); // incognito: no reading trace on disk
     if (!key || typeof fraction !== 'number') return Promise.resolve(false);
     const f = Math.max(0, Math.min(1, fraction));
-    return positionsStore.update(key, (e) => Object.assign({}, e, { f }), now);
+    // Always rewritten, even to nothing: a stale `p` could later match a page that has moved.
+    return positionsStore.update(key, (e) => Object.assign({}, e, { f, p: pageKey || undefined }), now);
   };
 
   // Add a session's active reading time to the article's entry. Capped per article (24h)

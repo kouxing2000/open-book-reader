@@ -49,6 +49,7 @@ shortcuts. `pen` is deliberately not touch — a stylus hovers, so it wants the 
 `tests/reader-touch.spec.js` pins all of it, and is the only spec that runs below
 `singlePageBelow` (720) — i.e. the only coverage of the one-column layout a phone gets.
 
+
 ## Page-turn animation
 
 **Page-turn animation** (`reader.js`: `flip` → `bookFlip` / `curlFlip` / `endActiveFlip`, setting
@@ -180,11 +181,85 @@ MIT — injected before `reader.js`; pure array math, CSP-safe). `_buildPrintDoc
 **Reading progress is a FRACTION, never a spread index** (`reader.js` + `settings.js`). Re-pagination
 (font / columns / width) changes how many columns an article splits into, so position is stored as
 `(currentSpread * pagesPerSpread) / totalColumns` and `layout()` re-anchors it: font/column changes
-pass an explicit `anchorFraction`; **resume** loads the saved fraction into `restoreFraction` and
+pass an explicit `anchorFraction`; **resume** loads the saved fraction into `restoreAnchor` and
 re-applies it through the late-image settle window until the first user nav clears it. Per-article
 positions persist to `chrome.storage.LOCAL` (NOT sync — per-device, can be many, mustn't burn the 8KB
 sync quota) as one bounded, LRU-pruned map `obr_positions` keyed by `origin+pathname`. No new
 permission — `storage` already covers `storage.local`.
+
+## The page's scroll and the reader's position follow each other
+
+**Open, first rule that applies wins:**
+
+1. A text selection starts at its beginning.
+2. If the page has not moved since the reader last left it, the reader resumes the saved position.
+3. Otherwise it opens on the spread holding the page's top paragraph (`pageSpot` + `anchorSpread`).
+   If that is the first spread and a saved position exists, it resumes the saved position instead.
+4. Otherwise the saved position.
+5. Otherwise page 1.
+
+The "top paragraph" is the first paired paragraph in the viewport. When none is in view (a picture,
+a code listing, a table, short paragraphs, the comments below), it is the last paired paragraph
+scrolled PAST.
+
+**Close:** the page moves only after a page turn (`navigated`: `flip`, which touch taps route
+through, plus Home/End). It then scrolls to the paragraph at the top of the current spread
+(`readingKeys` + `syncPage`). With no page turned, it goes back to `savedScrollY` as before.
+
+Measure a change here with the real-site sweep through `npm run test:manual`: scroll each page in
+`tests/fixtures/sweep-sites.json` to 25%, 50% and 75% of its height. A sweep that scrolls to a
+known paragraph cannot fail this way, which is how the scrolled-past gap first went unseen.
+
+- **"Has not moved" is a fingerprint, `p`, saved with the position.** It is an FNV-1a hash of the
+  top paragraph's key, so the map never stores article text. It is written at open and again
+  after a close scrolls the page. Two cases need it:
+  - **Close then reopen must be exact.** The paragraph close scrolls to usually STARTS a spread
+    earlier than the one being read, so treating it as a fresh scroll would reopen one spread
+    early and save that.
+  - **A reader left without close must not lose its place.** After a reload, Back, a discarded
+    tab or a session restore, Chrome puts the page back where it stood when the reader opened. A
+    fresh-scroll reading would then overwrite the deep saved position with that older one.
+
+  The match also accepts the top paragraph's paired neighbours (`near`). The top block is often a
+  sliver, so a few pixels of drift after a reload hand the top to the next paragraph.
+- **The first spread defers to the saved position.** A page near its opening (a fresh visit, a
+  scroll past the header) says only "the start", and losing a deep saved position to that is
+  worse than a Home press. This is decided once: the pending anchor becomes the saved fraction,
+  so a late image pushing that paragraph onto spread 1 cannot pull the reader off the resumed
+  spread.
+- **Pairing** is the split-body merge's own: leaf p/blockquote/li of 20+ words, keyed by their
+  first 80 chars (`proseBlocks` / `blockKey`). A key two blocks share on EITHER side is dropped
+  (`uniqueByKey`), or a teaser repeating a paragraph would send the close to the teaser.
+- **Live blocks must actually be visible.** They need a box (`height > 0`), so a hidden duplicate
+  cannot void the visible one, and they must not be `clipped()` by an `overflow: hidden` ancestor
+  (a collapsed "Read more", a carousel). The walk stops at the first ancestor that SCROLLS and
+  asks whether that box is clipped instead. In an app shell (a hidden body around a scrolling
+  article), every paragraph scrolled out of the article box would otherwise read as clipped.
+- **The top of a spread is the first block to REACH its first column**, not the last to start at
+  or before it: several paragraphs start in one column. Something unpaired may sit above that
+  block on the spread (a short paragraph, a heading, pictures). Then the block before it stands
+  in, so no unread line ends up above the viewport.
+- **`revealOnPage`, not `scrollIntoView`.** It moves the window and boxes that scroll, so an
+  article in its own scroll box still follows. It never moves a box that clips: scrollIntoView
+  scrolls `overflow: hidden` too, which slides a collapsed teaser to mid-article with no way back.
+  It scrolls instantly, so a site's smooth scrolling can't leave the fingerprint measured
+  mid-animation. It subtracts the site's `scroll-padding-top`, which is how a site declares its
+  sticky header's height.
+- **An open placed by the page's scroll is not a finish.** It opens on a spread, and opening
+  records that spread as the position. But landing on the last spread that way does not mark the
+  article finished. Only reading or resuming to it does, so the colophon's lifetime count and the
+  auto-open ask guard stay honest.
+- **`navigated` resets with the content** (open, a pick, "Use full page"). Close also skips the
+  sync when the host is detached: every block then measures at column 0, which reads as "at the
+  end".
+- **Unpaired falls back, never worse.** Two cases cannot pair: body copy in `<div>`s (the
+  `_proseStats` blind spot) and a paragraph Readability rewrote within its first 80 chars.
+  - Incognito writes no position or fingerprint, so a close then reopen there can land up to one
+    spread early.
+  - A sticky header with no `scroll-padding-top` covers the synced paragraph's first lines. Those
+    lines usually began on the spread before, so they were already read. Measuring the header
+    instead would have to be mirrored in `pageSpot`'s viewport test, or the paragraph peeking out
+    under the header would become the top paragraph.
 
 ## Did the reader actually APPEAR? (the paint check)
 

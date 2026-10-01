@@ -171,9 +171,13 @@ export async function injectReader(page) {
   }
 }
 
-/** Open the reader and wait until pagination has been computed. */
+/** Open the reader and wait until pagination has been computed. open() resolves once its
+ *  init is done, but the first layout runs in a requestAnimationFrame after it — and on a
+ *  REOPEN the indicator still holds the previous session's text, so polling it alone returns
+ *  before this session has laid out. */
 export async function openReader(page) {
   await page.evaluate(() => globalThis.OBR.open());
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
 }
 

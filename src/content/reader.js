@@ -51,15 +51,20 @@
   let currentSpread = 0, totalSpreads = 1, totalColumns = 1;
   let colW = 0, colGap = 0, pagesPerSpread = 2;
   let savedScrollY = 0;
+  // Whether the user turned a page this session — the one case close() moves the page to the
+  // reader's position instead of back to savedScrollY (see readingKeys).
+  let navigated = false;
+  let anchorWhy = ''; // what pageSpot saw on the last open (debug line + OBR._diagReader)
   let mediaTimer = null;
   // While a 'book' or 'curl' page turn is animating: { layer, anims: [Animation...] }. The
   // real strip is already at its destination (see bookFlip/curlFlip), so this is purely the
   // transient overlay; endActiveFlip() tears it down at any moment (finish, relayout, close).
   let activeFlip = null;
-  // Per-article resume: posKey identifies the article; restoreFraction holds the
-  // saved progress fraction until the first relayout positions us there (it keeps
-  // re-anchoring through the late-image settle window, then a user nav clears it).
-  let posKey = '', restoreFraction = null, saveTimer = null;
+  // Per-article resume: posKey identifies the article; restoreAnchor holds where to open
+  // until the first relayout positions us there (it keeps re-anchoring through the
+  // late-image settle window, then a user nav clears it). Either the saved progress
+  // FRACTION, or { first, f } — the page's top paragraph from pageSpot (see anchorSpread).
+  let posKey = '', restoreAnchor = null, saveTimer = null;
   // The article Readability last parsed (held so Print can reuse it without re-parsing).
   let lastArticle = null;
   let printing = false; // re-entrancy guard for printReader (the native print dialog is modal)
@@ -675,11 +680,23 @@
   // A block's identity is its opening, not its whole text: Readability trims inside a block
   // (a trailing button, a hidden span). Two blocks sharing an opening then only make the merge
   // do LESS: neither places the box (splitBodyParts), a missing one reads as kept, and a piece
-  // holding one is dropped as a duplicate.
-  const splitKey = (el) => el.textContent.replace(/\s+/g, ' ').trim().slice(0, 80);
-  const splitProse = (root) => Array.from(root.querySelectorAll('p, blockquote, li')).filter((el) =>
+  // holding one is dropped as a duplicate. The same key pairs a live-page block with its
+  // rendered copy for the scroll anchor (see pageSpot).
+  const blockKey = (el) => el.textContent.replace(/\s+/g, ' ').trim().slice(0, 80);
+  const proseBlocks = (root) => Array.from(root.querySelectorAll('p, blockquote, li')).filter((el) =>
     !el.querySelector('p, blockquote, li') && countWords(el.textContent) >= SPLIT_MIN_WORDS);
-  const splitKeysOf = (html) => splitProse(new DOMParser().parseFromString(html, 'text/html').body).map(splitKey);
+  const splitKeysOf = (html) => proseBlocks(new DOMParser().parseFromString(html, 'text/html').body).map(blockKey);
+  // key -> block, in document order, for the keys exactly ONE of `els` carries. A key two blocks
+  // share cannot say which one is meant (a pull quote repeating a paragraph's opening).
+  function uniqueByKey(els) {
+    const m = new Map(), dup = new Set();
+    for (const el of els) {
+      const k = blockKey(el);
+      if (m.has(k)) dup.add(k); else m.set(k, el);
+    }
+    dup.forEach((k) => m.delete(k));
+    return m;
+  }
   // Is missing block `m` chrome rather than story? Mirrors Readability's rejection rules on every
   // ancestor below the one `m` shares with `box` — a class/id among its unlikely candidates
   // (comment, related, footer…), an <aside> or <footer> tag, an unlikely ARIA role, a hidden
@@ -709,12 +726,10 @@
     const body = document.body;
     if (!article || !article.content || !body) return null;
     const keptKeys = new Set(splitKeysOf(article.content));
-    const live = splitProse(body);
-    // A key two live blocks share cannot say which one the read kept; letting both place the
-    // box would lift it to a wrapper around both (a pull quote repeating the lead's opening).
-    const liveKeys = live.map(splitKey);
-    const shared = new Set(liveKeys.filter((k, i) => liveKeys.indexOf(k) !== i));
-    const kept = live.filter((el, i) => keptKeys.has(liveKeys[i]) && !shared.has(liveKeys[i]));
+    const live = proseBlocks(body);
+    // Unique keys only: letting two blocks that share one both place the box would lift it to
+    // a wrapper around both.
+    const kept = Array.from(uniqueByKey(live)).filter(([k]) => keptKeys.has(k)).map(([, el]) => el);
     const why = { kept: kept.length, missing: live.length - kept.length };
     if (!kept.length || kept.length === live.length) return Object.assign(why, { parts: null });
     let box = kept[0].parentElement;
@@ -724,7 +739,7 @@
     if (!box || box === body || !box.classList.length) return Object.assign(why, { parts: null, verdict: 'no classed container' });
     const story = box.closest('article');
     if (!story) return Object.assign(why, { parts: null, verdict: 'no <article>' });
-    const missing = live.filter((el) => story.contains(el) && !keptKeys.has(splitKey(el)));
+    const missing = live.filter((el) => story.contains(el) && !keptKeys.has(blockKey(el)));
     const sig = splitSig(box), psig = splitSig(box.parentElement);
     const found = [];
     for (const el of story.querySelectorAll(sig)) {
@@ -1011,7 +1026,8 @@
       pickNode = node;
       contentSource = 'pick-manual';
       posKey = ''; // a one-shot manual pick: don't resume/persist the whole-page position
-      restoreFraction = null;
+      restoreAnchor = null;
+      navigated = false; // new content: no page of it has been turned yet
       currentSpread = 0;
       renderContent(lastArticle);
       updatePickHint();
@@ -1182,7 +1198,8 @@
     contentSource = 'whole';
     extractionSuspect = false; // the user explicitly chose the full page — don't second-guess it
     posKey = OBR.positionKey ? OBR.positionKey() : '';
-    restoreFraction = null;
+    restoreAnchor = null;
+    navigated = false; // new content: no page of it has been turned yet
     currentSpread = 0;
     renderContent(lastArticle);
     // renderContent zeroed the per-article time/finish state; re-fill it for the restored
@@ -1926,16 +1943,17 @@
     }
     totalSpreads = Math.max(1, Math.ceil(totalColumns / pagesPerSpread));
 
-    // An explicit anchor (font/column change) wins; otherwise, while a saved
-    // position is pending (just opened), keep re-anchoring to it through the
+    // An explicit anchor (font/column change) wins; otherwise, while an open
+    // anchor is pending (just opened), keep re-anchoring to it through the
     // late-image settle window so the resume survives re-pagination.
-    const anchor = typeof anchorFraction === 'number' ? anchorFraction
-      : (restoreFraction != null ? restoreFraction : null);
-    if (anchor != null) {
+    const anchor = typeof anchorFraction === 'number' ? anchorFraction : restoreAnchor;
+    if (typeof anchor === 'number') {
       // Restore the reading position proportionally onto the new column count
       // (font-size / column changes reflow the article; a resume restores a
       // fraction saved in a possibly-different font/viewport).
       currentSpread = Math.round((anchor * totalColumns) / pagesPerSpread);
+    } else if (anchor) {
+      currentSpread = anchorSpread(anchor);
     } else if (!keepSpread) {
       currentSpread = 0;
     }
@@ -1958,7 +1976,10 @@
     }
     // Colophon bookkeeping: "finished" = seeing the last CONTENT spread (the colophon
     // column, when present, is always the last column overall — possibly one spread later).
-    if (currentSpread >= Math.max(0, Math.ceil(contentColumns / pagesPerSpread) - 1)) noteFinish();
+    // An open placed by the page's scroll has not been read in the reader yet: landing on the
+    // last spread that way is not a finish, only reading or resuming to it is.
+    const placedByPage = restoreAnchor !== null && typeof restoreAnchor === 'object';
+    if (!placedByPage && currentSpread >= Math.max(0, Math.ceil(contentColumns / pagesPerSpread) - 1)) noteFinish();
     syncColophonView();
     persistPosition();
   }
@@ -1968,7 +1989,7 @@
     if (!posKey || totalColumns < 1 || !OBR.savePosition) return;
     const f = (currentSpread * pagesPerSpread) / totalColumns;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => OBR.savePosition(posKey, f), 400);
+    saveTimer = setTimeout(() => OBR.savePosition(posKey, f, undefined, pagePk), 400);
   }
 
   // Persist the position NOW, skipping the 400ms debounce. close() and the
@@ -1978,8 +1999,174 @@
   function flushPosition() {
     clearTimeout(saveTimer);
     if (active && posKey && totalColumns >= 1 && OBR.savePosition) {
-      OBR.savePosition(posKey, (currentSpread * pagesPerSpread) / totalColumns);
+      OBR.savePosition(posKey, (currentSpread * pagesPerSpread) / totalColumns, undefined, pagePk);
     }
+  }
+
+  /* ------------------------------------------------- page scroll <-> reader position
+   * The page and the reader show the same article, so each can say where the other should be.
+   * Open: the reader starts on the spread holding the paragraph at the top of the page
+   * (pageSpot + anchorSpread) — unless the page has not moved since the reader last left it,
+   * when the saved position is the precise one. Close: after the user turned pages, the page
+   * scrolls to the paragraph the reader is on (readingKeys + syncPage). A paragraph pairs with
+   * its rendered copy by blockKey, unique keys only on both sides. Anything unpaired — body copy
+   * in <div>s, a paragraph Readability rewrote — keeps the plain behaviour: the saved position
+   * on open, savedScrollY on close.
+   *
+   * "Has not moved" is a fingerprint of the page's top paragraph, saved with the position (`p`)
+   * when the reader opens and again after a close scrolls the page. Two cases need it exact:
+   * close -> reopen, where that paragraph usually STARTS a spread earlier than the one being
+   * read; and a reader left WITHOUT close — a reload, Back, a discarded tab, a session restore —
+   * where Chrome puts the page back where it stood when the reader opened, which would
+   * otherwise read as a fresh scroll and overwrite the saved position with an old one. */
+  let pagePk = ''; // fingerprint of the page's top paragraph, saved with every position write
+
+  // FNV-1a of a block key: the position map stores this, never article text.
+  function fingerprint(k) {
+    let h = 2166136261;
+    for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+
+  // Live-page blocks the user can see. An inactive tab pane or a collapsed accordion has a
+  // zero-height box, and its hidden copy must not make the visible block's key a duplicate.
+  function liveBlocks() {
+    if (!document.body) return new Map();
+    return uniqueByKey(proseBlocks(document.body).filter((el) => el.getBoundingClientRect().height > 0));
+  }
+
+  // Rendered article blocks. The colophon has no live copy, so it never pairs.
+  function renderedBlocks() {
+    const content = pagesEl && pagesEl.querySelector('.obr-content');
+    if (!content) return new Map();
+    return uniqueByKey(proseBlocks(content).filter((el) => !(colophonEl && colophonEl.contains(el))));
+  }
+
+  // Is `el` cut off by an ancestor that clips without scrolling — a collapsed "Read more" box,
+  // a carousel? Its box is real, so the height test cannot see it, but neither can the user.
+  const clips = (v) => v === 'hidden' || v === 'clip';
+  const scrolls = (v) => v === 'auto' || v === 'scroll';
+  function clipped(el) {
+    const r = el.getBoundingClientRect();
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+      const o = getComputedStyle(a);
+      // A box that scrolls can bring `el` into view, so past it only the box's own clipping
+      // counts — an app shell (a hidden body around a scrolling article) would otherwise clip
+      // every paragraph scrolled out of the article box.
+      if (scrolls(o.overflowY) || scrolls(o.overflowX)) return clipped(a);
+      if (!clips(o.overflowX) && !clips(o.overflowY)) continue;
+      const ar = a.getBoundingClientRect();
+      if (clips(o.overflowY) && (r.bottom <= ar.top || r.top >= ar.bottom)) return true;
+      if (clips(o.overflowX) && (r.right <= ar.left || r.left >= ar.right)) return true;
+    }
+    return false;
+  }
+
+  // The paragraph at the top of the page, as { first, key, near }: the first paired block whose
+  // live copy is in the viewport, else the last one scrolled PAST — a viewport showing only a
+  // picture, a code listing, a table, short paragraphs or the comments below the article is
+  // common, and would otherwise read as "no position". `near` adds its paired neighbours'
+  // fingerprints: the top block is often a sliver, and a few pixels of drift (a reload settling
+  // lazy content differently) hand the top to the next paragraph. null when nothing pairs.
+  // `diag` records what it saw for the debug line and OBR._diagReader.
+  function pageSpot(diag) {
+    const live = liveBlocks();
+    const rendered = renderedBlocks();
+    const vh = window.innerHeight;
+    const pairs = []; // [key, rendered el, live twin], in article order
+    let at = -1;
+    for (const [k, el] of rendered) {
+      const twin = live.get(k);
+      if (!twin) continue;
+      pairs.push([k, el, twin]);
+      if (at >= 0) break; // one past the spot: its neighbour for `near`
+      const r = twin.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < vh && !clipped(twin)) at = pairs.length - 1;
+    }
+    const inView = at >= 0;
+    // Nothing in view: the last block scrolled past. Clipping is checked on the candidates only,
+    // never on every block above.
+    for (let i = pairs.length - 1; !inView && at < 0 && i >= 0; i--) {
+      if (pairs[i][2].getBoundingClientRect().bottom <= 0 && !clipped(pairs[i][2])) at = i;
+    }
+    const spot = at >= 0 ? pairs[at] : null;
+    if (diag) {
+      anchorWhy = 'live=' + live.size + ' rendered=' + rendered.size + ' paired=' + pairs.length
+        + (spot ? (inView ? ' top=' : ' passed=') + spot[0].slice(0, 24) : ' none');
+    }
+    if (!spot) return null;
+    const near = [pairs[at - 1], spot, pairs[at + 1]].filter(Boolean).map((p) => fingerprint(p[0]));
+    return { first: spot[1], key: fingerprint(spot[0]), near: near };
+  }
+
+  // Column of a rendered element's first (or last) fragment. A block split across columns has
+  // a bounding box spanning them all: its left edge sits in the first column, its right edge in
+  // the last. pagesEl's transform moves both rects alike, so the difference is transform-free.
+  function colOfEl(el, lastFrag) {
+    const stride = colW + colGap;
+    if (!stride) return 0;
+    const pr = pagesEl.getBoundingClientRect(), r = el.getBoundingClientRect();
+    return Math.max(0, Math.round(((lastFrag ? r.right - colW : r.left) - pr.left) / stride));
+  }
+
+  // The spread holding the page's top paragraph — unless that is the first spread and a saved
+  // position exists. A page near its opening (a fresh visit, a scroll past the header) says only
+  // "the start", and the saved position is the better guess at where the user is. That deferral
+  // is decided once: the pending anchor becomes the saved fraction, so a late image pushing the
+  // paragraph onto spread 1 cannot pull the reader off the resumed spread.
+  function anchorSpread(a) {
+    const s = Math.floor(colOfEl(a.first) / pagesPerSpread);
+    if (s !== 0 || typeof a.f !== 'number') return s;
+    if (restoreAnchor === a) restoreAnchor = a.f;
+    return Math.round((a.f * totalColumns) / pagesPerSpread);
+  }
+
+  // Keys of the rendered blocks up to and including the one at the top of the current spread,
+  // in order. That is the first block to reach the spread's first column, usually a paragraph
+  // continuing from the spread before. When something unpaired sits above it on the spread — a
+  // short paragraph, a heading, pictures — the block before it stands in, so the page never
+  // ends up with unread lines above the viewport. (A column is too coarse to test "is at the
+  // top": several paragraphs start in one.) Needs the host SHOWN: a hidden host has no boxes.
+  function readingKeys() {
+    const startCol = currentSpread * pagesPerSpread;
+    const top = pagesEl.getBoundingClientRect().top;
+    const keys = [];
+    for (const [k, el] of renderedBlocks()) { // the strip flows in document order
+      if (colOfEl(el, true) < startCol) { keys.push(k); continue; }
+      const rs = el.getClientRects();
+      const atTop = colOfEl(el) < startCol || (colOfEl(el) === startCol && rs.length > 0 && rs[0].top - top < 2);
+      if (atTop || !keys.length) keys.push(k);
+      break;
+    }
+    return keys;
+  }
+
+  // Scroll the page so `el` sits at the top of the viewport. Only the window and boxes that
+  // scroll are moved: an article inside its own scroll box still follows, while a box that
+  // clips (a collapsed "Read more", a carousel) keeps the offset the page gave it. Instant, so
+  // a site's smooth scroll-behavior cannot leave pageSpot() measuring mid-animation.
+  function revealOnPage(el) {
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+      const oy = getComputedStyle(a).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && a.scrollHeight > a.clientHeight) {
+        a.scrollTo({ top: a.scrollTop + el.getBoundingClientRect().top - a.getBoundingClientRect().top, behavior: 'instant' });
+      }
+    }
+    // The site's own scroll-padding-top is how it says "my sticky header is this tall".
+    const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+    window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - pad, behavior: 'instant' });
+  }
+
+  // Scroll the page to the live copy of the last reading block that has a visible one; false
+  // when none does.
+  function syncPage(keys) {
+    if (!keys || !keys.length) return false;
+    const live = liveBlocks();
+    for (let i = keys.length - 1; i >= 0; i--) {
+      const twin = live.get(keys[i]);
+      if (twin && !clipped(twin)) { revealOnPage(twin); return true; }
+    }
+    return false;
   }
 
   /* ------------------------------------------------- page-turn desync detector
@@ -2039,6 +2226,15 @@
     return Math.max(1, Math.round((pagesEl.scrollWidth + colGap) / (colW + colGap)));
   }
 
+  // Home / End: a jump, not a turn, so no animation — but still the user navigating.
+  function jumpTo(spread) {
+    endActiveFlip();
+    restoreAnchor = null;
+    if (spread !== currentSpread) navigated = true;
+    currentSpread = spread;
+    applySpread();
+  }
+
   function flip(dir) {
     tickRead(); // a page turn is the strongest "still reading" signal for the time clock
     // Never turn from a STALE pagination. Two things desync the cached column count from the
@@ -2066,7 +2262,7 @@
     }
     const next = currentSpread + dir;
     if (next < 0 || next >= totalSpreads) return;
-    restoreFraction = null; // user is navigating — stop re-anchoring to the resume point
+    restoreAnchor = null; navigated = true; // user is navigating — stop re-anchoring to the open point
     // The realistic 3D book turn only makes sense when there is a center spine to hinge
     // on — i.e. an even number of columns per spread. Odd (3) / single-page layouts, the
     // 'slide'/'off' settings, and reduced-motion all take the plain translateX path, whose
@@ -2575,7 +2771,7 @@
     // content (column count changes, so the spread index isn't portable — the
     // progress fraction is). Without this, re-paginating would snap back to p.1.
     const anchor = totalColumns > 0 ? (currentSpread * pagesPerSpread) / totalColumns : 0;
-    restoreFraction = null; // live anchor supersedes any pending resume
+    restoreAnchor = null; // live anchor supersedes any pending resume
     settings.fontSize = next;
     OBR.saveSettings({ fontSize: next });
     layout(true, anchor);
@@ -2599,7 +2795,7 @@
     // trick as changeFont — the spread index isn't portable when the column
     // count changes, but the progress fraction is).
     const anchor = totalColumns > 0 ? (currentSpread * pagesPerSpread) / totalColumns : 0;
-    restoreFraction = null; // live anchor supersedes any pending resume
+    restoreAnchor = null; // live anchor supersedes any pending resume
     const idx = (COLUMN_OPTS.indexOf(settings.columns) + 1) % COLUMN_OPTS.length;
     settings.columns = COLUMN_OPTS[idx];
     OBR.saveSettings({ columns: settings.columns });
@@ -2708,6 +2904,14 @@
     renderContent(lastArticle);
     updatePickHint();
     if (t) t.mark('render');
+    // Where the page is scrolled, read now, while the page is still what the user sees. A
+    // selection is exactly what they asked to read, so it always starts at its beginning.
+    let seen = null;
+    anchorWhy = 'skipped: ' + contentSource;
+    if (contentSource !== 'selection') {
+      try { seen = pageSpot(true); } catch (e) { seen = null; anchorWhy = 'threw: ' + e.message; } // never break an open
+    }
+    if (t) t.mark('anchor');
 
     // Resume where the user last left off in this article (null if never read or
     // storage unavailable). Held as a fraction; layout() re-anchors it through the
@@ -2724,7 +2928,14 @@
       OBR.loadLifetime ? OBR.loadLifetime() : {},
     ]);
     if (gen !== openGen) return;
-    restoreFraction = entry && typeof entry.f === 'number' ? entry.f : null;
+    const savedF = entry && typeof entry.f === 'number' ? entry.f : null;
+    pagePk = seen ? seen.key : '';
+    // Unmoved since the reader last left it: the page's spot is the one recorded with the saved
+    // position, which then wins as the precise one.
+    const moved = !!seen && !(savedF != null && entry.p && seen.near.includes(entry.p));
+    if (seen && !moved) anchorWhy += ' unmoved';
+    restoreAnchor = moved ? { first: seen.first, f: savedF } : savedF;
+    navigated = false;
     priorMs = entry && typeof entry.ms === 'number' ? entry.ms : 0;
     priorFin = !!(entry && entry.fin);
     engageState = engage || {};
@@ -2741,7 +2952,12 @@
     openedByAuto = trigger === 'auto';
     if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
     showChrome(); // show controls briefly, then auto-hide
-    requestAnimationFrame(() => { layout(false); if (t) { t.mark('layout'); t.flush('src=' + contentSource); } });
+    // Which open rule fired, and where it landed: 'scroll' (the page's position), 'saved', or 'start'.
+    const openAt = moved ? 'scroll' : savedF != null ? 'saved' : 'start';
+    requestAnimationFrame(() => {
+      layout(false);
+      if (t) { t.mark('layout'); t.flush('src=' + contentSource + ' at=' + openAt + ' spread=' + currentSpread + '/' + totalSpreads + ' [' + anchorWhy + ']'); }
+    });
     watchMedia(); // re-paginate once late-loading images / fonts settle
     if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
     OBR._opensCompleted = (OBR._opensCompleted || 0) + 1; // test hook: full inits that ran to completion
@@ -2865,12 +3081,22 @@
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
-    // Flush the reading position now (don't wait out the debounce — the tab may go away).
-    flushPosition();
     flushReadingTime();
+    // Only a turned page moves the page: untouched, the reader still shows what the page did
+    // (or the saved position, which the next open defers to anyway), so it goes back as it was.
+    let keys = null;
+    // Before the host hides, and only while it is attached: a detached host measures every block
+    // at column 0, which would read as "at the end" and scroll the page to the last paragraph.
+    if (navigated && host.isConnected) { try { keys = readingKeys(); } catch (e) { keys = null; } }
     host.style.display = 'none';
     document.documentElement.style.overflow = '';
-    window.scrollTo(0, savedScrollY);
+    let synced = false;
+    try { synced = syncPage(keys); } catch (e) { synced = false; } // after the unlock: scrolling needs it
+    if (!synced) window.scrollTo(0, savedScrollY);
+    else { try { const at = pageSpot(false); if (at) pagePk = at.key; } catch (e) { /* keep the open-time spot */ } }
+    // Flush now, not after the debounce (the tab may go away) — and after the sync, so the saved
+    // position carries the page's new spot.
+    flushPosition();
     active = false;
     // The one moment the engagement chip may appear: after a USER-initiated close — the
     // reading is over, nothing gets interrupted. Mode switches / cross-closes never ask.
@@ -2902,6 +3128,7 @@
       touch: touchMode,
       chromeHidden: !!(overlay && overlay.classList.contains('obr-chrome-hidden')),
       flipDesyncs: flipDesyncs, lastFlipDesync: lastFlipDesync,
+      anchor: anchorWhy,
     };
   };
 
@@ -2931,8 +3158,8 @@
         e.preventDefault(); e.stopPropagation(); flip(1); break;
       case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
         e.preventDefault(); e.stopPropagation(); flip(-1); break;
-      case 'Home': e.preventDefault(); endActiveFlip(); restoreFraction = null; currentSpread = 0; applySpread(); break;
-      case 'End': e.preventDefault(); endActiveFlip(); restoreFraction = null; currentSpread = totalSpreads - 1; applySpread(); break;
+      case 'Home': e.preventDefault(); jumpTo(0); break;
+      case 'End': e.preventDefault(); jumpTo(totalSpreads - 1); break;
       case 'Escape': e.preventDefault(); e.stopPropagation(); close(); break;
       case '+': case '=': if (mod) break; e.preventDefault(); changeFont(1); break;
       case '-': case '_': if (mod) break; e.preventDefault(); changeFont(-1); break;
