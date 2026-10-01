@@ -200,14 +200,21 @@ permission — `storage` already covers `storage.local`.
 
 1. A text selection starts at its beginning.
 2. If the page has not moved since the reader last left it, the reader resumes the saved position.
-3. Otherwise it opens on the spread holding the page's top paragraph (`pageSpot` + `anchorSpread`).
-   If that is the first spread and a saved position exists, it resumes the saved position instead.
+3. Otherwise it opens on the spread holding the page's top line (`pageSpot` + `screenRange` +
+   `anchorSpread`), so a paragraph broken across spreads opens where the screen was, not where the
+   paragraph starts. If that is the first spread and a saved position exists, it resumes the saved
+   position instead.
 4. Otherwise the saved position.
 5. Otherwise page 1.
 
 The "top paragraph" is the first paired paragraph in the viewport. When none is in view (a picture,
 a code listing, a table, short paragraphs, the comments below), it is the last paired paragraph
-scrolled PAST.
+scrolled PAST, and the open lands on its start.
+
+**The spotlight.** An open that rule 3 placed lights the lines that were on screen: the rest of
+the article dims for about a second, then fades back (`spotlight`). The spread holds more text
+than the screen did, and this says where the screen was. It is skipped when the screen began at
+the article's opening, since nothing was scrolled past.
 
 **Close:** the page moves only after a page turn (`navigated`: `flip`, which touch taps route
 through, plus Home/End). It then scrolls to the paragraph at the top of the current spread
@@ -257,6 +264,27 @@ known paragraph cannot fail this way, which is how the scrolled-past gap first w
   article finished. Only reading or resuming to it does, so the colophon's lifetime count and the
   auto-open ask guard stay honest. A press past the end (`bumpEdge`) counts as reading to it,
   exactly as End does.
+- **The screen's lines are measured with the caret under each screen edge** (`caretRangeFromPoint`
+  on the live page), never with the block's rect. Where something else covers the edge (a sticky
+  header), the hidden share of the block's height stands in, which is coarser by a line or two.
+  Each offset carries over in proportion to the two copies' text lengths, which absorbs inline
+  bits the extraction dropped. A paired block wholly on screen also takes in what lies between it
+  and its paired neighbour (a heading, a short paragraph, a picture), so those stay lit. The open
+  anchors on the first visible character, and `colOfEl` floors its column: rounding is exact only
+  for a block's box, and a character past mid-column would open the next column, sometimes the
+  next spread.
+- **The spotlight dims through a CSS highlight, not by restyling elements.** A highlight over the
+  two stretches either side of the lit lines changes no layout, so pagination cannot move. Its
+  ranges are DOM positions, so they follow a late re-layout by themselves. Two traps:
+  - Inside `::highlight()`, `currentColor` is not the text's colour. The theme ink therefore
+    comes in as `--obr-ink`.
+  - `--obr-dim` is registered at injection (`CSS.registerProperty`), because an unregistered
+    custom property animates by jumping at the midpoint.
+
+  Pictures dim by opacity. Reduced motion holds the dim and then drops it without a fade. The
+  spotlight ends at the first page turn, at close and on any content switch. The highlight API
+  needs Chrome 105 and `color-mix` needs Chrome 111; on older versions the open is simply
+  unlit.
 - **`navigated` resets with the content** (open, a pick, "Use full page"). Close also skips the
   sync when the host is detached: every block then measures at column 0, which reads as "at the
   end".

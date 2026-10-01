@@ -114,6 +114,9 @@
   }
 
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The spotlight's dim level (see spotlight()). Registered so it animates instead of jumping at
+  // the midpoint. The registration is document-wide, and inert outside the reader's highlight.
+  try { CSS.registerProperty({ name: '--obr-dim', syntax: '<percentage>', inherits: true, initialValue: '100%' }); } catch (e) { /* already registered */ }
 
   // Live OS color-scheme query, for the 'auto' theme. resolveTheme() maps the stored
   // preference to a concrete overlay class: 'auto' -> 'dark' when the OS is in dark mode,
@@ -1274,6 +1277,7 @@
   }
 
   function renderContent(article) {
+    clearSpotlight(); // its ranges point into the content being replaced
     const title = article ? article.title : document.title;
     const byline = article && article.byline ? article.byline : '';
     // No article: an EMPTY STATE, not an error. Nothing failed — the page simply isn't one, and
@@ -2065,26 +2069,28 @@
     return false;
   }
 
-  // The paragraph at the top of the page, as { first, key, near }: the first paired block whose
-  // live copy is in the viewport, else the last one scrolled PAST — a viewport showing only a
-  // picture, a code listing, a table, short paragraphs or the comments below the article is
+  // The paragraph at the top of the page, as { first, key, near, screen }: the first paired block
+  // whose live copy is in the viewport, else the last one scrolled PAST — a viewport showing only
+  // a picture, a code listing, a table, short paragraphs or the comments below the article is
   // common, and would otherwise read as "no position". `near` adds its paired neighbours'
   // fingerprints: the top block is often a sliver, and a few pixels of drift (a reload settling
   // lazy content differently) hand the top to the next paragraph. null when nothing pairs.
-  // `diag` records what it saw for the debug line and OBR._diagReader.
-  function pageSpot(diag) {
+  // `opening` also measures the lines on screen once the page is past the article's opening
+  // (`screen`, which `first` then points into) and records what it saw for the debug line and
+  // OBR._diagReader.
+  function pageSpot(opening) {
     const live = liveBlocks();
     const rendered = renderedBlocks();
     const vh = window.innerHeight;
     const pairs = []; // [key, rendered el, live twin], in article order
-    let at = -1;
+    let at = -1, last = -1;
     for (const [k, el] of rendered) {
       const twin = live.get(k);
       if (!twin) continue;
       pairs.push([k, el, twin]);
-      if (at >= 0) break; // one past the spot: its neighbour for `near`
       const r = twin.getBoundingClientRect();
-      if (r.bottom > 0 && r.top < vh && !clipped(twin)) at = pairs.length - 1;
+      if (r.bottom > 0 && r.top < vh && !clipped(twin)) { if (at < 0) at = pairs.length - 1; last = pairs.length - 1; }
+      else if (at >= 0 && r.top >= vh) break; // below the screen; pairs[at + 1] stays for `near`
     }
     const inView = at >= 0;
     // Nothing in view: the last block scrolled past. Clipping is checked on the candidates only,
@@ -2093,23 +2099,111 @@
       if (pairs[i][2].getBoundingClientRect().bottom <= 0 && !clipped(pairs[i][2])) at = i;
     }
     const spot = at >= 0 ? pairs[at] : null;
-    if (diag) {
+    if (opening) {
       anchorWhy = 'live=' + live.size + ' rendered=' + rendered.size + ' paired=' + pairs.length
         + (spot ? (inView ? ' top=' : ' passed=') + spot[0].slice(0, 24) : ' none');
     }
     if (!spot) return null;
     const near = [pairs[at - 1], spot, pairs[at + 1]].filter(Boolean).map((p) => fingerprint(p[0]));
-    return { first: spot[1], key: fingerprint(spot[0]), near: near };
+    // A screen that begins at the article's opening has passed nothing: no lines to point out.
+    const atOpening = at === 0 && spot[2].getBoundingClientRect().top >= 0;
+    const screen = opening && inView && !atOpening ? screenRange(spot, pairs[last], pairs[at - 1], pairs[last + 1]) : null;
+    return { first: screen ? screen.start : spot[1], key: fingerprint(spot[0]), near: near, screen: screen && screen.range };
   }
 
-  // Column of a rendered element's first (or last) fragment. A block split across columns has
-  // a bounding box spanning them all: its left edge sits in the first column, its right edge in
-  // the last. pagesEl's transform moves both rects alike, so the difference is transform-free.
+  // The rendered text that was on screen, from the first character of the top line to the last
+  // of the bottom line, as { range, start }; `start` covers just the first visible character of
+  // the paired block `a`, which is what the reader opens on. A block cut by a screen edge is
+  // measured by the caret under that edge; where something else covers the edge (a sticky
+  // header) the hidden share of the block's height stands in. Each offset carries over in
+  // proportion to the two copies' text lengths, which absorbs inline bits the extraction dropped.
+  // A paired block wholly on screen takes in what lies between it and its paired neighbour
+  // (`prev` above, `next` below) — a heading, a short paragraph, a picture — which pairs with
+  // nothing and was on screen as far as anyone can tell.
+  function screenRange(a, b, prev, next) {
+    const vh = window.innerHeight;
+    const point = ([, el, twin], top) => {
+      const r = twin.getBoundingClientRect(), len = twin.textContent.length;
+      let o = top ? 0 : len;
+      if (top ? r.top < 0 : r.bottom > vh) {
+        const c = document.caretRangeFromPoint(top ? r.left + 1 : r.right - 1, top ? 1 : vh - 2);
+        if (c && twin.contains(c.startContainer)) {
+          const pre = document.createRange();
+          pre.setStart(twin, 0); pre.setEnd(c.startContainer, c.startOffset);
+          o = pre.toString().length;
+        } else o = Math.round((len * ((top ? 0 : vh) - r.top)) / r.height);
+      }
+      return textPoint(el, len ? Math.round((o * el.textContent.length) / len) : 0);
+    };
+    const [sn, so] = point(a, true), [en, eo] = point(b, false);
+    const range = document.createRange();
+    range.setStart(sn, so); range.setEnd(en, eo);
+    if (range.collapsed) return null;
+    // Past any space: one ending the line above would sit on that line.
+    let s = so;
+    while (s < sn.length - 1 && /\s/.test(sn.data[s])) s++;
+    const start = document.createRange();
+    start.setStart(sn, s); start.setEnd(sn, Math.min(s + 1, sn.length));
+    if (prev && a[2].getBoundingClientRect().top >= 0) range.setStartAfter(prev[1]);
+    if (next && b[2].getBoundingClientRect().bottom <= vh) range.setEndBefore(next[1]);
+    return { range: range, start: start };
+  }
+
+  // The text node and offset `n` characters into `el`.
+  function textPoint(el, n) {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node, prev = null;
+    while ((node = w.nextNode())) {
+      if (n < node.length) return [node, n];
+      n -= node.length; prev = node;
+    }
+    return prev ? [prev, prev.length] : [el, 0];
+  }
+
+  /* The spotlight: the spread holds more than the screen did, so on an open placed by the page's
+   * scroll, everything but the lines that were on screen dims, then fades back. Text dims through
+   * a highlight over the two stretches either side — no layout change, and the ranges follow a
+   * late re-layout by themselves — whose colour mixes in --obr-dim (registered at injection so
+   * it animates); pictures dim by opacity. Gone by the first page turn at the latest. */
+  const SPOT_MS = 2200, SPOT_HOLD = 0.45;
+  let spotAnims = [];
+  function spotlight(range) {
+    const content = pagesEl.querySelector('.obr-content');
+    if (!content || !window.Highlight || !CSS.highlights || !content.animate) return;
+    if (!CSS.supports('color', 'color-mix(in srgb, red 50%, transparent)')) return; // the dim rule's colour
+    const before = document.createRange(), after = document.createRange();
+    before.setStart(content, 0); before.setEnd(range.startContainer, range.startOffset);
+    after.setStart(range.endContainer, range.endOffset); after.setEnd(content, content.childNodes.length);
+    CSS.highlights.set('obr-dim', new Highlight(before, after));
+    // Reduced motion: the same dim, held, then gone at once.
+    const fade = (prop, dim, full) => reduceMotion
+      ? [{ [prop]: dim }, { [prop]: dim }]
+      : [{ [prop]: dim }, { [prop]: dim, offset: SPOT_HOLD, easing: 'ease-out' }, { [prop]: full }];
+    const text = content.animate(fade('--obr-dim', '34%', '100%'), SPOT_MS);
+    text.onfinish = clearSpotlight;
+    spotAnims = [text];
+    const vr = viewportEl.getBoundingClientRect();
+    for (const m of content.querySelectorAll('img, svg, video, canvas')) {
+      const r = m.getBoundingClientRect();
+      if (r.right > vr.left && r.left < vr.right && !range.intersectsNode(m)) spotAnims.push(m.animate(fade('opacity', 0.34, 1), SPOT_MS));
+    }
+  }
+  function clearSpotlight() {
+    for (const a of spotAnims) a.cancel();
+    spotAnims = [];
+    if (window.CSS && CSS.highlights) CSS.highlights.delete('obr-dim');
+  }
+
+  // Column of a rendered element's first (or last) fragment — or of a range's, which has the
+  // same box methods. A block split across columns has a bounding box spanning them all: its
+  // left edge sits in the first column, its right edge in the last. pagesEl's transform moves
+  // both rects alike, so the difference is transform-free. Floored, not rounded: a range can
+  // start anywhere in a line, and one past mid-column still belongs to that column.
   function colOfEl(el, lastFrag) {
     const stride = colW + colGap;
     if (!stride) return 0;
     const pr = pagesEl.getBoundingClientRect(), r = el.getBoundingClientRect();
-    return Math.max(0, Math.round(((lastFrag ? r.right - colW : r.left) - pr.left) / stride));
+    return Math.max(0, Math.floor(((lastFrag ? r.right - colW : r.left) - pr.left + colGap / 2) / stride));
   }
 
   // The spread holding the page's top paragraph — unless that is the first spread and a saved
@@ -2250,7 +2344,7 @@
   function jumpTo(spread) {
     endActiveFlip();
     restoreAnchor = null;
-    if (spread !== currentSpread) navigated = true;
+    if (spread !== currentSpread) { navigated = true; clearSpotlight(); }
     currentSpread = spread;
     applySpread();
   }
@@ -2283,6 +2377,7 @@
     const next = currentSpread + dir;
     if (next < 0 || next >= totalSpreads) return void bumpEdge(dir);
     restoreAnchor = null; navigated = true; // user is navigating — stop re-anchoring to the open point
+    clearSpotlight();
     // The realistic 3D book turn only makes sense when there is a center spine to hinge
     // on — i.e. an even number of columns per spread. Odd (3) / single-page layouts, the
     // 'slide'/'off' settings, and reduced-motion all take the plain translateX path, whose
@@ -2956,6 +3051,7 @@
     if (seen && !moved) anchorWhy += ' unmoved';
     restoreAnchor = moved ? { first: seen.first, f: savedF } : savedF;
     navigated = false;
+    const screenLines = moved ? seen.screen : null;
     priorMs = entry && typeof entry.ms === 'number' ? entry.ms : 0;
     priorFin = !!(entry && entry.fin);
     engageState = engage || {};
@@ -2976,6 +3072,11 @@
     const openAt = moved ? 'scroll' : savedF != null ? 'saved' : 'start';
     requestAnimationFrame(() => {
       layout(false);
+      // Still placed by the page: the first-spread rule may have handed the open to the saved
+      // position, whose spread need not hold these lines.
+      if (screenLines && active && restoreAnchor && typeof restoreAnchor === 'object') {
+        try { spotlight(screenLines); } catch (e) { clearSpotlight(); } // a cue, never a broken open
+      }
       if (t) { t.mark('layout'); t.flush('src=' + contentSource + ' at=' + openAt + ' spread=' + currentSpread + '/' + totalSpreads + ' [' + anchorWhy + ']'); }
     });
     watchMedia(); // re-paginate once late-loading images / fonts settle
@@ -3021,6 +3122,7 @@
   function hardTeardown() {
     active = false;
     clearInterval(ctxTimer); clearTimeout(paintTimer); clearTimeout(mediaTimer); clearTimeout(chromeTimer);
+    try { clearSpotlight(); } catch (e) { /* */ }
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     try { document.documentElement.style.overflow = ''; } catch (e) { /* */ }
     try { if (host) host.remove(); } catch (e) { /* */ }
@@ -3101,6 +3203,7 @@
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
+    clearSpotlight();
     flushReadingTime();
     // Only a turned page moves the page: untouched, the reader still shows what the page did
     // (or the saved position, which the next open defers to anyway), so it goes back as it was.

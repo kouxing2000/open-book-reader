@@ -1044,6 +1044,182 @@ test('reopening after scrolling back a few paragraphs opens there, not on the sa
   expect(await partsOnScreen(page)).toContain(back);
 });
 
+/* The spotlight: on an open placed by the page's scroll, the text that was on screen stays lit
+ * and the rest dims. Read off the highlight's two dimmed stretches; the lit text is what lies
+ * between them. */
+// Scroll the page so its top edge cuts through the middle of a line, `share` of the way into
+// Part n, and return the text of the first line that is (partly) visible and of the last.
+const scrollIntoPart = (page, n, share) => page.evaluate(({ n, share }) => {
+  const ps = [...document.querySelectorAll('article p')];
+  const p = ps.find((el) => el.textContent.startsWith('Part ' + n + ' of'));
+  const r = p.getBoundingClientRect();
+  window.scrollTo({ top: window.scrollY + r.top + r.height * share, behavior: 'instant' });
+  // Character by character, so this measures independently of the caret the reader uses.
+  const chars = (el) => {
+    const out = [];
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let t; (t = w.nextNode());) for (let i = 0; i < t.length; i++) {
+      const rg = document.createRange(); rg.setStart(t, i); rg.setEnd(t, i + 1);
+      const b = rg.getBoundingClientRect();
+      if (b.width > 0) out.push({ ch: t.data[i], top: b.top, bottom: b.bottom });
+    }
+    return out;
+  };
+  const vh = window.innerHeight;
+  const seen = ps.filter((el) => { const b = el.getBoundingClientRect(); return b.bottom > 0 && b.top < vh; });
+  const head = chars(seen[0]).filter((c) => c.bottom > 1);
+  const tail = chars(seen[seen.length - 1]).filter((c) => c.top < vh - 2);
+  const line = (cs, top) => cs.filter((c) => c.top === top).map((c) => c.ch).join('').trim();
+  return { first: line(head, head[0].top), last: line(tail, tail[tail.length - 1].top) };
+}, { n, share });
+const spotlight = (page) => page.evaluate(() => {
+  const h = CSS.highlights.get('obr-dim');
+  if (!h) return null;
+  const [before, after] = [...h];
+  const lit = document.createRange();
+  lit.setStart(before.endContainer, before.endOffset); lit.setEnd(after.startContainer, after.startOffset);
+  const root = document.getElementById('obr-host').shadowRoot;
+  const vp = root.querySelector('.obr-viewport').getBoundingClientRect();
+  const r = [...lit.getClientRects()].find((x) => x.width > 0);
+  return { lit: lit.toString().replace(/\s+/g, ' ').trim(), startOnSpread: !!r && r.left >= vp.left && r.right <= vp.right,
+    dim: getComputedStyle(root.querySelector('.obr-content')).getPropertyValue('--obr-dim').trim() };
+});
+
+test('the lines that were on screen stay lit while the rest of the spread dims, then fade back', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await page.evaluate(() => {
+    const parts = [...document.querySelectorAll('article p')];
+    const pic = (id) => {
+      const fig = document.createElement('figure');
+      fig.appendChild(Object.assign(document.createElement('img'), { id: id, alt: id, width: 300, height: 120, src: 'pic.png' }));
+      return fig;
+    };
+    parts.find((el) => el.textContent.startsWith('Part 23 of')).before(pic('above'));  // scrolled past
+    parts.find((el) => el.textContent.startsWith('Part 26 of')).before(pic('within')); // on screen
+  });
+  await injectReader(page);
+  const screen = await scrollIntoPart(page, 24, 0.75);
+  await openReader(page);
+
+  const s = await spotlight(page);
+  expect(s).not.toBeNull();
+  expect(s.lit.startsWith(screen.first)).toBe(true); // from the screen's top line, mid-paragraph...
+  expect(s.lit.startsWith('Part 24 of')).toBe(false);
+  expect(s.lit.endsWith(screen.last)).toBe(true);    // ...to its bottom line
+  expect(s.startOnSpread).toBe(true);
+  expect(s.dim).toBe('34%');
+  const opacity = (id) => page.evaluate((id) => getComputedStyle(document.getElementById('obr-host')
+    .shadowRoot.querySelector('img[id="' + id + '"]')).opacity, id);
+  expect(await opacity('above')).toBe('0.34');
+  expect(await opacity('within')).toBe('1');
+
+  await expect.poll(() => spotlight(page), { timeout: 5000 }).toBeNull();
+  expect(await opacity('above')).toBe('1');
+});
+
+test('turning a page ends the spotlight at once', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await scrollIntoPart(page, 24, 0.75);
+  await openReader(page);
+  expect(await spotlight(page)).not.toBeNull();
+  await page.keyboard.press('ArrowRight');
+  expect(await spotlight(page)).toBeNull();
+});
+
+test('no spotlight when the page did not place the open: a fresh top, a resume', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await openReader(page); // the page at the article's opening: nothing scrolled past
+  expect(await spotlight(page)).toBeNull();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+  await page.evaluate(() => globalThis.OBR.close()); // syncs the page to the reading position
+  await openReader(page); // unmoved since: the saved spread, which is what the reader last showed
+  expect(await partsOnScreen(page)).not.toContain(1); // a positive landmark: not page 1
+  expect(await spotlight(page)).toBeNull();
+  await page.evaluate(() => globalThis.OBR.close());
+  // A page just past the opening hands the open to the saved spread, which need not hold the
+  // screen's lines.
+  await scrollIntoPart(page, 2, 0.5);
+  await openReader(page);
+  expect(await partsOnScreen(page)).not.toContain(2);
+  expect(await spotlight(page)).toBeNull();
+});
+
+test('a paragraph broken across spreads opens on the spread holding the screen\'s top line', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await page.evaluate(() => {
+    const p = [...document.querySelectorAll('article p')].find((el) => el.textContent.startsWith('Part 30 of'));
+    p.textContent = p.textContent + (' ' + p.textContent).repeat(24); // ~1100 words: spans spreads
+  });
+  await injectReader(page);
+  const screen = await scrollIntoPart(page, 30, 0.85);
+  await openReader(page);
+  const s = await spotlight(page);
+  expect(s.lit.startsWith(screen.first)).toBe(true);
+  expect(s.startOnSpread).toBe(true);
+  // ...which is not the spread the paragraph starts on.
+  expect(await partsOnScreen(page).then((on) => on.includes(30))).toBe(true);
+  expect(await page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const p = [...root.querySelectorAll('.obr-content p')].find((el) => el.textContent.startsWith('Part 30 of'));
+    const rg = document.createRange(); rg.setStart(p.firstChild, 0); rg.setEnd(p.firstChild, 1);
+    const r = rg.getBoundingClientRect(), vp = root.querySelector('.obr-viewport').getBoundingClientRect();
+    return r.left >= vp.left && r.right <= vp.right;
+  })).toBe(false);
+});
+
+test('wherever the screen\'s top falls in a long paragraph, the reader opens on the spread showing it', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await page.evaluate(() => {
+    const p = [...document.querySelectorAll('article p')].find((el) => el.textContent.startsWith('Part 30 of'));
+    p.textContent = p.textContent + (' ' + p.textContent).repeat(24);
+  });
+  await injectReader(page);
+  // A sweep, because one share can put the top line's first character in a column's left half,
+  // where rounding a position to its column happens to work.
+  const misses = [];
+  for (let share = 0.05; share < 0.95; share += 0.06) {
+    await page.evaluate(() => localStorage.removeItem('__obr_test_store_local')); // no saved spread to resume
+    await scrollIntoPart(page, 30, share);
+    await openReader(page);
+    const s = await spotlight(page);
+    if (!s || !s.startOnSpread) misses.push(share.toFixed(2));
+    await page.evaluate(() => globalThis.OBR.close());
+  }
+  expect(misses).toEqual([]);
+});
+
+test('a heading on screen between paragraphs stays lit', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await page.evaluate(() => {
+    const h = Object.assign(document.createElement('h2'), { textContent: 'The harbour road' });
+    [...document.querySelectorAll('article p')].find((el) => el.textContent.startsWith('Part 25 of')).before(h);
+  });
+  await injectReader(page);
+  // The screen opens on the heading: the paragraph above is gone, the one below starts on screen.
+  await page.evaluate(() => {
+    const h = document.querySelector('article h2');
+    window.scrollTo({ top: window.scrollY + h.getBoundingClientRect().top - 2, behavior: 'instant' });
+  });
+  await openReader(page);
+  const s = await spotlight(page);
+  expect(s.lit.startsWith('The harbour road')).toBe(true);
+});
+
+test('with reduced motion the spotlight holds, then goes without fading', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' }); // read when reader.js loads
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await scrollIntoPart(page, 24, 0.75);
+  await openReader(page);
+  const levels = new Set();
+  for (let s; (s = await spotlight(page));) { levels.add(s.dim); await page.waitForTimeout(100); }
+  expect([...levels]).toEqual(['34%']); // sampled the whole time it showed: never part-way back
+});
+
 // close() is only ONE way to leave — a tab-close or in-page navigation never calls it,
 // and the 400ms persist debounce would drop the last page turn. pagehide must flush.
 test('flushes the pending position on pagehide (tab-close path, no close())', async ({ page }) => {

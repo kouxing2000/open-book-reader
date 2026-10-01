@@ -31,9 +31,9 @@
       font-family: ${FONT_STACKS.sans}; animation: obr-fade .22s ease;
     }
     @keyframes obr-fade { from { opacity: 0 } to { opacity: 1 } }
-    .obr-overlay.paper { background: #d9cdb8; color: #3a3122; --obr-bg: 217,205,184; }
-    .obr-overlay.light { background: #c9ccd1; color: #1f2328; --obr-bg: 201,204,209; }
-    .obr-overlay.dark  { background: #15161a; color: #d7d3c8; --obr-bg: 21,22,26; }
+    .obr-overlay.paper { background: #d9cdb8; --obr-ink: #3a3122; color: var(--obr-ink); --obr-bg: 217,205,184; }
+    .obr-overlay.light { background: #c9ccd1; --obr-ink: #1f2328; color: var(--obr-ink); --obr-bg: 201,204,209; }
+    .obr-overlay.dark  { background: #15161a; --obr-ink: #d7d3c8; color: var(--obr-ink); --obr-bg: 21,22,26; }
 
     /* Header & footer float over the book and auto-hide; they fade to transparent
        so the page reads through them, and slide away when the mouse is idle. */
@@ -206,6 +206,9 @@
     .obr-pages h3 { font-size: 1.1em; margin: 1em 0 .4em; }
     .obr-pages p { margin: 0 0 1em; text-align: justify; hyphens: auto; }
     .obr-pages a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    /* The spotlight on open: text outside the lines that were on screen, dimmed by --obr-dim.
+       The theme ink comes in by variable: inside a highlight, currentColor is not the text's. */
+    ::highlight(obr-dim) { color: color-mix(in srgb, var(--obr-ink) var(--obr-dim), transparent); }
     .obr-pages img, .obr-pages figure, .obr-pages video, .obr-pages svg, .obr-pages iframe, .obr-pages table { max-width: 100%; height: auto; break-inside: avoid; }
     .obr-pages figure { margin: 1em 0; }
     /* Wrappers that hold a picture and no words (reader.js marks them): between two of them
