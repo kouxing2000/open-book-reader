@@ -1217,7 +1217,9 @@ test('with reduced motion the spotlight holds, then goes without fading', async 
   await openReader(page);
   const levels = new Set();
   for (let s; (s = await spotlight(page));) { levels.add(s.dim); await page.waitForTimeout(100); }
-  expect([...levels]).toEqual(['34%']); // sampled the whole time it showed: never part-way back
+  // Sampled the whole time it showed: dimmed, then gone, never part-way back. The highlight can
+  // outlive the finished hold by a frame, at 100%, which looks exactly like gone.
+  expect([...levels].filter((l) => l !== '100%')).toEqual(['34%']);
 });
 
 // close() is only ONE way to leave — a tab-close or in-page navigation never calls it,
