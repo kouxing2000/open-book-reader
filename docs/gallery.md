@@ -17,7 +17,10 @@ live-merge later images (`mergeNewImages`). Since the gallery scroll-locks the p
 won't fire, so `hydratePage()` scrolls the *real* page in small dwelling steps to trigger native
 `loading=lazy` / IntersectionObserver / virtualized rows — on demand (progressive near the grid end,
 gated by `galleryAutoLoad`) or fully via **⟳ Load all** (`OBR._galleryRescan`). Bounded against
-infinite scroll; restores the user's scroll on `close()`. Demo: `tests/fixtures/lazy-demo.html`.
+infinite scroll; `close()` puts the page back where the user had it, or at the grid's spot (next
+section), never where the sweep left it. The cursor (`sweepY`) starts each open where the page
+stands, not at its top: the grid can open mid-way, and a first chunk swept from the top finds
+nothing new and pauses loading (`softDone`). Demo: `tests/fixtures/lazy-demo.html`.
 
 ## Two layouts — Wall (masonry) + Ordered (row-major)
 
@@ -49,6 +52,53 @@ thumbnail filmstrip, a timed slideshow. The **⟷ Fit width** toggle (`F` key, `
 + options checkbox) fills a tall page to the WIDTH and scrolls it — for reading a single manga/comic/scan
 page — instead of shrinking the whole page to fit; the `.lb.lb-fit` class switches the chrome to
 `position:fixed` so it stays pinned while the image scrolls under it.
+
+## The page's scroll and the grid follow each other
+
+The reader's rule (`docs/reader.md`), for pictures, so an accidental quit and a reopen land on the
+same tiles, and a switch between the two modes keeps the place. CSS background images have no
+element and never take part.
+
+- **Pairing:** a tile matches a live `<img>` that answers to its URL, by any URL the image carries
+  (`liveUrls`: currentSrc, src, every srcset candidate by the shared `OBR.srcsetUrls` tokenizer,
+  the lazy attribute). A tile keeps the URL
+  `collect()` saw, and an image changes its own as it loads: an unloaded srcset image is collected
+  as its largest candidate, then loads the one its `sizes` pick (WordPress emits this markup on
+  every content image). Visibility is the reader's: a box, not `OBR._clipped` (a carousel, a
+  collapsed box), and not `pinned` under a sticky or fixed ancestor, which is always on screen and
+  says nothing about where the page is. A box that scrolls the image vertically ends that walk,
+  so a fixed app shell or a scrolling modal still counts as page content, and the body never
+  pins (pinning it is how a site locks its own scroll).
+- **Open:** the grid starts on the tile of the page's first on-screen image (`pageImageUrls`, read
+  before the scroll lock, which drops the scrollbar and can reflow the page). It stays at the grid's
+  top when that tile already starts in the top half of the grid's first screen: a page at its top,
+  or a short window where no tile fits whole. An image the filter hides has no tile; the next
+  on-screen image stands in.
+- **Close:** only a grid that moved moves the page. Moved means the big view is open, or the top
+  tile or its offset is not what open placed (`openTopUrl`/`openTopOffset`; the offset counts, or
+  scrolling within one tall comic page would read as unmoved). Tiles are compared by URL, since
+  hiding an image renumbers them, and a re-collect can give the same picture a new URL, so a
+  live copy that answers to the open's URL is the same picture. The page then scrolls to the live copy of the grid's top tile, or of the picture in
+  the big view, via the shared `OBR._revealOnPage`. The live copy is the LARGEST visible one
+  (`liveCopyOf`), so a thumbnail strip reusing the URL, earlier in the page, does not win. With no
+  visible live copy, or an unmoved grid, it goes back to `savedPageX`/`savedPageY`.
+- **Exact reopen:** a close that synced the page remembers the tile, how far it was scrolled past,
+  and where on screen it left that image's live copy (`closeSpot`, in memory only). A reopen with
+  that copy still at the same spot restores exactly that, offset and all; anything else measures
+  the page again. It compares the image, not `scrollY`: an article in its own scroll box (an app
+  shell) never moves the window. An unmoved close keeps the spot its open restored, since it puts
+  the page back where that open found it.
+- **Tiles reserve their box** from the collected size before they decode. The open places the grid
+  synchronously after `render()`, and a tile without height (say, a page image fetched in CORS
+  mode that the tile's plain fetch cannot reuse) would leave every tile at the top.
+- **"Load all" still means all.** Chunks sweep from where the page stands, but a grid opened
+  mid-page owes the page above, since a feed that unmounts what scrolled past never mounted it
+  while the grid was open. "Load all" pages through that from the very top on its own cursor
+  (`topY`), then carries on from the chunks' frontier, so neither leaves the other a stretch
+  already swept (a chunk that finds nothing new pauses loading). The cursor survives a step budget
+  that runs out.
+- Which way each open and close went lands on the debug-timing line (`at=`) and in
+  `OBR._diagGallery()` (`openAt`, `closeAt`), a thrown scan or reveal with its own reason.
 
 ## Image filter — hide avatars / repeated noise
 

@@ -245,7 +245,7 @@ known paragraph cannot fail this way, which is how the scrolled-past gap first w
   first 80 chars (`proseBlocks` / `blockKey`). A key two blocks share on EITHER side is dropped
   (`uniqueByKey`), or a teaser repeating a paragraph would send the close to the teaser.
 - **Live blocks must actually be visible.** They need a box (`height > 0`), so a hidden duplicate
-  cannot void the visible one, and they must not be `clipped()` by an `overflow: hidden` ancestor
+  cannot void the visible one, and they must not be `OBR._clipped` by an `overflow: hidden` ancestor
   (a collapsed "Read more", a carousel). The walk stops at the first ancestor that SCROLLS and
   asks whether that box is clipped instead. In an app shell (a hidden body around a scrolling
   article), every paragraph scrolled out of the article box would otherwise read as clipped.
@@ -253,8 +253,9 @@ known paragraph cannot fail this way, which is how the scrolled-past gap first w
   or before it: several paragraphs start in one column. Something unpaired may sit above that
   block on the spread (a short paragraph, a heading, pictures). Then the block before it stands
   in, so no unread line ends up above the viewport.
-- **`revealOnPage`, not `scrollIntoView`.** It moves the window and boxes that scroll, so an
-  article in its own scroll box still follows. It never moves a box that clips: scrollIntoView
+- **`OBR._revealOnPage`, not `scrollIntoView`.** It and `OBR._clipped` live in `settings.js`,
+  shared with the gallery's page sync (`docs/gallery.md`). It moves the window and boxes that
+  scroll, so an article in its own scroll box still follows. It never moves a box that clips: scrollIntoView
   scrolls `overflow: hidden` too, which slides a collapsed teaser to mid-article with no way back.
   It scrolls instantly, so a site's smooth scrolling can't leave the fingerprint measured
   mid-animation. It subtracts the site's `scroll-padding-top`, which is how a site declares its

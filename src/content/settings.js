@@ -319,21 +319,24 @@
   // shattered. Same whitespace-anchored approach the vendored Readability uses
   // (REGEXPS.srcsetUrl). Shared by reader.js (lazy-image rescue) and gallery.js (collection
   // + full-res variant) so both parse srcset identically.
+  function srcsetCandidates(srcset) {
+    const out = [], re = /(\S+)(\s+[\d.]+[wx])?(\s*(?:,|$))/g;
+    let m;
+    while (srcset && (m = re.exec(srcset)) !== null) out.push({ url: m[1], d: m[2] ? m[2].trim() : '' });
+    return out;
+  }
   OBR.bestFromSrcset = function (srcset) {
-    if (!srcset) return null;
-    const re = /(\S+)(\s+[\d.]+[wx])?(\s*(?:,|$))/g;
-    let m, best = null, bestScore = -1;
-    while ((m = re.exec(srcset)) !== null) {
+    let best = null, bestScore = -1;
+    for (const c of srcsetCandidates(srcset)) {
       let score = 1;
-      const d = m[2] && m[2].trim();
-      if (d) {
-        if (d.endsWith('w')) score = parseFloat(d) || 1;
-        else if (d.endsWith('x')) score = (parseFloat(d) || 1) * 1000;
-      }
-      if (score > bestScore) { bestScore = score; best = m[1]; }
+      if (c.d.endsWith('w')) score = parseFloat(c.d) || 1;
+      else if (c.d.endsWith('x')) score = (parseFloat(c.d) || 1) * 1000;
+      if (score > bestScore) { bestScore = score; best = c.url; }
     }
     return best;
   };
+  // Every candidate URL in a srcset, in order, by the same tokenizing.
+  OBR.srcsetUrls = (srcset) => srcsetCandidates(srcset).map((c) => c.url);
 
   // Mode-switch glyphs shared by the reader and gallery toolbars (an open book + a framed
   // picture). Defined once here — settings.js loads before both engines — so the two stay
@@ -352,6 +355,43 @@
     host.id = id;
     document.documentElement.appendChild(host);
     return { host, root: host.attachShadow({ mode: 'open' }) };
+  };
+
+  // The page-scroll helpers both engines use to put the page where the overlay was on close.
+  // Is `el` cut off by an ancestor that clips without scrolling — a collapsed "Read more" box,
+  // a carousel? Its box is real, so a height test cannot see it, but neither can the user.
+  const clips = (v) => v === 'hidden' || v === 'clip';
+  const scrolls = (v) => v === 'auto' || v === 'scroll';
+  OBR._clipped = function clipped(el) {
+    const r = el.getBoundingClientRect();
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+      const o = getComputedStyle(a);
+      // A box that scrolls can bring `el` into view, so past it only the box's own clipping
+      // counts — an app shell (a hidden body around a scrolling article) would otherwise clip
+      // every paragraph scrolled out of the article box.
+      if (scrolls(o.overflowY) || scrolls(o.overflowX)) return clipped(a);
+      if (!clips(o.overflowX) && !clips(o.overflowY)) continue;
+      const ar = a.getBoundingClientRect();
+      if (clips(o.overflowY) && (r.bottom <= ar.top || r.top >= ar.bottom)) return true;
+      if (clips(o.overflowX) && (r.right <= ar.left || r.left >= ar.right)) return true;
+    }
+    return false;
+  };
+
+  // Scroll the page so `el` sits at the top of the viewport. Only the window and boxes that
+  // scroll are moved: content inside its own scroll box still follows, while a box that clips
+  // (a collapsed "Read more", a carousel) keeps the offset the page gave it. Instant, so a
+  // site's smooth scroll-behavior cannot leave a measurement of the page mid-animation.
+  OBR._revealOnPage = function (el) {
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+      const oy = getComputedStyle(a).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && a.scrollHeight > a.clientHeight) {
+        a.scrollTo({ top: a.scrollTop + el.getBoundingClientRect().top - a.getBoundingClientRect().top, behavior: 'instant' });
+      }
+    }
+    // The site's own scroll-padding-top is how it says "my sticky header is this tall".
+    const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+    window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - pad, behavior: 'instant' });
   };
 
   // Apply a stylesheet to a Shadow root via Constructable Stylesheets, so strict-CSP sites

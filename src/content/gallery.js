@@ -179,6 +179,8 @@
   let busy = false;          // a batch download is in flight
   let sweeping = false;      // a hydration chunk / Load-all is in flight
   let sweepY = 0;            // how far down the page we've hydrated so far (px)
+  let topY = null;           // "Load all"'s own cursor through the page above where the grid
+                             // opened (null = nothing owed)
   let fullyHydrated = false; // confirmed end of page (set by "Load all"); stop for good
   let softDone = false;      // chunk path hit the end with nothing new — pause auto-
                              // prefetch until more content appears (self-heals on merge)
@@ -980,6 +982,7 @@
     tile.addEventListener('click', (e) => { e.preventDefault(); openLightbox(i); });
     const img = document.createElement('img');
     img.loading = 'lazy';
+    if (im.w && im.h) { img.width = im.w; img.height = im.h; } // reserve the box before decode
     img.src = im.url;
     img.addEventListener('error', () => {
       // In the Ordered layout, removing a tile frees width its row was justified around —
@@ -1163,6 +1166,95 @@
     if (!a || a.idx < 0 || !scrollerEl) return;
     const t = gridEl.querySelector('.tile[data-idx="' + a.idx + '"]');
     if (t) scrollerEl.scrollTop = Math.max(0, tileTop(t) - a.offset);
+  }
+
+  /* ---- page scroll <-> grid position ----
+   * The reader's rule (docs/reader.md), for pictures: the grid opens on the image the page is
+   * scrolled to, and a close after the grid moved scrolls the page to the image the grid was
+   * on, so a quit and a reopen land on the same tiles. A tile pairs with a live <img> by its
+   * collected URL. */
+  let openTopUrl = '';  // the tile at the grid's top once open() placed it ('' = an empty grid)
+  let openTopOffset = 0; // ...and how far it was scrolled past
+  let openBack = null;  // the close spot this open restored, if it restored one
+  let closeSpot = null; // { url, offset, top }: the grid spot a page-syncing close left, and where
+                        // on screen it left that image's live copy
+  let openWhy = '', closeWhy = ''; // which way the last open and close went (debug line, _diagGallery)
+
+  // Every URL a live <img> answers to. A tile keeps the URL collect() saw, and an image changes
+  // its own as it loads: an unloaded srcset image is collected as its largest candidate, then
+  // loads the one its sizes pick.
+  function liveUrls(img, e) {
+    const out = new Set();
+    const add = (u) => { if (u) out.add(resolveUrl(u, location.href)); };
+    if (e) add(e.url);
+    add(img.currentSrc); add(img.getAttribute('src')); add(lazyAttrUrl(img));
+    for (const u of OBR.srcsetUrls(img.srcset)) add(u);
+    return out;
+  }
+  // Pinned to the screen (a sticky or fixed header): always on screen, so it says nothing about
+  // where the page is. A box that scrolls the image vertically ends the walk: inside a fixed app
+  // shell or a scrolling modal it moves like page content. The body is never a pin, since
+  // pinning it is how a site locks its own scroll.
+  function pinned(el) {
+    for (let a = el; a && a !== document.documentElement && a !== document.body; a = a.parentElement) {
+      const o = getComputedStyle(a);
+      if (a !== el && (o.overflowY === 'auto' || o.overflowY === 'scroll') && a.scrollHeight > a.clientHeight) return false;
+      if (o.position === 'fixed' || o.position === 'sticky') return true;
+    }
+    return false;
+  }
+  // The live <img> elements showing a gallery image, in page order, with their gallery entry.
+  function eachLiveImage(fn) {
+    for (const img of document.querySelectorAll('img')) {
+      if (img.getBoundingClientRect().height <= 0) continue;
+      const e = galleryImgEntry(img);
+      if (e) fn(img, e);
+    }
+  }
+
+  // The URL sets of the images on the page's screen, in page order. Read before the scroll lock,
+  // which drops the scrollbar and so can reflow the page, while it is still what the user sees.
+  function pageImageUrls() {
+    const sets = [], vh = window.innerHeight;
+    eachLiveImage((img, e) => {
+      const r = img.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < vh && !OBR._clipped(img) && !pinned(img)) sets.push(liveUrls(img, e));
+    });
+    return sets;
+  }
+
+  // Place the freshly rendered grid. Back on the spot a close left (the page has not moved
+  // since): exactly there. Otherwise on the page's first on-screen image that has a tile — unless
+  // that tile already starts in the top half of the grid's first screen, when the grid starts at
+  // its top (a page at its top; a short window, where no tile fits whole).
+  // Returns which way it went, for the debug line.
+  function placeOpenGrid(urlSets, back) {
+    const byUrl = new Map(images.map((im, i) => [im.url, i]));
+    const tileOf = (u) => byUrl.has(u) ? gridEl.querySelector('.tile[data-idx="' + byUrl.get(u) + '"]') : null;
+    const t = back && tileOf(back.url);
+    if (t) { scrollerEl.scrollTop = Math.max(0, tileTop(t) - back.offset); return 'back:' + t.dataset.idx; }
+    for (const urls of urlSets) {
+      let tile = null;
+      for (const u of urls) if ((tile = tileOf(u))) break;
+      if (!tile) continue; // filtered out of the grid
+      const top = tileTop(tile);
+      if (top < scrollerEl.clientHeight / 2) return 'page:' + tile.dataset.idx + ' first-screen';
+      scrollerEl.scrollTop = top;
+      return 'page:' + tile.dataset.idx;
+    }
+    return 'top (on-screen images ' + urlSets.length + ', none a tile)';
+  }
+
+  // The live copy of `url` a close scrolls to: the largest visible one, so a thumbnail strip
+  // reusing the URL does not win over the picture itself. null when none is visible.
+  function liveCopyOf(url) {
+    let target = null, best = 0;
+    eachLiveImage((img, e) => {
+      if (!liveUrls(img, e).has(url) || OBR._clipped(img) || pinned(img)) return;
+      const r = img.getBoundingClientRect(), a = r.width * r.height;
+      if (a > best) { best = a; target = img; }
+    });
+    return target;
   }
 
   // Lay every known image into fresh columns (initial render, resize, column-width change).
@@ -1537,13 +1629,23 @@
     try {
       for (let i = 0; i < maxSteps; i++) {
         const h0 = de.scrollHeight;
-        sweepY = Math.min(sweepY + step, Math.max(0, h0 - 1));
-        window.scrollTo(0, sweepY);
+        let y;
+        if (toBottom && topY !== null) {
+          // "All" means all: chunks sweep from where the grid opened, so "Load all" first pages
+          // through what lies above, from the very top (a feed may never have mounted it), then
+          // carries on from the chunks' frontier. Its cursor survives a budget that runs out.
+          y = topY; topY += step;
+          if (topY >= sweepY) topY = null;
+        } else {
+          sweepY = Math.min(sweepY + step, Math.max(0, h0 - 1));
+          y = sweepY;
+        }
+        window.scrollTo(0, y);
         await wait(200); // let native lazy / IntersectionObserver loaders fire + mount
         if (!active) break; // closed mid-sweep: stop scrolling so close() can restore position
         added += mergeNewImages();
         const h1 = de.scrollHeight;
-        const atBottom = sweepY + window.innerHeight >= h1 - 2;
+        const atBottom = y + window.innerHeight >= h1 - 2;
         // Only conclude "the end" after consecutive bottom hits with no growth AND no
         // new images — otherwise a slow infinite-scroll page looks done before it is.
         if (atBottom && h1 <= h0) {
@@ -1856,7 +1958,18 @@
     if (autoSpeedEl) autoSpeedEl.value = settings.galleryAutoScrollSpeed || 60; // reflect the persisted speed
     if (lbSecsEl) lbSecsEl.value = settings.gallerySlideSeconds || 3;           // reflect the persisted slideshow secs
     savedPageX = window.scrollX; savedPageY = window.scrollY; // restored on close
-    sweepY = 0; fullyHydrated = false; softDone = false; // fresh hydration cursor per open
+    let pageUrls = [], scanWhy = '';
+    try { pageUrls = pageImageUrls(); } catch (e) { pageUrls = []; scanWhy = 'page scan threw: ' + e.message + ' -> '; } // never break an open
+    // Unmoved since a page-syncing close: the image it revealed is still where it left it. Its
+    // own top, not scrollY, so an article in its own scroll box counts too.
+    let back = null;
+    try {
+      const el = closeSpot && liveCopyOf(closeSpot.url);
+      if (el && Math.abs(el.getBoundingClientRect().top - closeSpot.top) < 1) back = closeSpot;
+    } catch (e) { back = null; }
+    // Fresh hydration cursor per open, from where the page stands: the grid can open mid-way, and
+    // a first chunk swept from the page's top would find nothing new and pause loading.
+    sweepY = savedPageY; topY = savedPageY > 0 ? 0 : null; fullyHydrated = false; softDone = false;
     autoScroll = false; autoFrac = 0; autoRetriedAtBottom = false; // fresh auto-scroll state
     slideOn = false; clearTimeout(slideTimer); slideTimer = 0; // fresh slideshow state
     host.style.display = '';
@@ -1867,10 +1980,17 @@
     if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
     if (t) t.mark('build');
     render();        // collect() scans the DOM for images, then lays out the grid
+    let placed = '';
+    try { placed = placeOpenGrid(pageUrls, back); } catch (e) { placed = 'placement threw: ' + e.message; } // the grid's top
+    openWhy = scanWhy + placed;
+    openBack = placed.startsWith('back:') ? back : null;
+    const top = captureAnchor();
+    openTopUrl = top.idx >= 0 && images[top.idx] ? images[top.idx].url : '';
+    openTopOffset = top.offset;
     if (t) t.mark('render');
     startWatching(); // pick up late/lazy/inserted images without user action
     maybePreload();  // if the grid is shorter than the viewport, pull one chunk now
-    if (t) { t.mark('watch'); t.flush('imgs=' + (images ? images.length : 0)); }
+    if (t) { t.mark('watch'); t.flush('imgs=' + (images ? images.length : 0) + ' at=' + openWhy); }
     if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
   }
   // Records a USER-initiated dismissal into the shared auto-open suppression set —
@@ -1916,10 +2036,33 @@
     slideSecsSetting.flush(); // persist a just-edited slideshow dwell too
     flushSize();              // persist a just-dragged size (column count) too
     stopWatching();
+    const lbIdx = lightboxIndex;
     closeLightbox();
+    // Where the grid is, measured while it is still shown: the picture open in the big view,
+    // else the tile at the top.
+    const at = lbIdx >= 0 ? { idx: lbIdx, offset: 0 } : captureAnchor();
+    const atUrl = at.idx >= 0 && images[at.idx] ? images[at.idx].url : '';
+    const gridScrolled = !!scrollerEl && scrollerEl.scrollTop > 0;
     host.style.display = 'none';
     document.documentElement.style.overflow = '';
-    window.scrollTo(savedPageX, savedPageY); // page may have been scrolled to hydrate
+    // Only a grid that moved moves the page: untouched, it still shows what the page did. Moved
+    // means the big view is open, or the top tile or its offset is not what open placed. A grid
+    // empty at open moved if it scrolled at all.
+    const sameOffset = Math.abs(at.offset - openTopOffset) < 2;
+    let target = null, why = '';
+    const unmovedFast = lbIdx < 0 && !!openTopUrl && atUrl === openTopUrl && sameOffset;
+    try { target = atUrl && !unmovedFast ? liveCopyOf(atUrl) : null; } catch (e) { why = 'scan threw: ' + e.message; }
+    // Hiding an image re-collects, and the same picture can come back under a new URL.
+    const samePicture = atUrl === openTopUrl || (!!target && !!openTopUrl && liveUrls(target, galleryImgEntry(target)).has(openTopUrl));
+    const moved = lbIdx >= 0 || (openTopUrl ? !(samePicture && sameOffset) : gridScrolled);
+    const url = moved ? atUrl : '';
+    if (!moved) target = null;
+    if (target) { try { OBR._revealOnPage(target); } catch (e) { target = null; why = 'reveal threw: ' + e.message; } }
+    // Else back where it was: the page may have been scrolled to hydrate.
+    if (!target) window.scrollTo(savedPageX, savedPageY);
+    // An unmoved close puts the page back where this open found it, so a spot it restored stays good.
+    closeSpot = target ? { url: url, offset: at.offset, top: target.getBoundingClientRect().top } : !moved ? openBack : null;
+    closeWhy = (target ? 'synced:' : why ? why + ' at ' : url ? 'no live copy:' : 'unmoved:') + at.idx;
     active = false;
     // Engagement chip moment — user-initiated closes only, mirroring reader.js close().
     // An AUTO-opened gallery the user closes is skipped outright (the gallery has no
@@ -1933,7 +2076,7 @@
 
   // Debug-mode state snapshot — the gallery half of OBR._diagReader (see reader.js).
   OBR._diagGallery = function () {
-    return { active: active, opening: opening, built: built };
+    return { active: active, opening: opening, built: built, openAt: openWhy, closeAt: closeWhy };
   };
   OBR.closeGallery = close;
   OBR.toggleGallery = toggle;

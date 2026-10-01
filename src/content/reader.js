@@ -2049,25 +2049,10 @@
     return uniqueByKey(proseBlocks(content).filter((el) => !(colophonEl && colophonEl.contains(el))));
   }
 
-  // Is `el` cut off by an ancestor that clips without scrolling — a collapsed "Read more" box,
-  // a carousel? Its box is real, so the height test cannot see it, but neither can the user.
-  const clips = (v) => v === 'hidden' || v === 'clip';
-  const scrolls = (v) => v === 'auto' || v === 'scroll';
-  function clipped(el) {
-    const r = el.getBoundingClientRect();
-    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
-      const o = getComputedStyle(a);
-      // A box that scrolls can bring `el` into view, so past it only the box's own clipping
-      // counts — an app shell (a hidden body around a scrolling article) would otherwise clip
-      // every paragraph scrolled out of the article box.
-      if (scrolls(o.overflowY) || scrolls(o.overflowX)) return clipped(a);
-      if (!clips(o.overflowX) && !clips(o.overflowY)) continue;
-      const ar = a.getBoundingClientRect();
-      if (clips(o.overflowY) && (r.bottom <= ar.top || r.top >= ar.bottom)) return true;
-      if (clips(o.overflowX) && (r.right <= ar.left || r.left >= ar.right)) return true;
-    }
-    return false;
-  }
+  // Visibility and page scrolling are shared with the gallery (settings.js): OBR._clipped says
+  // whether an ancestor that clips without scrolling hides `el`; OBR._revealOnPage scrolls it to
+  // the top of the viewport.
+  const clipped = (el) => OBR._clipped(el);
 
   // The paragraph at the top of the page, as { first, key, near, screen }: the first paired block
   // whose live copy is in the viewport, else the last one scrolled PAST — a viewport showing only
@@ -2238,22 +2223,6 @@
     return keys;
   }
 
-  // Scroll the page so `el` sits at the top of the viewport. Only the window and boxes that
-  // scroll are moved: an article inside its own scroll box still follows, while a box that
-  // clips (a collapsed "Read more", a carousel) keeps the offset the page gave it. Instant, so
-  // a site's smooth scroll-behavior cannot leave pageSpot() measuring mid-animation.
-  function revealOnPage(el) {
-    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
-      const oy = getComputedStyle(a).overflowY;
-      if ((oy === 'auto' || oy === 'scroll') && a.scrollHeight > a.clientHeight) {
-        a.scrollTo({ top: a.scrollTop + el.getBoundingClientRect().top - a.getBoundingClientRect().top, behavior: 'instant' });
-      }
-    }
-    // The site's own scroll-padding-top is how it says "my sticky header is this tall".
-    const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
-    window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - pad, behavior: 'instant' });
-  }
-
   // Scroll the page to the live copy of the last reading block that has a visible one; false
   // when none does.
   function syncPage(keys) {
@@ -2261,7 +2230,7 @@
     const live = liveBlocks();
     for (let i = keys.length - 1; i >= 0; i--) {
       const twin = live.get(keys[i]);
-      if (twin && !clipped(twin)) { revealOnPage(twin); return true; }
+      if (twin && !clipped(twin)) { OBR._revealOnPage(twin); return true; }
     }
     return false;
   }

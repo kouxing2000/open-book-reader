@@ -1822,3 +1822,317 @@ test.describe('ZIP writer output is a real archive (A3-3)', () => {
     }
   });
 });
+
+/* Page scroll <-> grid position: an accidental quit and a reopen land on the same tiles, the way
+ * the reader's page sync works. image-stream.html is 40 photos of differing heights, one per row
+ * of the page; a photo's number is its place on the page. */
+test.describe('page scroll and the grid follow each other', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoFixture(page, 'image-stream.html');
+    await page.waitForFunction(() => document.images.length === 40 && Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false })); // no hydration sweep moving the page
+  });
+  // The tile nearest the grid's top edge: its photo, how far it is scrolled past, the scroll.
+  const gridTop = (page) => page.evaluate(() => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const s = r.querySelector('.scroll'), st = s.getBoundingClientRect().top;
+    const n = (src) => Array.from(document.images).findIndex((i) => i.src === src) + 1;
+    let best = null;
+    for (const t of r.querySelectorAll('.tile')) {
+      const d = t.getBoundingClientRect().top - st;
+      if (!best || Math.abs(d) < Math.abs(best.d)) best = { d: d, src: t.querySelector('img').src };
+    }
+    return { n: n(best.src), offset: Math.round(-best.d), scrollTop: s.scrollTop };
+  });
+  // How far photo n's tile sits below the grid's top edge.
+  const tileBelowTop = (page, n) => page.evaluate((n) => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const s = r.querySelector('.scroll');
+    const t = Array.from(r.querySelectorAll('.tile')).find((x) => x.querySelector('img').src === document.images[n - 1].src);
+    return Math.round(t.getBoundingClientRect().top - s.getBoundingClientRect().top);
+  }, n);
+  // The first photo on the page's screen, and where its top sits.
+  const pageTop = (page) => page.evaluate(() => {
+    const i = Array.from(document.images).findIndex((x) => x.getBoundingClientRect().bottom > 0);
+    return { n: i + 1, top: Math.round(document.images[i].getBoundingClientRect().top), scrollY: window.scrollY };
+  });
+  const scrollGridBy = (page, px) => page.evaluate((px) => {
+    document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll').scrollTop += px;
+  }, px);
+
+  test('closing after scrolling the grid scrolls the page to the photo at its top', async ({ page }) => {
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(40);
+    await scrollGridBy(page, await tileBelowTop(page, 18));
+    const grid = await gridTop(page);
+    expect(grid.n).toBe(18);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    const top = await pageTop(page);
+    expect(top.n).toBe(18);
+    expect(Math.abs(top.top)).toBeLessThan(2);
+  });
+
+  test('a reopen right after a close lands on the same tiles, offset and all', async ({ page }) => {
+    await openGallery(page);
+    await scrollGridBy(page, (await tileBelowTop(page, 22)) + 37); // mid-tile, not on an edge
+    const left = await gridTop(page);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await openGallery(page);
+    const back = await gridTop(page);
+    expect(back.n).toBe(left.n);
+    expect(Math.abs(back.scrollTop - left.scrollTop)).toBeLessThan(2);
+    // ...and again after a close that did not move the grid.
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await openGallery(page);
+    expect(Math.abs((await gridTop(page)).scrollTop - left.scrollTop)).toBeLessThan(2);
+  });
+
+  test('opening with the page scrolled to a photo starts the grid on it', async ({ page }) => {
+    await page.evaluate(() => document.images[19].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    await openGallery(page);
+    expect(Math.abs(await tileBelowTop(page, 20))).toBeLessThan(1);
+  });
+
+  test('a grid closed without moving puts the page back exactly; a page at its top opens the grid at its top', async ({ page }) => {
+    await openGallery(page);
+    expect((await galleryState(page)).scrollTop).toBe(0);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    await page.evaluate(() => { document.images[29].scrollIntoView({ block: 'start', behavior: 'instant' }); window.scrollBy(0, 57); });
+    const y = await page.evaluate(() => window.scrollY);
+    await openGallery(page);
+    expect((await galleryState(page)).scrollTop).toBeGreaterThan(0); // a positive landmark: it moved to the page's photo
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect(await page.evaluate(() => window.scrollY)).toBe(y);
+  });
+
+  test('closing from the big view scrolls the page to the photo it showed', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile >> nth=0');
+    for (let i = 0; i < 26; i++) await page.keyboard.press('ArrowRight');
+    expect((await galleryState(page)).lbCounter).toBe('27 / 40');
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect((await pageTop(page)).n).toBe(27);
+  });
+
+  for (const [shell, css] of [
+    ['a hidden body', 'html, body { height: 100%; overflow: hidden; } main { height: 100vh; overflow-y: auto; }'],
+    ['a fixed shell', 'main { position: fixed; inset: 0; overflow-y: auto; }'],
+  ]) test('in an app shell (' + shell + ' around a scrolling box) a reopen follows the box, not the old spot', async ({ page }) => {
+    await page.addStyleTag({ content: css });
+    await openGallery(page);
+    await scrollGridBy(page, await tileBelowTop(page, 18));
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect((await pageTop(page)).n).toBe(18); // the box followed; the window never scrolls here
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await page.evaluate(() => document.images[29].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    await openGallery(page);
+    expect(Math.abs(await tileBelowTop(page, 30))).toBeLessThan(1);
+  });
+
+  test('scrolling within one tall tile still counts: the reopen keeps that offset', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOrderedCols: 1 })); // one tall tile per row
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
+    await scrollGridBy(page, 150); // still the first tile, scrolled part-way
+    const left = (await galleryState(page)).scrollTop;
+    expect((await gridTop(page)).n).toBe(1); // a positive landmark: the same tile is at the top
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await openGallery(page);
+    expect(Math.abs((await galleryState(page)).scrollTop - left)).toBeLessThan(2);
+  });
+
+  test('closing scrolls to the photo itself, not to a thumbnail strip reusing its URL', async ({ page }) => {
+    await page.evaluate(() => {
+      const strip = Object.assign(document.createElement('div'), { id: 'strip' });
+      strip.style.cssText = 'display:flex;gap:4px;overflow-x:auto;padding:8px';
+      for (const img of document.querySelectorAll('main img')) {
+        const th = Object.assign(document.createElement('img'), { src: img.src, alt: 'thumb' });
+        th.style.cssText = 'width:60px;height:auto;flex:0 0 auto';
+        strip.appendChild(th);
+      }
+      document.body.prepend(strip);
+    });
+    const main18 = () => page.evaluate(() => Math.round(document.querySelectorAll('main img')[17].getBoundingClientRect().top));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(40); // a thumbnail is the same picture: one tile
+    const src18 = await page.evaluate(() => document.querySelectorAll('main img')[17].src);
+    await scrollGridBy(page, await page.evaluate((src) => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      const t = Array.from(r.querySelectorAll('.tile')).find((x) => x.querySelector('img').src === src);
+      return t.getBoundingClientRect().top - r.querySelector('.scroll').getBoundingClientRect().top;
+    }, src18));
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect(Math.abs(await main18())).toBeLessThan(2);
+  });
+
+  test('the grid lands on the page\'s photo even when its tiles have not decoded yet', async ({ page }) => {
+    // Page images fetched in CORS mode: the tiles' plain fetches cannot reuse them, so at
+    // placement no tile has a picture yet, only the box its known size reserves.
+    await page.evaluate(() => {
+      const main = document.querySelector('main');
+      main.textContent = '';
+      for (let i = 1; i <= 40; i++) {
+        const fig = document.createElement('figure');
+        const img = Object.assign(document.createElement('img'), { crossOrigin: 'anonymous', src: 'pic.png?n=' + i, alt: 'Photo ' + i });
+        fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: 'Photo ' + i }));
+        main.appendChild(fig);
+      }
+    });
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
+    await page.evaluate(() => document.images[19].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    expect(Math.abs(await tileBelowTop(page, 20))).toBeLessThan(1);
+  });
+
+  test('closing finds the photo after it loaded a different srcset candidate than the tile was collected with', async ({ page }) => {
+    // An unloaded srcset image is collected as its largest candidate; once it loads, its own URL
+    // is the candidate its sizes picked. The one-column Ordered strip keeps the square photos'
+    // tiles from sharing a top edge.
+    await page.evaluate(() => {
+      const main = document.querySelector('main');
+      main.textContent = '';
+      for (let i = 1; i <= 40; i++) {
+        // A reserved box, as real markup has, so the lazy ones below the screen stay unloaded.
+        const img = Object.assign(document.createElement('img'), { loading: 'lazy', alt: 'Photo ' + i, width: 600, height: 600 });
+        img.sizes = '600px';
+        img.srcset = ['300', '700', '2000'].map((w) => 'pic.png?n=' + i + '&w=' + w + ' ' + w + 'w').join(','); // no space: legal
+        img.src = 'pic.png?n=' + i + '&w=700';
+        const fig = document.createElement('figure');
+        fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: 'Photo ' + i }));
+        main.appendChild(fig);
+      }
+    });
+    await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth > 0);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOrderedCols: 1 }));
+    await openGallery(page); // the photos below the screen are still unloaded
+    await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
+    const tile20 = await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      return Array.from(r.querySelectorAll('.tile img')).map((i) => i.src).find((u) => u.includes('n=20&'));
+    });
+    expect(tile20).toContain('w=2000');
+    await page.evaluate(() => { for (const i of document.images) i.loading = 'eager'; }); // now they load
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.currentSrc));
+    expect(await page.evaluate(() => document.images[19].currentSrc)).not.toContain('w=2000');
+    await page.evaluate((src) => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      const s = r.querySelector('.scroll');
+      const t = Array.from(r.querySelectorAll('.tile')).find((x) => x.querySelector('img').src === src);
+      s.scrollTop += t.getBoundingClientRect().top - s.getBoundingClientRect().top;
+    }, tile20);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect(Math.abs(await page.evaluate(() => Math.round(document.images[19].getBoundingClientRect().top)))).toBeLessThan(2);
+  });
+
+  test('a sticky header picture does not hold the grid at its top', async ({ page }) => {
+    await page.evaluate(() => {
+      const c = Object.assign(document.createElement('canvas'), { width: 240, height: 100 });
+      c.getContext('2d').fillRect(0, 0, 240, 100);
+      const bar = document.createElement('header');
+      bar.style.cssText = 'position: sticky; top: 0; background: #fff; z-index: 1';
+      bar.appendChild(Object.assign(document.createElement('img'), { src: c.toDataURL('image/png'), width: 240, height: 100, alt: 'Masthead' }));
+      document.body.prepend(bar);
+    });
+    await page.evaluate(() => document.querySelectorAll('main img')[19].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    await openGallery(page);
+    const below = await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      const src = document.querySelectorAll('main img')[19].src;
+      const t = Array.from(r.querySelectorAll('.tile')).find((x) => x.querySelector('img').src === src);
+      return Math.round(t.getBoundingClientRect().top - r.querySelector('.scroll').getBoundingClientRect().top);
+    });
+    expect(Math.abs(below)).toBeLessThan(1);
+  });
+
+  test('"Load all" from a grid opened mid-feed still loads the feed above the open point', async ({ page }) => {
+    // A feed that mounts each picture only while it is near the screen, and unmounts it after.
+    await page.evaluate(() => {
+      const main = document.querySelector('main');
+      main.textContent = '';
+      const c = Object.assign(document.createElement('canvas'), { width: 200, height: 300 });
+      const io = new IntersectionObserver((es) => {
+        for (const e of es) {
+          const slot = e.target;
+          if (e.isIntersecting && !slot.firstChild) {
+            const x = c.getContext('2d'); x.fillStyle = 'hsl(' + slot.dataset.i * 37 + ',50%,50%)'; x.fillRect(0, 0, 200, 300);
+            slot.appendChild(Object.assign(document.createElement('img'), { src: c.toDataURL('image/png'), width: 200, height: 300 }));
+          } else if (!e.isIntersecting && slot.firstChild) slot.firstChild.remove();
+        }
+      }, { rootMargin: '200px 0px' });
+      for (let i = 1; i <= 40; i++) {
+        const slot = document.createElement('div'); slot.dataset.i = i; slot.style.height = '320px';
+        main.appendChild(slot); io.observe(slot);
+      }
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.scrollTo(0, 320 * 25));
+    await page.waitForTimeout(400);
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBeLessThan(40); // a positive landmark: only what is mounted near the screen
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    expect((await galleryState(page)).tiles).toBe(40);
+  });
+
+  test('a grid opened mid-page loads more of the page from where it stands, not from its top', async ({ page }) => {
+    await page.evaluate(() => document.images[29].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    const y = await page.evaluate(() => window.scrollY);
+    await openGallery(page);
+    await page.evaluate(() => {
+      window.__sweepYs = [];
+      window.addEventListener('scroll', () => window.__sweepYs.push(window.scrollY));
+    });
+    await page.evaluate(() => globalThis.OBR._galleryLoadMore());
+    const ys = await page.evaluate(() => window.__sweepYs);
+    expect(ys.length).toBeGreaterThan(0); // a positive landmark: the sweep ran
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(y);
+  });
+});
+
+test('switching from the grid to the reader keeps the place', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  // A tall picture of its own height after every second paragraph, so the grid and the page
+  // both scroll, and no two tiles share a top edge.
+  await page.evaluate(() => {
+    const parts = [...document.querySelectorAll('article p')];
+    for (let k = 1; k <= 29; k++) {
+      const h = 300 + (k * 53) % 240;
+      const c = Object.assign(document.createElement('canvas'), { width: 200, height: h });
+      const x = c.getContext('2d'); x.fillStyle = 'hsl(' + k * 31 + ', 50%, 50%)'; x.fillRect(0, 0, 200, h);
+      const fig = document.createElement('figure');
+      fig.appendChild(Object.assign(document.createElement('img'), { src: c.toDataURL('image/png'), width: 200, height: h, alt: 'Plate ' + k }));
+      parts[k * 2 - 1].after(fig);
+    }
+  });
+  await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
+  await injectAll(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+  await openGallery(page);
+  // Grid on plate 16, which follows Part 32 on the page.
+  await page.evaluate(() => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const s = r.querySelector('.scroll');
+    const src = document.querySelectorAll('article img')[15].src;
+    const t = Array.from(r.querySelectorAll('.tile')).find((x) => x.querySelector('img').src === src);
+    s.scrollTop += t.getBoundingClientRect().top - s.getBoundingClientRect().top;
+  });
+  expect(await page.evaluate(() => { // a positive landmark: the grid really is on plate 16
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const src = document.querySelectorAll('article img')[15].src;
+    const t = Array.from(r.querySelectorAll('.tile')).find((x) => x.querySelector('img').src === src);
+    return Math.round(Math.abs(t.getBoundingClientRect().top - r.querySelector('.scroll').getBoundingClientRect().top));
+  })).toBeLessThan(1);
+  await page.evaluate(() => globalThis.OBR.open()); // the reader takes over from the grid
+  await expect.poll(() => page.evaluate(() => {
+    const root = document.getElementById('obr-host') && document.getElementById('obr-host').shadowRoot;
+    const vp = root && root.querySelector('.obr-viewport');
+    if (!vp) return [];
+    const v = vp.getBoundingClientRect();
+    return [...root.querySelectorAll('.obr-content p')].filter((p) => {
+      const rg = document.createRange(); rg.selectNodeContents(p);
+      return [...rg.getClientRects()].some((r) => r.width > 0 && r.left >= v.left - 2 && r.right <= v.right + 2);
+    }).map((p) => Number((p.textContent.match(/^Part (\d+) of/) || [])[1])).filter(Boolean);
+  })).toContain(33);
+});

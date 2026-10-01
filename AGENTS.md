@@ -120,7 +120,7 @@ while editing a feature belongs beside that feature.
 | area | doc |
 | --- | --- |
 | Text reader — pagination, page-turn animation, print/PDF, progress fractions, page-scroll sync on open/close and the open spotlight, content override (selection / picker / saved pick), split article bodies, tall-figure fitting, image sizing, why there is no text-wrap-around-image | `docs/reader.md` |
-| Image gallery — lazy hydration, Wall + Ordered layouts, lightbox, avatar/noise filter, ZIP downloads | `docs/gallery.md` |
+| Image gallery — lazy hydration, Wall + Ordered layouts, lightbox, page-scroll sync on open/close, avatar/noise filter, ZIP downloads | `docs/gallery.md` |
 | Auto-open — the sentinel's decision ladder, permission model, registration | `docs/auto-open-spec.md` |
 | Service worker — context-menu + sentinel-registration serialization, debug timing and trigger tracing | `docs/background-worker.md` |
 | Welcome, colophon + rating ask, report page, feedback pipeline | `docs/engagement.md` |
@@ -183,7 +183,7 @@ npx playwright install chromium                # first run only
   font size, progress/resume, page-scroll sync on open/close, close/toggle, settings persistence,
   the double-injection guard.
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
-  (stubbed SW), mode switching, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
+  (stubbed SW), mode switching, page-scroll sync on open/close, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
   by real archive parsers.
 - `auto-open.spec.js` — the sentinel's decision ladder end-to-end (content gates, metadata veto,
   suppression + SPA re-arm, enable-time chip, engine chip/suppress integration) plus the pure rule

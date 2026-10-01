@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A Long Photo Stream</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 sans-serif; }
+    main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+    figure { margin: 0 0 24px; }
+    figure img { display: block; width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <!-- A page that is mostly pictures, long enough that both the page and the gallery grid
+       scroll well past a screen. Every photo is its own decodable PNG with its own height, so
+       each is its own tile and no two masonry tiles share a top edge. -->
+  <main id="stream"></main>
+  <script>
+    const stream = document.getElementById('stream');
+    const png = (w, h, i) => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const x = c.getContext('2d');
+      x.fillStyle = 'hsl(' + (i * 47) % 360 + ', 55%, 55%)'; x.fillRect(0, 0, w, h);
+      x.fillStyle = '#fff'; x.font = '48px sans-serif'; x.fillText(String(i), 16, 64);
+      return c.toDataURL('image/png');
+    };
+    for (let i = 1; i <= 40; i++) {
+      const fig = document.createElement('figure');
+      const img = document.createElement('img');
+      const h = 120 + (i * 37) % 160;
+      img.width = 200; img.height = h; img.alt = 'Photo ' + i;
+      img.src = png(200, h, i);
+      const cap = document.createElement('figcaption');
+      cap.textContent = 'Photo ' + i;
+      fig.append(img, cap);
+      stream.appendChild(fig);
+    }
+  </script>
+</body>
+</html>
