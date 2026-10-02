@@ -1044,11 +1044,11 @@ test('reopening after scrolling back a few paragraphs opens there, not on the sa
   expect(await partsOnScreen(page)).toContain(back);
 });
 
-/* The spotlight: on an open placed by the page's scroll, the text that was on screen stays lit
- * and the rest dims. Read off the highlight's two dimmed stretches; the lit text is what lies
- * between them. */
+/* The spotlight: on an open placed by the page's scroll, the text the page had scrolled past dims
+ * while the screen's lines and everything after stay lit. Read off the highlight's dimmed stretch;
+ * the lit text starts where it ends. */
 // Scroll the page so its top edge cuts through the middle of a line, `share` of the way into
-// Part n, and return the text of the first line that is (partly) visible and of the last.
+// Part n, and return the text of the first line that is (partly) visible.
 const scrollIntoPart = (page, n, share) => page.evaluate(({ n, share }) => {
   const ps = [...document.querySelectorAll('article p')];
   const p = ps.find((el) => el.textContent.startsWith('Part ' + n + ' of'));
@@ -1065,56 +1065,67 @@ const scrollIntoPart = (page, n, share) => page.evaluate(({ n, share }) => {
     }
     return out;
   };
-  const vh = window.innerHeight;
-  const seen = ps.filter((el) => { const b = el.getBoundingClientRect(); return b.bottom > 0 && b.top < vh; });
-  const head = chars(seen[0]).filter((c) => c.bottom > 1);
-  const tail = chars(seen[seen.length - 1]).filter((c) => c.top < vh - 2);
-  const line = (cs, top) => cs.filter((c) => c.top === top).map((c) => c.ch).join('').trim();
-  return { first: line(head, head[0].top), last: line(tail, tail[tail.length - 1].top) };
+  const top = ps.find((el) => el.getBoundingClientRect().bottom > 0);
+  const head = chars(top).filter((c) => c.bottom > 1);
+  return { first: head.filter((c) => c.top === head[0].top).map((c) => c.ch).join('').trim() };
 }, { n, share });
 const spotlight = (page) => page.evaluate(() => {
   const h = CSS.highlights.get('obr-dim');
   if (!h) return null;
-  const [before, after] = [...h];
-  const lit = document.createRange();
-  lit.setStart(before.endContainer, before.endOffset); lit.setEnd(after.startContainer, after.startOffset);
+  const [before] = [...h];
   const root = document.getElementById('obr-host').shadowRoot;
+  const content = root.querySelector('.obr-content');
+  const lit = document.createRange();
+  lit.setStart(before.endContainer, before.endOffset); lit.setEnd(content, content.childNodes.length);
   const vp = root.querySelector('.obr-viewport').getBoundingClientRect();
   const r = [...lit.getClientRects()].find((x) => x.width > 0);
-  return { lit: lit.toString().replace(/\s+/g, ' ').trim(), startOnSpread: !!r && r.left >= vp.left && r.right <= vp.right,
-    dim: getComputedStyle(root.querySelector('.obr-content')).getPropertyValue('--obr-dim').trim() };
+  return { ranges: h.size, lit: lit.toString().replace(/\s+/g, ' ').trim().slice(0, 400),
+    startOnSpread: !!r && r.left >= vp.left && r.right <= vp.right,
+    dim: getComputedStyle(content).getPropertyValue('--obr-dim').trim() };
 });
 
-test('the lines that were on screen stay lit while the rest of the spread dims, then fade back', async ({ page }) => {
+test('the text the page scrolled past dims while the screen\'s lines and what follows stay lit, then fades back', async ({ page }) => {
   await gotoFixture(page, 'long-article.html');
   await page.evaluate(() => {
+    // Large page type, so the spread holds the screen's lines and what follows them.
+    document.head.appendChild(Object.assign(document.createElement('style'), { textContent: 'article p { font-size: 64px; line-height: 1.2; }' }));
     const parts = [...document.querySelectorAll('article p')];
     const pic = (id) => {
       const fig = document.createElement('figure');
       fig.appendChild(Object.assign(document.createElement('img'), { id: id, alt: id, width: 300, height: 120, src: 'pic.png' }));
       return fig;
     };
-    parts.find((el) => el.textContent.startsWith('Part 23 of')).before(pic('above'));  // scrolled past
-    parts.find((el) => el.textContent.startsWith('Part 26 of')).before(pic('within')); // on screen
+    parts.find((el) => el.textContent.startsWith('Part 15 of')).before(pic('above'));  // scrolled past
+    parts.find((el) => el.textContent.startsWith('Part 17 of')).before(pic('within')); // on screen
+    parts.find((el) => el.textContent.startsWith('Part 19 of')).before(pic('ahead'));  // below the screen
   });
   await injectReader(page);
-  const screen = await scrollIntoPart(page, 24, 0.75);
+  const screen = await scrollIntoPart(page, 16, 0.5);
+  expect(await page.evaluate(() => ['above', 'within', 'ahead'].map((id) => {
+    const r = document.getElementById(id).getBoundingClientRect();
+    return r.bottom <= 0 ? 'past' : r.top >= innerHeight ? 'below' : 'on';
+  }))).toEqual(['past', 'on', 'below']);
   await openReader(page);
 
   const s = await spotlight(page);
   expect(s).not.toBeNull();
-  expect(s.lit.startsWith(screen.first)).toBe(true); // from the screen's top line, mid-paragraph...
-  expect(s.lit.startsWith('Part 24 of')).toBe(false);
-  expect(s.lit.endsWith(screen.last)).toBe(true);    // ...to its bottom line
+  expect(s.ranges).toBe(1); // only the stretch before the screen: nothing after it dims
+  expect(s.lit.startsWith(screen.first)).toBe(true); // lit from the screen's top line, mid-paragraph
+  expect(s.lit.startsWith('Part 16 of')).toBe(false);
   expect(s.startOnSpread).toBe(true);
   expect(s.dim).toBe('34%');
-  const opacity = (id) => page.evaluate((id) => getComputedStyle(document.getElementById('obr-host')
-    .shadowRoot.querySelector('img[id="' + id + '"]')).opacity, id);
-  expect(await opacity('above')).toBe('0.34');
-  expect(await opacity('within')).toBe('1');
+  const pic = (id) => page.evaluate((id) => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const el = root.querySelector('img[id="' + id + '"]'), r = el.getBoundingClientRect();
+    const vp = root.querySelector('.obr-viewport').getBoundingClientRect();
+    return { opacity: getComputedStyle(el).opacity, onSpread: r.left >= vp.left && r.right <= vp.right };
+  }, id);
+  expect(await pic('above')).toEqual({ opacity: '0.34', onSpread: true });
+  expect(await pic('within')).toEqual({ opacity: '1', onSpread: true });
+  expect(await pic('ahead')).toEqual({ opacity: '1', onSpread: true });
 
   await expect.poll(() => spotlight(page), { timeout: 5000 }).toBeNull();
-  expect(await opacity('above')).toBe('1');
+  expect((await pic('above')).opacity).toBe('1');
 });
 
 test('turning a page ends the spotlight at once', async ({ page }) => {

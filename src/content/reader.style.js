@@ -206,7 +206,7 @@
     .obr-pages h3 { font-size: 1.1em; margin: 1em 0 .4em; }
     .obr-pages p { margin: 0 0 1em; text-align: justify; hyphens: auto; }
     .obr-pages a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-    /* The spotlight on open: text outside the lines that were on screen, dimmed by --obr-dim.
+    /* The spotlight on open: the text the page had scrolled past, dimmed by --obr-dim.
        The theme ink comes in by variable: inside a highlight, currentColor is not the text's. */
     ::highlight(obr-dim) { color: color-mix(in srgb, var(--obr-ink) var(--obr-dim), transparent); }
     .obr-pages img, .obr-pages figure, .obr-pages video, .obr-pages svg, .obr-pages iframe, .obr-pages table { max-width: 100%; height: auto; break-inside: avoid; }

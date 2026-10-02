@@ -78,11 +78,20 @@ element and never take part.
   pattern again. This is narrower than `liveUrls` on purpose: a lazy attribute a carousel left
   stale, or a placeholder src that a lazy loader gives every image, would merge different
   pictures.
-- **Open:** the grid starts on the tile of the page's first on-screen image (`pageImageUrls`, read
+- **Open:** the grid starts on the tile of the page's first on-screen image (`pageImages`, read
   before the scroll lock, which drops the scrollbar and can reflow the page). It stays at the grid's
   top when that tile already starts in the top half of the grid's first screen: a page at its top,
   or a short window where no tile fits whole. An image the filter hides has no tile; the next
   on-screen image stands in.
+- **The cue:** on an open the page placed, the tiles on the grid's screen whose pictures the page
+  had scrolled past dim, hold, then fade back (`cueOpen`), so the edge of the gray is where the
+  page stood. The pictures on the page's screen and everything after stay as they are. A URL
+  counts as scrolled past only when no copy of it is on the screen or below (`pageImages`), since
+  a thumbnail strip at the top reuses every photo's URL. It runs on the reader's spotlight timing
+  (`OBR._spotFade`, `OBR.SPOT_MS` in `settings.js`). A page at its first picture has nothing to
+  gray. An exact reopen, on the spot a page-syncing close left, gets no cue, since its screen
+  is the one the user left; a reopen after an unmoved close is placed by the page again and
+  plays it again. Reduced motion holds the dim, then drops it. Close cancels it.
 - **Close:** only a grid that moved moves the page. Moved means the big view is open, or the top
   tile or its offset is not what open placed (`openTopUrl`/`openTopOffset`; the offset counts, or
   scrolling within one tall comic page would read as unmoved). Tiles are compared by URL, since
@@ -108,6 +117,7 @@ element and never take part.
   that runs out.
 - Which way each open and close went lands on the debug-timing line (`at=`) and in
   `OBR._diagGallery()` (`openAt`, `closeAt`), a thrown scan or reveal with its own reason.
+  `openAt` ends with the cue's decision (`cue: 3 scrolled past dimmed`, or why there was none).
 
 ## Image filter — hide avatars / repeated noise
 

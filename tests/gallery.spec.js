@@ -2189,6 +2189,89 @@ test.describe('page scroll and the grid follow each other', () => {
     expect(ys.length).toBeGreaterThan(0); // a positive landmark: the sweep ran
     expect(Math.min(...ys)).toBeGreaterThanOrEqual(y);
   });
+
+  // Open, and read each tile on the grid's screen straight away: which photo, whether the page had
+  // it on screen or scrolled past it (photos in main; a strip above reuses their URLs), and
+  // whether the open cue is dimming it.
+  const openWithCue = (page) => page.evaluate(async () => {
+    const photos = Array.from(document.querySelectorAll('main img')), at = (f) => new Set(photos.filter((i) => f(i.getBoundingClientRect())).map((i) => i.src));
+    const seen = at((r) => r.bottom > 0 && r.top < innerHeight), past = at((r) => r.bottom <= 0);
+    await globalThis.OBR.openGallery();
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const sr = r.querySelector('.scroll').getBoundingClientRect();
+    const cue = (t) => t.getAnimations().filter((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition));
+    return Array.from(r.querySelectorAll('.tile')).filter((t) => {
+      const b = t.getBoundingClientRect();
+      return b.bottom > sr.top && b.top < sr.bottom;
+    }).map((t) => {
+      const src = t.querySelector('img').src;
+      return {
+        n: photos.findIndex((i) => i.src === src) + 1, seen: seen.has(src), past: past.has(src),
+        dim: cue(t).length > 0, opacity: +getComputedStyle(t).opacity,
+        frames: cue(t).length ? cue(t)[0].effect.getKeyframes().map((k) => +k.opacity) : [],
+      };
+    });
+  });
+
+  test('opening on the page\'s photo dims the photos the page scrolled past, then fades them back', async ({ page }) => {
+    await page.evaluate(() => document.images[19].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    const tiles = await openWithCue(page);
+    // Positive landmarks: the grid's screen holds photos from before, at and after the page's screen.
+    expect(tiles.some((t) => t.past)).toBe(true);
+    expect(tiles.some((t) => !t.past && !t.seen)).toBe(true);
+    expect(tiles.find((t) => t.n === 20)).toMatchObject({ seen: true, dim: false });
+    expect(tiles.map((t) => [t.n, t.dim])).toEqual(tiles.map((t) => [t.n, t.past]));
+    for (const t of tiles.filter((x) => x.dim)) expect(t.opacity).toBeLessThan(0.5);
+    await expect.poll(() => openWithCueState(page), { timeout: 5000 }).toEqual({ dimmed: 0, minOpacity: 1 });
+  });
+
+  test('a thumbnail strip above, reusing every photo\'s URL, does not gray the photos still ahead', async ({ page }) => {
+    await page.evaluate(() => {
+      const strip = document.createElement('div');
+      strip.style.cssText = 'display:flex;gap:4px;overflow-x:auto;padding:8px';
+      for (const img of document.querySelectorAll('main img')) {
+        const th = Object.assign(document.createElement('img'), { src: img.src, alt: 'thumb' });
+        th.style.cssText = 'width:60px;height:auto;flex:0 0 auto';
+        strip.appendChild(th);
+      }
+      document.body.prepend(strip);
+    });
+    await page.evaluate(() => document.querySelectorAll('main img')[19].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    const tiles = await openWithCue(page);
+    expect(tiles.some((t) => t.past)).toBe(true); // a positive landmark: the cue has something to gray
+    expect(tiles.map((t) => [t.n, t.dim])).toEqual(tiles.map((t) => [t.n, t.past]));
+  });
+  const openWithCueState = (page) => page.evaluate(() => {
+    const ts = Array.from(document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile'));
+    return {
+      dimmed: ts.filter((t) => t.getAnimations().some((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition))).length,
+      minOpacity: Math.min(...ts.map((t) => +getComputedStyle(t).opacity)),
+    };
+  });
+
+  test('no cue when the page shows its first photo, or on an exact reopen after a close synced the page', async ({ page }) => {
+    let tiles = await openWithCue(page);
+    expect(tiles.find((t) => t.n === 1)).toMatchObject({ seen: true }); // the page is at its top
+    expect(tiles.filter((t) => t.dim)).toEqual([]);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+
+    await page.evaluate(() => document.images[19].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    tiles = await openWithCue(page);
+    expect(tiles.some((t) => t.dim)).toBe(true); // a positive landmark: this open cues
+    await scrollGridBy(page, await tileBelowTop(page, 24)); // the grid moves, so the close syncs the page
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    tiles = await openWithCue(page);
+    expect((await page.evaluate(() => globalThis.OBR._diagGallery().openAt))).toMatch(/^back:/);
+    expect(tiles.filter((t) => t.dim)).toEqual([]);
+  });
+
+  test('reduced motion holds the cue\'s dim and drops it, with no fade', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() => document.images[19].scrollIntoView({ block: 'start', behavior: 'instant' }));
+    const dimmed = (await openWithCue(page)).filter((t) => t.dim);
+    expect(dimmed.length).toBeGreaterThan(0);
+    for (const t of dimmed) expect(t.frames).toEqual([0.34, 0.34]);
+  });
 });
 
 test('switching from the grid to the reader keeps the place', async ({ page }) => {

@@ -394,6 +394,14 @@
     window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - pad, behavior: 'instant' });
   };
 
+  // The cue both engines play when an open lands where the page was: what the page had scrolled
+  // past dims, holds, then fades back, while its screen and everything after stay as they are.
+  // `still` (reduced motion) holds the dim and drops it at once.
+  OBR.SPOT_MS = 2200;
+  OBR._spotFade = (prop, dim, full, still) => still
+    ? [{ [prop]: dim }, { [prop]: dim }]
+    : [{ [prop]: dim }, { [prop]: dim, offset: 0.45, easing: 'ease-out' }, { [prop]: full }];
+
   // Apply a stylesheet to a Shadow root via Constructable Stylesheets, so strict-CSP sites
   // (style-src) can't block the overlay's CSS. Replaces the per-engine applyStylesheet().
   OBR.adoptStyles = function (root, cssText) {

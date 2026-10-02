@@ -1233,15 +1233,18 @@
     }
   }
 
-  // The URL sets of the images on the page's screen, in page order. Read before the scroll lock,
-  // which drops the scrollbar and so can reflow the page, while it is still what the user sees.
-  function pageImageUrls() {
-    const sets = [], vh = window.innerHeight;
+  // Where the page stands, by its images: the URL sets of the ones on its screen, in page order,
+  // and the URLs scrolled past, those with no copy on the screen or below it (a thumbnail strip at
+  // the top reuses every photo's URL). Read before the scroll lock, which drops the scrollbar and
+  // so can reflow the page, while it is still what the user sees.
+  function pageImages() {
+    const onScreen = [], above = new Set(), later = new Set(), vh = window.innerHeight;
     eachLiveImage((img, e) => {
-      const r = img.getBoundingClientRect();
-      if (r.bottom > 0 && r.top < vh && !OBR._clipped(img) && !pinned(img)) sets.push(liveUrls(img, e));
+      const r = img.getBoundingClientRect(), urls = liveUrls(img, e);
+      for (const u of urls) (r.bottom <= 0 ? above : later).add(u);
+      if (r.bottom > 0 && r.top < vh && !OBR._clipped(img) && !pinned(img)) onScreen.push(urls);
     });
-    return sets;
+    return { onScreen, past: new Set([...above].filter((u) => !later.has(u))) };
   }
 
   // Place the freshly rendered grid. Back on the spot a close left (the page has not moved
@@ -1264,6 +1267,26 @@
       return 'page:' + tile.dataset.idx;
     }
     return 'top (on-screen images ' + urlSets.length + ', none a tile)';
+  }
+  // The reader's open spotlight, for tiles: on the grid's screen, the pictures the page had
+  // scrolled past dim and fade back, so the edge of the gray is where the page stood. The ones on
+  // the page's screen and everything after stay as they are.
+  let cueAnims = [];
+  function cueOpen(past) {
+    clearCue();
+    const sr = scrollerEl.getBoundingClientRect();
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (const t of gridEl.querySelectorAll('.tile')) {
+      const im = images[+t.dataset.idx];
+      if (!im || !past.has(im.url) || !t.animate) continue;
+      const r = t.getBoundingClientRect();
+      if (r.bottom > sr.top && r.top < sr.bottom) cueAnims.push(t.animate(OBR._spotFade('opacity', 0.34, 1, still), OBR.SPOT_MS));
+    }
+    return cueAnims.length ? cueAnims.length + ' scrolled past dimmed' : 'none (nothing scrolled past on screen)';
+  }
+  function clearCue() {
+    for (const a of cueAnims) a.cancel();
+    cueAnims = [];
   }
 
   // The live copy of `url` a close scrolls to: the largest visible one, so a thumbnail strip
@@ -1985,8 +2008,8 @@
     if (autoSpeedEl) autoSpeedEl.value = settings.galleryAutoScrollSpeed || 60; // reflect the persisted speed
     if (lbSecsEl) lbSecsEl.value = settings.gallerySlideSeconds || 3;           // reflect the persisted slideshow secs
     savedPageX = window.scrollX; savedPageY = window.scrollY; // restored on close
-    let pageUrls = [], scanWhy = '';
-    try { pageUrls = pageImageUrls(); } catch (e) { pageUrls = []; scanWhy = 'page scan threw: ' + e.message + ' -> '; } // never break an open
+    let pageUrls = [], pastUrls = new Set(), scanWhy = '';
+    try { ({ onScreen: pageUrls, past: pastUrls } = pageImages()); } catch (e) { pageUrls = []; scanWhy = 'page scan threw: ' + e.message + ' -> '; } // never break an open
     // Unmoved since a page-syncing close: the image it revealed is still where it left it. Its
     // own top, not scrollY, so an article in its own scroll box counts too.
     let back = null;
@@ -2009,7 +2032,9 @@
     render();        // collect() scans the DOM for images, then lays out the grid
     let placed = '';
     try { placed = placeOpenGrid(pageUrls, back); } catch (e) { placed = 'placement threw: ' + e.message; } // the grid's top
-    openWhy = scanWhy + placed;
+    let cue = 'none';
+    if (placed.startsWith('page:')) { try { cue = cueOpen(pastUrls); } catch (e) { clearCue(); cue = 'threw: ' + e.message; } }
+    openWhy = scanWhy + placed + ' cue: ' + cue;
     openBack = placed.startsWith('back:') ? back : null;
     const top = captureAnchor();
     openTopUrl = top.idx >= 0 && images[top.idx] ? images[top.idx].url : '';
@@ -2044,6 +2069,7 @@
     clearInterval(ctxTimer);
     try { stopAutoScroll(); } catch (e) { /* */ }
     try { stopWatching(); } catch (e) { /* */ }
+    try { clearCue(); } catch (e) { /* */ }
     // closeLightbox stops the slideshow, which otherwise keeps re-arming itself against a
     // DETACHED tree and pulling full-size images off the network long after the gallery is gone.
     try { closeLightbox(); } catch (e) { /* */ }
@@ -2063,6 +2089,7 @@
     slideSecsSetting.flush(); // persist a just-edited slideshow dwell too
     flushSize();              // persist a just-dragged size (column count) too
     stopWatching();
+    clearCue();
     const lbIdx = lightboxIndex;
     closeLightbox();
     // Where the grid is, measured while it is still shown: the picture open in the big view,

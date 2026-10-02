@@ -2060,7 +2060,7 @@
   // common, and would otherwise read as "no position". `near` adds its paired neighbours'
   // fingerprints: the top block is often a sliver, and a few pixels of drift (a reload settling
   // lazy content differently) hand the top to the next paragraph. null when nothing pairs.
-  // `opening` also measures the lines on screen once the page is past the article's opening
+  // `opening` also measures where the screen began once the page is past the article's opening
   // (`screen`, which `first` then points into) and records what it saw for the debug line and
   // OBR._diagReader.
   function pageSpot(opening) {
@@ -2068,13 +2068,13 @@
     const rendered = renderedBlocks();
     const vh = window.innerHeight;
     const pairs = []; // [key, rendered el, live twin], in article order
-    let at = -1, last = -1;
+    let at = -1;
     for (const [k, el] of rendered) {
       const twin = live.get(k);
       if (!twin) continue;
       pairs.push([k, el, twin]);
       const r = twin.getBoundingClientRect();
-      if (r.bottom > 0 && r.top < vh && !clipped(twin)) { if (at < 0) at = pairs.length - 1; last = pairs.length - 1; }
+      if (r.bottom > 0 && r.top < vh && !clipped(twin)) { if (at < 0) at = pairs.length - 1; }
       else if (at >= 0 && r.top >= vh) break; // below the screen; pairs[at + 1] stays for `near`
     }
     const inView = at >= 0;
@@ -2092,46 +2092,40 @@
     const near = [pairs[at - 1], spot, pairs[at + 1]].filter(Boolean).map((p) => fingerprint(p[0]));
     // A screen that begins at the article's opening has passed nothing: no lines to point out.
     const atOpening = at === 0 && spot[2].getBoundingClientRect().top >= 0;
-    const screen = opening && inView && !atOpening ? screenRange(spot, pairs[last], pairs[at - 1], pairs[last + 1]) : null;
-    return { first: screen ? screen.start : spot[1], key: fingerprint(spot[0]), near: near, screen: screen && screen.range };
+    const screen = opening && inView && !atOpening ? screenStart(spot, pairs[at - 1]) : null;
+    return { first: screen ? screen.start : spot[1], key: fingerprint(spot[0]), near: near, screen: screen && screen.from };
   }
 
-  // The rendered text that was on screen, from the first character of the top line to the last
-  // of the bottom line, as { range, start }; `start` covers just the first visible character of
-  // the paired block `a`, which is what the reader opens on. A block cut by a screen edge is
-  // measured by the caret under that edge; where something else covers the edge (a sticky
-  // header) the hidden share of the block's height stands in. Each offset carries over in
-  // proportion to the two copies' text lengths, which absorbs inline bits the extraction dropped.
-  // A paired block wholly on screen takes in what lies between it and its paired neighbour
-  // (`prev` above, `next` below) — a heading, a short paragraph, a picture — which pairs with
-  // nothing and was on screen as far as anyone can tell.
-  function screenRange(a, b, prev, next) {
-    const vh = window.innerHeight;
-    const point = ([, el, twin], top) => {
-      const r = twin.getBoundingClientRect(), len = twin.textContent.length;
-      let o = top ? 0 : len;
-      if (top ? r.top < 0 : r.bottom > vh) {
-        const c = document.caretRangeFromPoint(top ? r.left + 1 : r.right - 1, top ? 1 : vh - 2);
-        if (c && twin.contains(c.startContainer)) {
-          const pre = document.createRange();
-          pre.setStart(twin, 0); pre.setEnd(c.startContainer, c.startOffset);
-          o = pre.toString().length;
-        } else o = Math.round((len * ((top ? 0 : vh) - r.top)) / r.height);
-      }
-      return textPoint(el, len ? Math.round((o * el.textContent.length) / len) : 0);
-    };
-    const [sn, so] = point(a, true), [en, eo] = point(b, false);
-    const range = document.createRange();
-    range.setStart(sn, so); range.setEnd(en, eo);
-    if (range.collapsed) return null;
+  // Where the text that was on screen begins in the rendered copy, as { from, start }. `start`
+  // covers just the first visible character of `a`, the top paired block, which is what the reader
+  // opens on. `from` is a collapsed range at that line's start, or, when `a` begins on screen,
+  // just after its paired neighbour above (`prev`): what lies between, a heading, a short
+  // paragraph, a picture, pairs with nothing and was on screen as far as anyone can tell. A block
+  // cut by the screen's top edge is measured by the caret under that edge; where something else
+  // covers the edge (a sticky header) the hidden share of the block's height stands in. The offset
+  // carries over in proportion to the two copies' text lengths, which absorbs inline bits the
+  // extraction dropped.
+  function screenStart([, el, twin], prev) {
+    const r = twin.getBoundingClientRect(), len = twin.textContent.length;
+    let o = 0;
+    if (r.top < 0) {
+      const c = document.caretRangeFromPoint(r.left + 1, 1);
+      if (c && twin.contains(c.startContainer)) {
+        const pre = document.createRange();
+        pre.setStart(twin, 0); pre.setEnd(c.startContainer, c.startOffset);
+        o = pre.toString().length;
+      } else o = Math.round((len * -r.top) / r.height);
+    }
+    const [sn, so] = textPoint(el, len ? Math.round((o * el.textContent.length) / len) : 0);
     // Past any space: one ending the line above would sit on that line.
     let s = so;
     while (s < sn.length - 1 && /\s/.test(sn.data[s])) s++;
     const start = document.createRange();
     start.setStart(sn, s); start.setEnd(sn, Math.min(s + 1, sn.length));
-    if (prev && a[2].getBoundingClientRect().top >= 0) range.setStartAfter(prev[1]);
-    if (next && b[2].getBoundingClientRect().bottom <= vh) range.setEndBefore(next[1]);
-    return { range: range, start: start };
+    const from = document.createRange();
+    if (prev && r.top >= 0) from.setStartAfter(prev[1]); else from.setStart(sn, so);
+    from.collapse(true);
+    return { from: from, start: start };
   }
 
   // The text node and offset `n` characters into `el`.
@@ -2146,31 +2140,27 @@
   }
 
   /* The spotlight: the spread holds more than the screen did, so on an open placed by the page's
-   * scroll, everything but the lines that were on screen dims, then fades back. Text dims through
-   * a highlight over the two stretches either side — no layout change, and the ranges follow a
-   * late re-layout by themselves — whose colour mixes in --obr-dim (registered at injection so
-   * it animates); pictures dim by opacity. Gone by the first page turn at the latest. */
-  const SPOT_MS = 2200, SPOT_HOLD = 0.45;
+   * scroll, the text the page had scrolled past dims, then fades back: the edge of the dim is
+   * where the screen began (`from`), and everything from there on stays as it is. Text dims
+   * through a highlight over that stretch — no layout change, and the range follows a late
+   * re-layout by itself — whose colour mixes in --obr-dim (registered at injection so it
+   * animates); pictures in it dim by opacity. Gone by the first page turn at the latest. */
   let spotAnims = [];
-  function spotlight(range) {
+  function spotlight(from) {
     const content = pagesEl.querySelector('.obr-content');
     if (!content || !window.Highlight || !CSS.highlights || !content.animate) return;
     if (!CSS.supports('color', 'color-mix(in srgb, red 50%, transparent)')) return; // the dim rule's colour
-    const before = document.createRange(), after = document.createRange();
-    before.setStart(content, 0); before.setEnd(range.startContainer, range.startOffset);
-    after.setStart(range.endContainer, range.endOffset); after.setEnd(content, content.childNodes.length);
-    CSS.highlights.set('obr-dim', new Highlight(before, after));
-    // Reduced motion: the same dim, held, then gone at once.
-    const fade = (prop, dim, full) => reduceMotion
-      ? [{ [prop]: dim }, { [prop]: dim }]
-      : [{ [prop]: dim }, { [prop]: dim, offset: SPOT_HOLD, easing: 'ease-out' }, { [prop]: full }];
-    const text = content.animate(fade('--obr-dim', '34%', '100%'), SPOT_MS);
+    const before = document.createRange();
+    before.setStart(content, 0); before.setEnd(from.startContainer, from.startOffset);
+    CSS.highlights.set('obr-dim', new Highlight(before));
+    const fade = (prop, dim, full) => OBR._spotFade(prop, dim, full, reduceMotion);
+    const text = content.animate(fade('--obr-dim', '34%', '100%'), OBR.SPOT_MS);
     text.onfinish = clearSpotlight;
     spotAnims = [text];
     const vr = viewportEl.getBoundingClientRect();
     for (const m of content.querySelectorAll('img, svg, video, canvas')) {
       const r = m.getBoundingClientRect();
-      if (r.right > vr.left && r.left < vr.right && !range.intersectsNode(m)) spotAnims.push(m.animate(fade('opacity', 0.34, 1), SPOT_MS));
+      if (r.right > vr.left && r.left < vr.right && before.intersectsNode(m)) spotAnims.push(m.animate(fade('opacity', 0.34, 1), OBR.SPOT_MS));
     }
   }
   function clearSpotlight() {
@@ -3020,7 +3010,7 @@
     if (seen && !moved) anchorWhy += ' unmoved';
     restoreAnchor = moved ? { first: seen.first, f: savedF } : savedF;
     navigated = false;
-    const screenLines = moved ? seen.screen : null;
+    const screenFrom = moved ? seen.screen : null;
     priorMs = entry && typeof entry.ms === 'number' ? entry.ms : 0;
     priorFin = !!(entry && entry.fin);
     engageState = engage || {};
@@ -3043,8 +3033,8 @@
       layout(false);
       // Still placed by the page: the first-spread rule may have handed the open to the saved
       // position, whose spread need not hold these lines.
-      if (screenLines && active && restoreAnchor && typeof restoreAnchor === 'object') {
-        try { spotlight(screenLines); } catch (e) { clearSpotlight(); } // a cue, never a broken open
+      if (screenFrom && active && restoreAnchor && typeof restoreAnchor === 'object') {
+        try { spotlight(screenFrom); } catch (e) { clearSpotlight(); } // a cue, never a broken open
       }
       if (t) { t.mark('layout'); t.flush('src=' + contentSource + ' at=' + openAt + ' spread=' + currentSpread + '/' + totalSpreads + ' [' + anchorWhy + ']'); }
     });
