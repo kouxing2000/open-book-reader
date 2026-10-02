@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.12.0] - 2026-10-02
+## [1.12.1] - 2026-10-02
 
 - **The reader now opens where you were on the page, and closing it takes the page to where you
   stopped.** It used to start on page 1, or on your saved place, however far down the page you
@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the welcome and options pages. It copies a ready-to-paste invite with a link to the
   extension's page. The link says only which button made it: the extension sends nothing and asks
   for no new permission.
+
+## [1.12.0] - 2026-10-02
+
+- Tagged but never published: the release stopped when tests failed on the build server.
+  Its changes ship in 1.12.1.
 
 ## [1.11.0] - 2026-09-24
 
@@ -462,7 +467,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.12.1...HEAD
+[1.12.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.1
 [1.12.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.0
 [1.11.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.11.0
 [1.10.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.10.0
