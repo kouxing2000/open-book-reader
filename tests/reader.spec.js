@@ -916,14 +916,16 @@ test('an article in its own scroll box (an app shell) is followed on close', asy
   await injectReader(page);
   await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
   await openReader(page);
-  for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
   const shown = await partsOnScreen(page);
   await page.evaluate(() => globalThis.OBR.close());
   const r = await page.evaluate(() => {
+    const sh = document.getElementById('shell');
     const p = [...document.querySelectorAll('article p')].find((el) => el.getBoundingClientRect().bottom > 0);
-    return { scrollTop: document.getElementById('shell').scrollTop, n: Number((p.textContent.match(/^Part (\d+) of/) || [])[1]) };
+    return { scrollTop: sh.scrollTop, end: sh.scrollHeight - sh.clientHeight, n: Number((p.textContent.match(/^Part (\d+) of/) || [])[1]) };
   });
   expect(r.scrollTop).toBeGreaterThan(0);
+  expect(r.scrollTop).toBeLessThan(r.end); // short of the box's end, which would stop the scroll early
   expect(r.n).toBe(Math.min(...shown));
 });
 
@@ -1141,25 +1143,22 @@ const spotlight = (page) => page.evaluate(() => {
 
 test('the text the page scrolled past dims while the screen\'s lines and what follows stay lit, then fades back', async ({ page }) => {
   await gotoFixture(page, 'long-article.html');
-  await page.evaluate(() => {
+  const parts = [12, 13, 14, 15, 16, 17, 18, 19];
+  await page.evaluate((parts) => {
     // Large page type, so the spread holds the screen's lines and what follows them.
     document.head.appendChild(Object.assign(document.createElement('style'), { textContent: 'article p { font-size: 64px; line-height: 1.2; }' }));
-    const parts = [...document.querySelectorAll('article p')];
-    const pic = (id) => {
+    // A picture before each part around the screen: wherever a font puts the spread's edges, it
+    // holds some the page scrolled past and some it did not.
+    const ps = [...document.querySelectorAll('article p')];
+    for (const n of parts) {
       const fig = document.createElement('figure');
-      fig.appendChild(Object.assign(document.createElement('img'), { id: id, alt: id, width: 300, height: 120, src: 'pic.png' }));
-      return fig;
-    };
-    parts.find((el) => el.textContent.startsWith('Part 15 of')).before(pic('above'));  // scrolled past
-    parts.find((el) => el.textContent.startsWith('Part 17 of')).before(pic('within')); // on screen
-    parts.find((el) => el.textContent.startsWith('Part 19 of')).before(pic('ahead'));  // below the screen
-  });
+      fig.appendChild(Object.assign(document.createElement('img'), { id: 'pic' + n, alt: 'pic' + n, width: 300, height: 120, src: 'pic.png' }));
+      ps.find((el) => el.textContent.startsWith('Part ' + n + ' of')).before(fig);
+    }
+  }, parts);
   await injectReader(page);
   const screen = await scrollIntoPart(page, 16, 0.5);
-  expect(await page.evaluate(() => ['above', 'within', 'ahead'].map((id) => {
-    const r = document.getElementById(id).getBoundingClientRect();
-    return r.bottom <= 0 ? 'past' : r.top >= innerHeight ? 'below' : 'on';
-  }))).toEqual(['past', 'on', 'below']);
+  const past = await page.evaluate((parts) => parts.filter((n) => document.getElementById('pic' + n).getBoundingClientRect().bottom <= 0), parts);
   await openReader(page);
 
   const s = await spotlight(page);
@@ -1169,18 +1168,22 @@ test('the text the page scrolled past dims while the screen\'s lines and what fo
   expect(s.lit.startsWith('Part 16 of')).toBe(false);
   expect(s.startOnSpread).toBe(true);
   expect(s.dim).toBe('34%');
-  const pic = (id) => page.evaluate((id) => {
+  const pics = () => page.evaluate((parts) => {
     const root = document.getElementById('obr-host').shadowRoot;
-    const el = root.querySelector('img[id="' + id + '"]'), r = el.getBoundingClientRect();
     const vp = root.querySelector('.obr-viewport').getBoundingClientRect();
-    return { opacity: getComputedStyle(el).opacity, onSpread: r.left >= vp.left && r.right <= vp.right };
-  }, id);
-  expect(await pic('above')).toEqual({ opacity: '0.34', onSpread: true });
-  expect(await pic('within')).toEqual({ opacity: '1', onSpread: true });
-  expect(await pic('ahead')).toEqual({ opacity: '1', onSpread: true });
+    return parts.map((n) => {
+      const el = root.querySelector('img[id="pic' + n + '"]'), r = el.getBoundingClientRect();
+      return { n, opacity: getComputedStyle(el).opacity, onSpread: r.left >= vp.left && r.right <= vp.right };
+    });
+  }, parts);
+  const shown = (await pics()).filter((p) => p.onSpread);
+  // Positive landmarks: the spread holds pictures from both sides of the screen's top.
+  expect(shown.some((p) => past.includes(p.n))).toBe(true);
+  expect(shown.some((p) => !past.includes(p.n))).toBe(true);
+  for (const p of shown) expect({ n: p.n, opacity: p.opacity }).toEqual({ n: p.n, opacity: past.includes(p.n) ? '0.34' : '1' });
 
   await expect.poll(() => spotlight(page), { timeout: 5000 }).toBeNull();
-  expect((await pic('above')).opacity).toBe('1');
+  expect((await pics()).map((p) => p.opacity)).toEqual(parts.map(() => '1'));
 });
 
 test('turning a page ends the spotlight at once', async ({ page }) => {
@@ -1231,22 +1234,25 @@ test('a paragraph broken across spreads opens on the spread holding the screen\'
 });
 
 test('wherever the screen\'s top falls in a long paragraph, the reader opens on the spread showing it', async ({ page }) => {
+  test.slow(); // sixteen opens, and software rendering (CI) can drop to a frame a second
+  await gotoFixture(page, 'long-article.html');
+  await page.evaluate(() => {
+    const p = [...document.querySelectorAll('article p')].find((el) => el.textContent.startsWith('Part 30 of'));
+    p.textContent = p.textContent + (' ' + p.textContent).repeat(24);
+  });
+  await injectReader(page);
   // A sweep, because one share can put the top line's first character in a column's left half,
   // where rounding a position to its column happens to work.
   const misses = [];
-  for (let share = 0.05; share < 0.95; share += 0.06) {
-    // A fresh page each time: no saved spread to resume, and no close of this page to return to.
-    await gotoFixture(page, 'long-article.html');
-    await page.evaluate(() => localStorage.removeItem('__obr_test_store_local'));
-    await page.evaluate(() => {
-      const p = [...document.querySelectorAll('article p')].find((el) => el.textContent.startsWith('Part 30 of'));
-      p.textContent = p.textContent + (' ' + p.textContent).repeat(24);
-    });
-    await injectReader(page);
+  for (let share = 0.05, i = 0; share < 0.95; share += 0.06, i++) {
+    // A new address each step makes a new article to the reader: no saved spread to resume, and
+    // no close of it on this page to return to.
+    await page.evaluate((i) => history.replaceState(null, '', '/sweep-' + i + '/long-article.html'), i);
     await scrollIntoPart(page, 30, share);
     await openReader(page);
     const s = await spotlight(page);
     if (!s || !s.startOnSpread) misses.push(share.toFixed(2));
+    await page.evaluate(() => globalThis.OBR.close());
   }
   expect(misses).toEqual([]);
 });
@@ -2054,7 +2060,9 @@ test.describe('content override', () => {
     expect(s.contentText).toContain('REAL-MARKER');
     expect(s.contentText).not.toContain('DECOY-MARKER');
 
-    // Clear the pick → falls back to the whole page (the decoy) again.
+    // Clear the pick → falls back to the whole page (the decoy) again. Reaching for the hint
+    // moves the mouse, which brings back the chrome a slow open may have hidden by now.
+    await page.mouse.move(p.x + 1, p.y + 1);
     await clickInReader(page, '.obr-pick-hint [data-pick="clear"]');
     await expect.poll(() => readState(page).then((x) => x.contentText)).toContain('DECOY-MARKER');
   });

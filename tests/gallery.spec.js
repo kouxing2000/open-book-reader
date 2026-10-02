@@ -2153,6 +2153,9 @@ test.describe('page scroll and the grid follow each other', () => {
       const main = document.querySelector('main');
       main.textContent = '';
       const c = Object.assign(document.createElement('canvas'), { width: 200, height: 300 });
+      // A wide margin: under software rendering (CI) a page mounting pictures from its observer
+      // draws a frame or two a second, the observer runs once a frame, and a picture must stay
+      // mounted across the sweep steps that pass it.
       const io = new IntersectionObserver((es) => {
         for (const e of es) {
           const slot = e.target;
@@ -2161,7 +2164,7 @@ test.describe('page scroll and the grid follow each other', () => {
             slot.appendChild(Object.assign(document.createElement('img'), { src: c.toDataURL('image/png'), width: 200, height: 300 }));
           } else if (!e.isIntersecting && slot.firstChild) slot.firstChild.remove();
         }
-      }, { rootMargin: '200px 0px' });
+      }, { rootMargin: '2000px 0px' });
       for (let i = 1; i <= 40; i++) {
         const slot = document.createElement('div'); slot.dataset.i = i; slot.style.height = '320px';
         main.appendChild(slot); io.observe(slot);
