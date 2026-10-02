@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-02
+
+- **The reader now opens where you were on the page, and closing it takes the page to where you
+  stopped.** It used to start on page 1, or on your saved place, however far down the page you
+  had scrolled. It now opens on the spread showing the first line on your screen, even when that
+  line sits in the middle of a paragraph that breaks across two pages. If you turn pages and then
+  close, the page scrolls to the paragraph you reached. Your saved place still wins when the page
+  hasn't moved since you last closed the reader, and on a return visit while the page is still at
+  the top of the article. Once you have closed the reader, scrolling back up, even all the way to
+  the top, opens there.
+- **Right after such an open, the text you had already scrolled past dims for a moment.** A
+  two-page spread holds more text than a browser window, so the line you were on can land
+  anywhere on it. The text before it dims for about a second and fades back, and a page turn ends
+  it at once. Pictures in that stretch dim with it. With reduced motion turned on, the dim holds
+  and then goes without a fade.
+- **Image mode keeps your place the same way.** The grid opens at the picture that was on your
+  screen, with the pictures you had scrolled past briefly dimmed. Closing after you moved through
+  the grid scrolls the page to the picture you were on; closing without moving puts the page back
+  as it was, and reopening returns to the same spot in the grid.
+- **A page turn past the last or first page now answers.** On a last spread with no blank page,
+  nothing showed that you had reached the end, so the next key looked broken. The book now nudges
+  and the footer reads "End of article" (or "Start of article").
+- **No more duplicate pictures in image mode on sites that load each picture at the size the
+  screen needs** (WordPress does this by default). The same photo could appear twice in the grid,
+  and hiding it did not stick. Each photo now gets one tile, at the larger size, and Hide and
+  Unhide work on it.
+- **Share with a friend.** A Share button now sits beside Rate and Feedback at the end of an
+  article and in the one-time rating prompt, and a "Share with a friend" link sits at the bottom
+  of the welcome and options pages. It copies a ready-to-paste invite with a link to the
+  extension's page. The link says only which button made it: the extension sends nothing and asks
+  for no new permission.
+
 ## [1.11.0] - 2026-09-24
 
 - **Articles that a site splits into two sections now read whole.** Some news sites, Ars
@@ -430,7 +462,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.0
 [1.11.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.11.0
 [1.10.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.10.0
 [1.9.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.9.0
