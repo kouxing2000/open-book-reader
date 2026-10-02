@@ -719,18 +719,6 @@ test('resumes the saved reading position when reopened on the same article', asy
   expect(back.translateX).toBe(left.translateX);
 });
 
-test('resumes the saved position when the page is back at its top', async ({ page }) => {
-  await openReader(page);
-  await page.keyboard.press('End');
-  const left = await readState(page);
-  await page.evaluate(() => globalThis.OBR.close());
-  // A page at the article's opening (a fresh visit) says nothing about where to read.
-  await page.evaluate(() => window.scrollTo(0, 0));
-
-  await openReader(page);
-  expect((await readState(page)).translateX).toBe(left.translateX);
-});
-
 /* Page scroll <-> reader position, on a fixture long enough to scroll well past one viewport
  * and with every paragraph's opening unique ("Part N of the walk"). */
 const scrollToPart = (page, n) => page.evaluate((n) => {
@@ -1028,6 +1016,73 @@ test('closing never leaves a short paragraph from the top of the spread above th
   expect(interludeTops).toBeGreaterThan(0); // the layout really did open a spread on one
 });
 
+for (const [where, to, part] of [
+  ['into the article\'s first spread', (page) => scrollToPart(page, 3), 3],
+  ['all the way to the top', (page) => page.evaluate(() => window.scrollTo(0, 0)), 1],
+]) test('after reading at the bottom and closing, a page scrolled back ' + where + ' opens there', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await openReader(page);
+  expect(await partsOnScreen(page)).not.toContain(part); // a positive landmark: the reader is deep in
+  await page.evaluate(() => globalThis.OBR.close());
+  await to(page);
+  await openReader(page);
+  expect(await partsOnScreen(page)).toContain(part);
+});
+
+test('on a fresh visit the saved position wins only while the page shows the article\'s opening', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await scrollToPart(page, 30);
+  await openReader(page);
+  await page.waitForTimeout(600); // let the debounced position write land
+  const deep = await partsOnScreen(page);
+  expect(deep).toContain(30);
+  const visit = async (to) => {
+    await page.reload();
+    await injectReader(page);
+    await to();
+    await openReader(page);
+    return partsOnScreen(page);
+  };
+  // At its top the page says only "the start": continue where the reading was.
+  expect(await visit(() => page.evaluate(() => window.scrollTo(0, 0)))).toEqual(deep);
+  // Scrolled past the opening, it says where the reader is.
+  expect(await visit(() => scrollToPart(page, 3))).toContain(3);
+});
+
+test('in incognito, which stores nothing, close then reopen returns to where the reader was', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await scrollToPart(page, 30);
+  await openReader(page);
+  await page.waitForTimeout(600); // let the debounced position write land
+  const deep = await partsOnScreen(page);
+  expect(deep).toContain(30);
+  await page.reload();
+  await injectReader(page);
+  await page.evaluate(() => { globalThis.OBR._incognito = true; });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await openReader(page);
+  expect(await partsOnScreen(page)).toEqual(deep); // the page's opening defers to the saved spot
+  // Untouched, the close puts the page back at its top, which still means the saved spot.
+  await page.evaluate(() => globalThis.OBR.close());
+  await openReader(page);
+  expect(await partsOnScreen(page)).toEqual(deep);
+  // A turned page scrolls the page to its paragraph, which usually starts a spread earlier.
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press('ArrowRight');
+    const left = (await readState(page)).translateX;
+    await page.evaluate(() => globalThis.OBR.close());
+    await openReader(page);
+    expect((await readState(page)).translateX).toBe(left);
+  }
+});
+
 test('reopening after scrolling back a few paragraphs opens there, not on the saved spread', async ({ page }) => {
   await gotoFixture(page, 'long-article.html');
   await injectReader(page);
@@ -1150,13 +1205,6 @@ test('no spotlight when the page did not place the open: a fresh top, a resume',
   await openReader(page); // unmoved since: the saved spread, which is what the reader last showed
   expect(await partsOnScreen(page)).not.toContain(1); // a positive landmark: not page 1
   expect(await spotlight(page)).toBeNull();
-  await page.evaluate(() => globalThis.OBR.close());
-  // A page just past the opening hands the open to the saved spread, which need not hold the
-  // screen's lines.
-  await scrollIntoPart(page, 2, 0.5);
-  await openReader(page);
-  expect(await partsOnScreen(page)).not.toContain(2);
-  expect(await spotlight(page)).toBeNull();
 });
 
 test('a paragraph broken across spreads opens on the spread holding the screen\'s top line', async ({ page }) => {
@@ -1183,22 +1231,22 @@ test('a paragraph broken across spreads opens on the spread holding the screen\'
 });
 
 test('wherever the screen\'s top falls in a long paragraph, the reader opens on the spread showing it', async ({ page }) => {
-  await gotoFixture(page, 'long-article.html');
-  await page.evaluate(() => {
-    const p = [...document.querySelectorAll('article p')].find((el) => el.textContent.startsWith('Part 30 of'));
-    p.textContent = p.textContent + (' ' + p.textContent).repeat(24);
-  });
-  await injectReader(page);
   // A sweep, because one share can put the top line's first character in a column's left half,
   // where rounding a position to its column happens to work.
   const misses = [];
   for (let share = 0.05; share < 0.95; share += 0.06) {
-    await page.evaluate(() => localStorage.removeItem('__obr_test_store_local')); // no saved spread to resume
+    // A fresh page each time: no saved spread to resume, and no close of this page to return to.
+    await gotoFixture(page, 'long-article.html');
+    await page.evaluate(() => localStorage.removeItem('__obr_test_store_local'));
+    await page.evaluate(() => {
+      const p = [...document.querySelectorAll('article p')].find((el) => el.textContent.startsWith('Part 30 of'));
+      p.textContent = p.textContent + (' ' + p.textContent).repeat(24);
+    });
+    await injectReader(page);
     await scrollIntoPart(page, 30, share);
     await openReader(page);
     const s = await spotlight(page);
     if (!s || !s.startOnSpread) misses.push(share.toFixed(2));
-    await page.evaluate(() => globalThis.OBR.close());
   }
   expect(misses).toEqual([]);
 });

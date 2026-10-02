@@ -64,8 +64,11 @@
   // Per-article resume: posKey identifies the article; restoreAnchor holds where to open
   // until the first relayout positions us there (it keeps re-anchoring through the
   // late-image settle window, then a user nav clears it). Either the saved progress
-  // FRACTION, or { first, f } — the page's top paragraph from pageSpot (see anchorSpread).
+  // FRACTION, or { first } — the page's top paragraph from pageSpot (see anchorSpread).
   let posKey = '', restoreAnchor = null, saveTimer = null;
+  // This page's last close of the reader, as { key, f, p }: the article, its fraction and the
+  // page's spot, as close stored them. The next open here reads it before storage.
+  let lastClose = null;
   // The article Readability last parsed (held so Print can reuse it without re-parsing).
   let lastArticle = null;
   let printing = false; // re-entrancy guard for printReader (the native print dialog is modal)
@@ -2061,8 +2064,8 @@
   // fingerprints: the top block is often a sliver, and a few pixels of drift (a reload settling
   // lazy content differently) hand the top to the next paragraph. null when nothing pairs.
   // `opening` also measures where the screen began once the page is past the article's opening
-  // (`screen`, which `first` then points into) and records what it saw for the debug line and
-  // OBR._diagReader.
+  // (`screen`, which `first` then points into; `atOpening` says the page has not got that far)
+  // and records what it saw for the debug line and OBR._diagReader.
   function pageSpot(opening) {
     const live = liveBlocks();
     const rendered = renderedBlocks();
@@ -2093,7 +2096,7 @@
     // A screen that begins at the article's opening has passed nothing: no lines to point out.
     const atOpening = at === 0 && spot[2].getBoundingClientRect().top >= 0;
     const screen = opening && inView && !atOpening ? screenStart(spot, pairs[at - 1]) : null;
-    return { first: screen ? screen.start : spot[1], key: fingerprint(spot[0]), near: near, screen: screen && screen.from };
+    return { first: screen ? screen.start : spot[1], key: fingerprint(spot[0]), near: near, screen: screen && screen.from, atOpening: atOpening };
   }
 
   // Where the text that was on screen begins in the rendered copy, as { from, start }. `start`
@@ -2181,16 +2184,9 @@
     return Math.max(0, Math.floor(((lastFrag ? r.right - colW : r.left) - pr.left + colGap / 2) / stride));
   }
 
-  // The spread holding the page's top paragraph — unless that is the first spread and a saved
-  // position exists. A page near its opening (a fresh visit, a scroll past the header) says only
-  // "the start", and the saved position is the better guess at where the user is. That deferral
-  // is decided once: the pending anchor becomes the saved fraction, so a late image pushing the
-  // paragraph onto spread 1 cannot pull the reader off the resumed spread.
+  // The spread holding the page's top paragraph.
   function anchorSpread(a) {
-    const s = Math.floor(colOfEl(a.first) / pagesPerSpread);
-    if (s !== 0 || typeof a.f !== 'number') return s;
-    if (restoreAnchor === a) restoreAnchor = a.f;
-    return Math.round((a.f * totalColumns) / pagesPerSpread);
+    return Math.floor(colOfEl(a.first) / pagesPerSpread);
   }
 
   // Keys of the rendered blocks up to and including the one at the top of the current spread,
@@ -3002,13 +2998,22 @@
       OBR.loadLifetime ? OBR.loadLifetime() : {},
     ]);
     if (gen !== openGen) return;
-    const savedF = entry && typeof entry.f === 'number' ? entry.f : null;
+    // This page's own last close of the article is what close just stored, and the only record
+    // incognito keeps, which writes none.
+    const own = lastClose && lastClose.key === posKey ? lastClose : null;
+    const savedF = own ? own.f : entry && typeof entry.f === 'number' ? entry.f : null;
+    const savedP = own ? own.p : entry && entry.p;
     pagePk = seen ? seen.key : '';
     // Unmoved since the reader last left it: the page's spot is the one recorded with the saved
     // position, which then wins as the precise one.
-    const moved = !!seen && !(savedF != null && entry.p && seen.near.includes(entry.p));
+    const moved = !!seen && !(savedF != null && savedP && seen.near.includes(savedP));
     if (seen && !moved) anchorWhy += ' unmoved';
-    restoreAnchor = moved ? { first: seen.first, f: savedF } : savedF;
+    // A page showing the article's opening says only "the start" on a fresh visit, so the saved
+    // position is the better guess at where the user is. Once this page has closed the reader on
+    // the article, the page shows where the user chose to go, and its top means the top.
+    const opening = moved && seen.atOpening && savedF != null;
+    if (opening) anchorWhy += own ? ' opening: closed here' : ' opening: saved';
+    restoreAnchor = !moved || (opening && !own) ? savedF : { first: seen.first };
     navigated = false;
     const screenFrom = moved ? seen.screen : null;
     priorMs = entry && typeof entry.ms === 'number' ? entry.ms : 0;
@@ -3031,8 +3036,7 @@
     const openAt = moved ? 'scroll' : savedF != null ? 'saved' : 'start';
     requestAnimationFrame(() => {
       layout(false);
-      // Still placed by the page: the first-spread rule may have handed the open to the saved
-      // position, whose spread need not hold these lines.
+      // Still placed by the page: a page turn before this frame has moved the reader off it.
       if (screenFrom && active && restoreAnchor && typeof restoreAnchor === 'object') {
         try { spotlight(screenFrom); } catch (e) { clearSpotlight(); } // a cue, never a broken open
       }
@@ -3179,6 +3183,8 @@
     // Flush now, not after the debounce (the tab may go away) — and after the sync, so the saved
     // position carries the page's new spot.
     flushPosition();
+    lastClose = posKey && totalColumns >= 1
+      ? { key: posKey, f: (currentSpread * pagesPerSpread) / totalColumns, p: pagePk } : null;
     active = false;
     // The one moment the engagement chip may appear: after a USER-initiated close — the
     // reading is over, nothing gets interrupted. Mode switches / cross-closes never ask.

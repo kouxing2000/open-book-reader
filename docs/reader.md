@@ -202,8 +202,8 @@ permission — `storage` already covers `storage.local`.
 2. If the page has not moved since the reader last left it, the reader resumes the saved position.
 3. Otherwise it opens on the spread holding the page's top line (`pageSpot` + `screenStart` +
    `anchorSpread`), so a paragraph broken across spreads opens where the screen was, not where the
-   paragraph starts. If that is the first spread and a saved position exists, it resumes the saved
-   position instead.
+   paragraph starts. If the page shows the article's opening on a fresh visit and a saved
+   position exists, it resumes the saved position instead.
 4. Otherwise the saved position.
 5. Otherwise page 1.
 
@@ -238,11 +238,15 @@ known paragraph cannot fail this way, which is how the scrolled-past gap first w
 
   The match also accepts the top paragraph's paired neighbours (`near`). The top block is often a
   sliver, so a few pixels of drift after a reload hand the top to the next paragraph.
-- **The first spread defers to the saved position.** A page near its opening (a fresh visit, a
-  scroll past the header) says only "the start", and losing a deep saved position to that is
-  worse than a Home press. This is decided once: the pending anchor becomes the saved fraction,
-  so a late image pushing that paragraph onto spread 1 cannot pull the reader off the resumed
-  spread.
+- **Only a page at its opening defers to the saved position, and only on a fresh visit.** A page
+  showing the article's opening, with nothing scrolled past (a fresh visit, a scroll past the
+  header), says only "the start", and losing a deep saved position to that is worse than a Home
+  press. A page scrolled past its opening says where the user is, even on the first spread. So
+  does any page once this page has closed the reader on the article (`lastClose`): the page then
+  shows where the user chose to go, and scrolling back up to the top means the top. The call is
+  made at open from the page alone, so the open resumes the saved fraction outright and no late
+  reflow of the reader can undo it. The debug line records which way it went (`opening: saved` /
+  `opening: closed here`).
 - **Pairing** is the split-body merge's own: leaf p/blockquote/li of 20+ words, keyed by their
   first 80 chars (`proseBlocks` / `blockKey`). A key two blocks share on EITHER side is dropped
   (`uniqueByKey`), or a teaser repeating a paragraph would send the close to the teaser.
@@ -294,8 +298,9 @@ known paragraph cannot fail this way, which is how the scrolled-past gap first w
   end".
 - **Unpaired falls back, never worse.** Two cases cannot pair: body copy in `<div>`s (the
   `_proseStats` blind spot) and a paragraph Readability rewrote within its first 80 chars.
-  - Incognito writes no position or fingerprint, so a close then reopen there can land up to one
-    spread early.
+  - Incognito writes no position or fingerprint. A close then reopen on the same page still
+    resumes exactly, from the page's own record of the close (`lastClose`). After a reload there
+    the open has only the page's scroll and whatever was saved outside incognito.
   - A sticky header with no `scroll-padding-top` covers the synced paragraph's first lines. Those
     lines usually began on the spread before, so they were already read. Measuring the header
     instead would have to be mirrored in `pageSpot`'s viewport test, or the paragraph peeking out
