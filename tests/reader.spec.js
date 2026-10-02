@@ -1159,7 +1159,14 @@ test('the text the page scrolled past dims while the screen\'s lines and what fo
   await injectReader(page);
   const screen = await scrollIntoPart(page, 16, 0.5);
   const past = await page.evaluate((parts) => parts.filter((n) => document.getElementById('pic' + n).getBoundingClientRect().bottom <= 0), parts);
-  await openReader(page);
+  // Frozen 0.4s into the hold, in the frame that starts it (the reader's frame callback runs
+  // first): on a slow machine the checks below would otherwise run into the fade.
+  await page.evaluate(() => globalThis.OBR.open().then(() => new Promise((r) => requestAnimationFrame(() => {
+    const el = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content');
+    for (const a of el.getAnimations({ subtree: true })) { a.pause(); a.currentTime = 400; }
+    r();
+  }))));
+  await expect.poll(() => readState(page).then((x) => x.indicator)).toContain('pages');
 
   const s = await spotlight(page);
   expect(s).not.toBeNull();
@@ -1182,6 +1189,10 @@ test('the text the page scrolled past dims while the screen\'s lines and what fo
   expect(shown.some((p) => !past.includes(p.n))).toBe(true);
   for (const p of shown) expect({ n: p.n, opacity: p.opacity }).toEqual({ n: p.n, opacity: past.includes(p.n) ? '0.34' : '1' });
 
+  await page.evaluate(() => {
+    const el = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content');
+    for (const a of el.getAnimations({ subtree: true })) a.play();
+  });
   await expect.poll(() => spotlight(page), { timeout: 5000 }).toBeNull();
   expect((await pics()).map((p) => p.opacity)).toEqual(parts.map(() => '1'));
 });
