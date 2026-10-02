@@ -68,7 +68,16 @@ element and never take part.
   collapsed box), and not `pinned` under a sticky or fixed ancestor, which is always on screen and
   says nothing about where the page is. A box that scrolls the image vertically ends that walk,
   so a fixed app shell or a scrolling modal still counts as page content, and the body never
-  pins (pinning it is how a site locks its own scroll).
+  pins (pinning it is how a site locks its own scroll). The hide menu's image lookup
+  (`findImgFor`) and its "Images in this spot" preview pair the same way.
+- **Merges and URL hides pair by what an image loads as** (`loadedAs`: its srcset candidates,
+  else its src). A merge folds an `<img>` that is already a tile under another such URL into
+  that tile (or every such image comes back as a second tile once it loads), handing it the
+  larger variant and the size it now has. A URL hide matches any of them, so "Hide this image"
+  on a tile collected before its photo loaded still hides the photo, and Unhide finds the
+  pattern again. This is narrower than `liveUrls` on purpose: a lazy attribute a carousel left
+  stale, or a placeholder src that a lazy loader gives every image, would merge different
+  pictures.
 - **Open:** the grid starts on the tile of the page's first on-screen image (`pageImageUrls`, read
   before the scroll lock, which drops the scrollbar and can reflow the page). It stays at the grid's
   top when that tile already starts in the top half of the grid's first screen: a page at its top,

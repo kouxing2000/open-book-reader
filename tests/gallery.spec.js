@@ -1987,36 +1987,42 @@ test.describe('page scroll and the grid follow each other', () => {
     expect(Math.abs(await tileBelowTop(page, 20))).toBeLessThan(1);
   });
 
+  // Lazy srcset photos: below the screen they stay unloaded, so each is collected as its largest
+  // candidate; once loaded, its own URL is the candidate its sizes picked.
+  const lazySrcsetPhotos = (page) => page.evaluate(() => {
+    const main = document.querySelector('main');
+    main.textContent = '';
+    for (let i = 1; i <= 40; i++) {
+      // A reserved box, as real markup has, so the lazy ones below the screen stay unloaded.
+      const img = Object.assign(document.createElement('img'), { loading: 'lazy', alt: 'Photo ' + i, width: 600, height: 600 });
+      img.sizes = '600px';
+      img.srcset = ['300', '700', '2000'].map((w) => 'pic.png?n=' + i + '&w=' + w + ' ' + w + 'w').join(','); // no space: legal
+      img.src = 'pic.png?n=' + i + '&w=700';
+      const fig = Object.assign(document.createElement('figure'), { className: 'photo' });
+      fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: 'Photo ' + i }));
+      main.appendChild(fig);
+    }
+  });
+  const tileSrc = (page, n) => page.evaluate((n) => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    return Array.from(r.querySelectorAll('.tile img')).map((i) => i.src).find((u) => u.includes('n=' + n + '&'));
+  }, n);
+  const loadLazyPhotos = async (page) => {
+    await page.evaluate(() => { for (const i of document.images) i.loading = 'eager'; });
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.currentSrc));
+    expect(await page.evaluate(() => document.images[19].currentSrc)).not.toContain('w=2000');
+  };
+
   test('closing finds the photo after it loaded a different srcset candidate than the tile was collected with', async ({ page }) => {
-    // An unloaded srcset image is collected as its largest candidate; once it loads, its own URL
-    // is the candidate its sizes picked. The one-column Ordered strip keeps the square photos'
-    // tiles from sharing a top edge.
-    await page.evaluate(() => {
-      const main = document.querySelector('main');
-      main.textContent = '';
-      for (let i = 1; i <= 40; i++) {
-        // A reserved box, as real markup has, so the lazy ones below the screen stay unloaded.
-        const img = Object.assign(document.createElement('img'), { loading: 'lazy', alt: 'Photo ' + i, width: 600, height: 600 });
-        img.sizes = '600px';
-        img.srcset = ['300', '700', '2000'].map((w) => 'pic.png?n=' + i + '&w=' + w + ' ' + w + 'w').join(','); // no space: legal
-        img.src = 'pic.png?n=' + i + '&w=700';
-        const fig = document.createElement('figure');
-        fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: 'Photo ' + i }));
-        main.appendChild(fig);
-      }
-    });
+    // The one-column Ordered strip keeps the square photos' tiles from sharing a top edge.
+    await lazySrcsetPhotos(page);
     await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth > 0);
     await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOrderedCols: 1 }));
     await openGallery(page); // the photos below the screen are still unloaded
     await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
-    const tile20 = await page.evaluate(() => {
-      const r = document.getElementById('obr-gallery-host').shadowRoot;
-      return Array.from(r.querySelectorAll('.tile img')).map((i) => i.src).find((u) => u.includes('n=20&'));
-    });
+    const tile20 = await tileSrc(page, 20);
     expect(tile20).toContain('w=2000');
-    await page.evaluate(() => { for (const i of document.images) i.loading = 'eager'; }); // now they load
-    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.currentSrc));
-    expect(await page.evaluate(() => document.images[19].currentSrc)).not.toContain('w=2000');
+    await loadLazyPhotos(page);
     await page.evaluate((src) => {
       const r = document.getElementById('obr-gallery-host').shadowRoot;
       const s = r.querySelector('.scroll');
@@ -2025,6 +2031,100 @@ test.describe('page scroll and the grid follow each other', () => {
     }, tile20);
     await page.evaluate(() => globalThis.OBR.closeGallery());
     expect(Math.abs(await page.evaluate(() => Math.round(document.images[19].getBoundingClientRect().top)))).toBeLessThan(2);
+  });
+
+  test('a photo that loads another srcset candidate after the open stays one tile, and its hide menu still finds it', async ({ page }) => {
+    await lazySrcsetPhotos(page);
+    await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth > 0);
+    await openGallery(page); // the photos below the screen are still unloaded
+    expect((await galleryState(page)).tiles).toBe(40);
+    const tile1 = await tileSrc(page, 1), tile20 = await tileSrc(page, 20);
+    expect(tile20).toContain('w=2000');
+    await loadLazyPhotos(page);
+    await page.evaluate(() => globalThis.OBR._galleryRescan()); // merges what the page shows now
+    expect((await galleryState(page)).tiles).toBe(40);
+    // A loaded photo's tile names its container; so must the one collected before it loaded.
+    expect(await page.evaluate((u) => globalThis.OBR._gallerySelectorFor(u), tile1)).toBe('.photo img');
+    expect(await page.evaluate((u) => globalThis.OBR._gallerySelectorFor(u), tile20)).toBe('.photo img');
+    // ...and hovering "Images in this spot" marks every tile that scope would hide.
+    const idx = await page.evaluate((u) => +Array.from(document.getElementById('obr-gallery-host').shadowRoot
+      .querySelectorAll('.tile')).find((t) => t.querySelector('img').src === u).dataset.idx, tile20);
+    await page.locator('#obr-gallery-host >> .tile[data-idx="' + idx + '"]').hover();
+    await page.locator('#obr-gallery-host >> .tile[data-idx="' + idx + '"] .tile-hide').click({ force: true });
+    await page.locator('#obr-gallery-host >> .hide-menu .hm-opt').first().hover();
+    await expect.poll(() => page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile.hide-preview').length)).toBe(40);
+  });
+
+  // Photo 20 as a lazy image below the screen, unloaded at open: `attrs` are its attributes.
+  const lazyPhoto20 = (page, attrs) => page.evaluate((attrs) => {
+    const img = Object.assign(document.createElement('img'), { alt: 'Photo 20', width: 600, height: 600 });
+    for (const [k, v] of Object.entries(attrs)) img.setAttribute(k, v);
+    document.images[19].replaceWith(img);
+  }, attrs);
+  const tileSrcs = (page) => page.evaluate(() => Array.from(document.getElementById('obr-gallery-host').shadowRoot
+    .querySelectorAll('.tile img')).map((i) => i.src));
+
+  test('hiding "this image" on a photo collected before it loaded hides the photo, and Unhide brings it back', async ({ page }) => {
+    // Candidates that differ by path, as WordPress's do (photo.jpg, photo-1024x683.jpg): a hide
+    // pattern ignores the query, so query variants would all be one image to it.
+    await lazyPhoto20(page, { loading: 'lazy', sizes: '600px', srcset: 'pic.png 2000w, pic-700.png 700w' });
+    await openGallery(page);
+    const tile = (await tileSrcs(page)).find((u) => /\/pic(-700)?\.png$/.test(u));
+    expect(tile).toMatch(/\/pic\.png$/); // collected unloaded, as its largest candidate
+    await page.evaluate(() => { document.images[19].loading = 'eager'; });
+    await page.waitForFunction(() => document.images[19].complete && /pic-700\.png$/.test(document.images[19].currentSrc));
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false)); // re-collects: the photo under its loaded URL
+    expect((await tileSrcs(page)).filter((u) => /\/pic(-700)?\.png$/.test(u)).map((u) => u.replace(/^.*\//, ''))).toEqual(['pic-700.png']);
+    await page.evaluate((u) => globalThis.OBR._galleryHide(globalThis.OBR.hidePatternsFor(u).image), tile);
+    expect((await tileSrcs(page)).filter((u) => /\/pic(-700)?\.png$/.test(u))).toEqual([]);
+    expect((await galleryState(page)).tiles).toBe(39);
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
+    expect(await page.evaluate(() => Array.from(document.getElementById('obr-gallery-host').shadowRoot
+      .querySelectorAll('.tile.tile-is-hidden img')).map((i) => i.src.replace(/^.*\//, '')))).toEqual(['pic-700.png']); // peeking: back, tagged
+    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').click({ force: true });
+    await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns())).toEqual([]);
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
+    expect((await galleryState(page)).tiles).toBe(40);
+  });
+
+  test('photos sharing a lazy loader\'s placeholder each get a tile once they load', async ({ page }) => {
+    // A srcset swapped in on load, beside a src that is one placeholder file for every photo.
+    await page.evaluate(() => {
+      for (const [i, img] of Array.from(document.images).entries()) {
+        img.removeAttribute('src');
+        img.setAttribute('data-srcset', ['300', '700'].map((w) => 'pic.png?n=' + (i + 1) + '&w=' + w + ' ' + w + 'w').join(', '));
+        img.sizes = '600px';
+        img.src = 'pic.png?placeholder';
+      }
+    });
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(1); // a positive landmark: one placeholder tile
+    await page.evaluate(() => { for (const i of document.images) i.srcset = i.getAttribute('data-srcset'); });
+    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && /n=/.test(i.currentSrc)));
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    expect((await galleryState(page)).tiles).toBe(41);
+  });
+
+  test('a photo that loads a larger variant than its lazy attribute shows that variant in the big view', async ({ page }) => {
+    // lazysizes' markup: the real URLs wait in data-src / data-srcset, and nothing loads until it
+    // copies them over.
+    await lazyPhoto20(page, { 'data-src': 'tall.png?w=600', 'data-srcset': 'tall.png?w=300 300w, tall.png?w=600 600w, pic.png?w=900 900w', sizes: '900px' });
+    await openGallery(page);
+    const tile = (await tileSrcs(page)).find((u) => /\/(pic|tall)\.png/.test(u));
+    expect(tile).toMatch(/tall\.png\?w=600$/); // collected as its data-src
+    await page.evaluate(() => {
+      const img = document.images[19];
+      img.srcset = img.getAttribute('data-srcset'); img.src = img.getAttribute('data-src');
+    });
+    await page.waitForFunction(() => document.images[19].complete && /pic\.png\?w=900$/.test(document.images[19].currentSrc));
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    expect((await galleryState(page)).tiles).toBe(40);
+    const idx = await page.evaluate((u) => +Array.from(document.getElementById('obr-gallery-host').shadowRoot
+      .querySelectorAll('.tile')).find((t) => t.querySelector('img').src === u).dataset.idx, tile);
+    await clickInGallery(page, '.tile[data-idx="' + idx + '"]');
+    expect(await page.evaluate(() => document.getElementById('obr-gallery-host').shadowRoot.querySelector('.lb-img').src)).toMatch(/pic\.png\?w=900$/);
   });
 
   test('a sticky header picture does not hold the grid at its top', async ({ page }) => {

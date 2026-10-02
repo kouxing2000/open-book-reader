@@ -357,16 +357,19 @@
     } catch (e) { /* defensive */ }
     return null;
   }
-  // The live page <img> whose collected URL is `url` (for deriving/removing element hides).
+  // The live page <img> a tile's `url` came from (for deriving/removing element hides): the one
+  // collected under it, else one that answers to it since loading another of its candidates.
   // Null for background-image / <source>-only entries — those have no <img>.
   function findImgFor(url) {
-    let found = null;
+    let found = null, alias = null;
     document.querySelectorAll('img').forEach((img) => {
       if (found) return;
       const e = galleryImgEntry(img);
-      if (e && resolveUrl(e.url, location.href) === url) found = img;
+      if (!e) return;
+      if (resolveUrl(e.url, location.href) === url) found = img;
+      else if (!alias && liveUrls(img, e).has(url)) alias = img;
     });
-    return found;
+    return found || alias;
   }
 
   // Per-image ALLOW entries ('+<target>' in obr_hidden): the recovery path for an avatar
@@ -390,7 +393,7 @@
       // is visible and recoverable (Unhide stores a per-image '+' allow entry).
       if (hideAv && isAvatarish(img) && !isAllowed(resolveUrl(e.url, location.href))) e.autoHidden = true;
       else if (sels.length && matchesCssHidden(img, sels)) e.elHidden = true; // tagged; collect() drops or (peeking) keeps it
-      fn(e);
+      fn(e, img);
     });
   }
 
@@ -430,25 +433,35 @@
   // background-image scan; merges pass false (the cheap <img> + <picture> walk) so an
   // incremental re-collect — which runs on every MutationObserver hit and once per
   // hydration step (~80x during "Load all") — never forces a whole-document style recalc.
-  function collect(withBackgrounds) {
+  // `known` (a merge's tile entries by URL) turns an <img> already a tile under another URL it
+  // loads as into { aliasOf, full, w, h }, for the merge to update that tile with.
+  function collect(withBackgrounds, known) {
     const seen = new Set();
     const out = [];
     hiddenSkipped = 0; // recomputed each collect (drives the "N hidden" toggle)
-    const push = (rawUrl, w, h, fullRaw, elHidden, autoHidden) => {
+    const push = (rawUrl, w, h, fullRaw, tagged, autoHidden) => {
       if (!rawUrl || isSkippableDataUri(rawUrl)) return;
       const url = resolveUrl(rawUrl, location.href);
       if (!url || seen.has(url)) return;
       seen.add(url);
-      // Per-site image filter — URL globs here; element (`css:`) and avatar-auto matches
-      // tagged upstream in eachGalleryImg: drop matches (or, while peeking, keep them tagged).
-      const hidden = !!elHidden || !!autoHidden ||
+      // Per-site image filter — URL globs here; element (`css:`) and avatar-auto matches, and a
+      // URL glob matching another URL the <img> loads as, are tagged upstream: drop matches (or,
+      // while peeking, keep them tagged).
+      const hidden = !!tagged || !!autoHidden ||
         (hiddenPatterns.length && OBR.urlMatchesHidden && OBR.urlMatchesHidden(url, hiddenPatterns));
       if (hidden && !revealHidden) { hiddenSkipped++; return; }
       const full = (fullRaw && resolveUrl(fullRaw, location.href)) || url;
       out.push({ url, full, w: w || 0, h: h || 0, hidden, auto: !!autoHidden });
     };
 
-    eachGalleryImg((e) => push(e.url, e.w, e.h, e.full, e.elHidden, e.autoHidden));
+    const urlHides = hiddenPatterns.length && OBR.urlMatchesHidden;
+    eachGalleryImg((e, img) => {
+      const url = resolveUrl(e.url, location.href);
+      const alias = known && !known.has(url) ? loadedAs(img).find((u) => known.has(u)) : null;
+      if (alias) return void out.push({ aliasOf: alias, full: resolveUrl(e.full, location.href) || url, w: e.w, h: e.h });
+      const tagged = e.elHidden || (urlHides && loadedAs(img).some((u) => OBR.urlMatchesHidden(u, hiddenPatterns)));
+      push(e.url, e.w, e.h, e.full, tagged, e.autoHidden);
+    });
     eachPictureSource(push); // <picture> fallback sources: full === url
     if (withBackgrounds) eachBackgroundImage(push);
 
@@ -1180,6 +1193,14 @@
                         // on screen it left that image's live copy
   let openWhy = '', closeWhy = ''; // which way the last open and close went (debug line, _diagGallery)
 
+  // The URLs an <img> loads as: its srcset candidates, else its src. Merges and URL hides pair a
+  // tile with its image by these. Narrower than liveUrls, since either extra would pair different
+  // pictures: a carousel can leave a lazy attribute stale, and a src beside a srcset can be a lazy
+  // loader's placeholder that every image on the page shares.
+  function loadedAs(img) {
+    const own = OBR.srcsetUrls(img.srcset);
+    return (own.length ? own : [img.getAttribute('src')]).filter(Boolean).map((u) => resolveUrl(u, location.href));
+  }
   // Every URL a live <img> answers to. A tile keeps the URL collect() saw, and an image changes
   // its own as it loads: an unloaded srcset image is collected as its largest candidate, then
   // loads the one its sizes pick.
@@ -1404,8 +1425,7 @@
       document.querySelectorAll('img').forEach((img) => {
         if (!matchesCssHidden(img, [s])) return;
         const e = galleryImgEntry(img);
-        const u = e && resolveUrl(e.url, location.href);
-        if (u) marks.add(u);
+        if (e) for (const u of liveUrls(img, e)) marks.add(u); // its tile may hold any of them
       });
     } else {
       images.forEach((m) => { if (OBR.urlMatchesHidden && OBR.urlMatchesHidden(m.url, [pattern])) marks.add(m.url); });
@@ -1503,7 +1523,8 @@
       hiddenPatterns = hiddenPatterns.filter((p) => {
         if (typeof p === 'string' && p.startsWith('css:')) return !(imgEl && matchesCssHidden(imgEl, [p.slice(4)]));
         if (typeof p === 'string' && p.startsWith('+')) return true; // allows are unhide state — keep
-        return !(OBR.urlMatchesHidden && OBR.urlMatchesHidden(im.url, [p]));
+        if (!OBR.urlMatchesHidden) return true;
+        return !(OBR.urlMatchesHidden(im.url, [p]) || (imgEl && loadedAs(imgEl).some((u) => OBR.urlMatchesHidden(u, [p]))));
       });
     }
     // If this unhide removed the pattern Undo points at, retire the stale Undo button.
@@ -1542,12 +1563,18 @@
   // end of a full "Load all" sweep; the frequent incremental merges skip it (cheap path).
   function mergeNewImages(withBackgrounds) {
     if (!active || !built) return 0;
-    const have = new Set(images.map((im) => im.url));
+    const have = new Map(images.map((im) => [im.url, im]));
     const startIdx = images.length;
     let added = 0;
-    collect(withBackgrounds).forEach((im) => {
+    collect(withBackgrounds, have).forEach((im) => {
+      if (im.aliasOf) { // the same picture, loaded since: it may offer a larger variant and its size
+        const t = have.get(im.aliasOf);
+        t.full = im.full;
+        if (!t.w || !t.h) { t.w = im.w; t.h = im.h; }
+        return;
+      }
       if (have.has(im.url)) return;
-      have.add(im.url);
+      have.set(im.url, im);
       images.push(im);
       added++;
     });
