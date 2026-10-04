@@ -1557,7 +1557,7 @@ test('_qrSvg encodes a URL to a self-contained SVG, and the print doc appends th
     const branded = globalThis.OBR._buildPrintDoc({
       title: 'T', content: '<p>Body.</p>', fontFamily: 'serif', lineHeight: 1.6,
       brand: { name: 'Open Book Reader', tagline: 'Printed with the free, distraction-free reader',
-        url: 'chromewebstore.google.com', qrSvg: globalThis.OBR._qrSvg(storeUrl) },
+        url: 'openbook.peach-studio.com', qrSvg: globalThis.OBR._qrSvg(storeUrl) },
     });
     const plain = globalThis.OBR._buildPrintDoc({ title: 'T', content: '<p>Body.</p>' });
     return { svg, deterministic: svg === same, branded, plain, emptyType: typeof globalThis.OBR._qrSvg('') };
@@ -1572,9 +1572,38 @@ test('_qrSvg encodes a URL to a self-contained SVG, and the print doc appends th
   expect(r.branded).toContain('<div class="obr-print-brand">');
   expect(r.branded).toContain('Open Book Reader');
   expect(r.branded).toContain('Printed with the free, distraction-free reader'); // the attribution tagline
-  expect(r.branded).toContain('chromewebstore.google.com');
+  expect(r.branded).toContain('openbook.peach-studio.com');
   expect(r.branded).toContain('<svg'); // the QR is embedded in the footer
   expect(r.plain).not.toContain('<div class="obr-print-brand">'); // absent by default (the CSS class always exists)
+});
+
+// printReader is the only caller that builds `brand`, so the footer's content is pinned here
+// rather than through _buildPrintDoc, which prints whatever brand it is handed.
+test('printReader prints the landing-site host beside a QR that still opens the store listing', async ({ page }) => {
+  await openReader(page);
+  const r = await page.evaluate(() => {
+    const OBR = globalThis.OBR;
+    const de = document.documentElement, append = de.appendChild;
+    let frame = null;
+    // Catch the print iframe as it is attached and stub its print(), so no dialog opens.
+    de.appendChild = function (n) {
+      const ret = append.call(this, n);
+      if (n.tagName === 'IFRAME') { frame = n; n.contentWindow.print = () => {}; }
+      return ret;
+    };
+    try { OBR.printReader(); } finally { de.appendChild = append; }
+    const doc = frame && frame.contentDocument;
+    const parsed = document.createElement('div'); // same HTML serialization as the iframe's QR
+    parsed.innerHTML = OBR._qrSvg(OBR.STORE_URL);
+    return {
+      url: doc && doc.querySelector('.obr-brand-url')?.textContent,
+      qr: doc && doc.querySelector('.obr-qr')?.innerHTML,
+      storeQr: parsed.innerHTML,
+    };
+  });
+  // Typed off paper: the bare store domain lands on the store's home page, not the listing.
+  expect(r.url).toBe('openbook.peach-studio.com');
+  expect(r.qr).toBe(r.storeQr);
 });
 
 test('saveSettings persists only changed keys (default changes still apply)', async ({ page }) => {

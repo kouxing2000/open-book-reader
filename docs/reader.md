@@ -181,7 +181,9 @@ button, so no new exposure) so a shared PDF sends readers to install — a growt
 local (no new permission). The QR is rendered by `OBR._qrSvg(text)` (pure → an inline SVG of dark
 modules, no canvas/data-URL, prints crisp) using the **vendored** `qrcode.js` (qrcode-generator,
 MIT — injected before `reader.js`; pure array math, CSP-safe). `_buildPrintDoc` stays pure:
-`printReader` passes it a `brand` object (name + a display domain + pre-rendered `qrSvg`).
+`printReader` passes it a `brand` object (name + a display domain + pre-rendered `qrSvg`). The
+display domain is the landing site's host (`OBR.SITE_URL`), not the store's: it is the line a
+reader types off paper, and the store item URL is an opaque 32-letter id.
 
 ## Reading progress is a fraction, never a spread index
 

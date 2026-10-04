@@ -333,6 +333,9 @@
   // Canonical URL lives on the shared namespace (settings.js) — the colophon and the
   // engagement chip point at the same place.
   const STORE_URL = OBR.STORE_URL;
+  // The footer's printed line. Resolved here, not at print time: a throw inside printReader
+  // would leave `printing` latched and every later Print silently dead for the tab.
+  const SITE_HOST = new URL(OBR.SITE_URL).host;
 
   function printCSS({ fontFamily, lineHeight }) {
     const fam = FONT_STACKS[fontFamily] || FONT_STACKS.serif;
@@ -440,15 +443,17 @@
     if (settings.printSourceUrl !== false) {
       try { url = location.href; } catch (e) { /* opaque origin */ }
     }
-    // Optional "Open Book Reader" footer + QR to the project page, so a shared PDF can lead a
+    // Optional "Open Book Reader" footer + QR to the store listing, so a shared PDF can lead a
     // reader back to the extension. Local + no new permission — the QR is drawn from a fixed URL.
     // A short wordmark reads cleaner in a footer than the full ASO store name (manifest name =
     // "Open Book — Reader View"); the brand is "Open Book Reader". The QR links to the store
-    // listing; the visible line shows the store DOMAIN, not the long opaque item URL.
+    // listing; the visible line is for someone TYPING it off paper, so it shows the landing
+    // site's host — the store item URL is a 32-letter opaque id, and the bare store domain
+    // lands on the store's home page, not ours.
     let brand = null;
     if (settings.printBranding !== false) {
       brand = { name: 'Open Book Reader', tagline: OBR.t('readerPrintBrandTagline'),
-        url: 'chromewebstore.google.com', qrSvg: qrSvg(STORE_URL) };
+        url: SITE_HOST, qrSvg: qrSvg(STORE_URL) };
     }
 
     const docHtml = buildPrintDoc({
