@@ -54,6 +54,7 @@ src/content/
   readability.js     VENDORED Mozilla Readability (Apache-2.0) — do not edit; see READABILITY-LICENSE.md
   reader.style.js    reader stylesheet as a JS string (OBR._readerCSS) — injected before reader.js
   qrcode.js          VENDORED qrcode-generator (MIT) — do not edit; the print-branding QR; see QRCODE-LICENSE.md
+  turndown.js        VENDORED Turndown (MIT) — do not edit; HTML → Markdown for ⤓ Markdown; see TURNDOWN-LICENSE.md
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
   zip.js             minimal ZIP writer (OBR._buildZip) — used by the gallery's "Download as ZIP"
   gallery.js         IMAGE mode: collect images → Wall masonry / Ordered rows + lightbox (Shadow DOM)
@@ -76,10 +77,11 @@ tools/feedback-form/ Google Apps Script backend: the shared feedback collector f
 ```
 
 **Injection flow** (`background.js`): on click/command, `executeScript` probes `OBR._engineLoaded`;
-if absent, injects the files in order (settings, readability, reader.style, qrcode, reader, zip,
-gallery, notice — settings defines the namespace, reader.style supplies `OBR._readerCSS`, qrcode
-supplies the print-branding QR, reader needs `DEFAULTS`+`Readability`, zip supplies `OBR._buildZip`
-for the gallery's ZIP download, and notice supplies `OBR._notice` for the paint check). `notice.js`
+if absent, injects the files in order (settings, readability, reader.style, qrcode, turndown, reader,
+zip, gallery, notice — settings defines the namespace, reader.style supplies `OBR._readerCSS`, qrcode
+supplies the print-branding QR, turndown supplies the Markdown export's converter, reader needs
+`DEFAULTS`+`Readability`, zip supplies `OBR._buildZip` for the gallery's ZIP download, and notice
+supplies `OBR._notice` for the paint check). `notice.js`
 is ALSO injected on its own (`NOTICE_FILES`) on the orphaned-context path, where the engine files
 would throw. Then dispatches: keyboard commands call the
 explicit toggle (`OBR.toggle` / `OBR.toggleGallery`); the **toolbar icon** calls `OBR._autoToggle`,
@@ -110,7 +112,7 @@ DOM; opening one closes the other; in-overlay buttons switch (🖼 in reader, �
 open Shadow DOM styled via Constructable Stylesheets (`adoptedStyleSheets`) so strict-CSP sites can't
 block layout. Pagination = CSS multi-column: `.obr-pages` is transformed horizontally, "pages" are
 columns, a "spread" is N columns-per-view (`columns`: 2/3/4, or 1 below `singlePageBelow`); the
-center spine shows only for even N. The ⊞ topbar button cycles 2→3→4.
+center spine shows only for even N. Columns are set in the topbar's Aa popover.
 
 **Deep dives live in `docs/` and load on demand — keep them OUT of this file.** This file is read
 on every turn of every session, so it carries only what you can get wrong *without* opening the
@@ -119,7 +121,7 @@ while editing a feature belongs beside that feature.
 
 | area | doc |
 | --- | --- |
-| Text reader — pagination, page-turn animation, print/PDF, progress fractions, page-scroll sync on open/close and the open spotlight, content override (selection / picker / saved pick), split article bodies, tall-figure fitting, image sizing, why there is no text-wrap-around-image | `docs/reader.md` |
+| Text reader — pagination, page-turn animation, print/PDF, Markdown export, heading chrome, progress fractions, page-scroll sync on open/close and the open spotlight, content override (selection / picker / saved pick), split article bodies, tall-figure fitting, image sizing, why there is no text-wrap-around-image | `docs/reader.md` |
 | Image gallery — lazy hydration, Wall + Ordered layouts, lightbox, page-scroll sync on open/close and the open cue, avatar/noise filter, ZIP downloads | `docs/gallery.md` |
 | Auto-open — the sentinel's decision ladder, permission model, registration | `docs/auto-open-spec.md` |
 | Service worker — context-menu + sentinel-registration serialization, debug timing and trigger tracing | `docs/background-worker.md` |
@@ -246,7 +248,7 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
   get the page from its `preparePage(ctx)` and never build one by hand, because that is what
   applies the `chrome.storage` **and `chrome.i18n`** shims. Without the i18n shim the injected
   main-world scripts have no `chrome.i18n`, so `OBR.t()` echoes the raw key and any asset
-  showing the reader's toolbar renders `readerBtnThemeLabel` / `readerPageIndicator` as visible
+  showing the reader's toolbar renders `readerBtnPickLabel` / `readerPageIndicator` as visible
   text — it has already shipped that way once. `npm run promo` cuts all three video artifacts
   out of a single recording, so the storyboard's forward-then-back flips are also what makes
   the GIF loop seamlessly; don't split them back apart.
@@ -289,9 +291,9 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
   `manifest.json`, `icons/`, `src/`, `_locales/` ship — dev files can't leak. `_locales/` is
   load-bearing, not optional: every `__MSG_*__` in the manifest (name, description, command
   descriptions) resolves from it, so the store title/summary are PACKAGE data — there is no
-  dashboard field for them and only a release can change them. `READABILITY-LICENSE.md` and
-  `QRCODE-LICENSE.md` ship too (both live under `src/content/`, and the licenses require the notice
-  beside the vendored code).
+  dashboard field for them and only a release can change them. `READABILITY-LICENSE.md`,
+  `QRCODE-LICENSE.md` and `TURNDOWN-LICENSE.md` ship too (all live under `src/content/`, and the
+  licenses require the notice beside the vendored code).
 - **Privacy-practices gate**: adding a new permission blocks `publish` until you write its
   justification in the Developer Dashboard (the API can't set it) — the API fails with
   `400 "publish condition not met ... Privacy practices tab"`. Fill it BEFORE pushing a tag that adds
@@ -371,7 +373,7 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
   touches the DOM at call time only: settings.js is `importScripts`'d into the SW, where a
   top-level DOM access would kill worker registration.
 
-- `readability.js` and `qrcode.js` are third-party vendored code — keep them pristine; fixes go upstream.
+- `readability.js`, `qrcode.js` and `turndown.js` are third-party vendored code — keep them pristine; fixes go upstream.
 
 - `reader.js` injects `article.content` via `innerHTML` into the Shadow DOM (and the print iframe).
   Vendored Readability is NOT a sanitizer (it keeps e.g. `<img onerror>`), so EVERY content path —

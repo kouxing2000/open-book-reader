@@ -6,8 +6,9 @@
  * after injection is the production engine, unmodified.
  */
 
+import fs from 'node:fs';
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader, READER_JS } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader, clickReaderAction, seedSettings, READER_JS } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -259,14 +260,14 @@ test('an external maxBookWidth change applies live to an open reader', async ({ 
   await expect.poll(() => paperWidth(page)).toBeLessThan(before - 100);
 });
 
-test('the Columns button cycles 2 -> 3 -> 4 columns per spread', async ({ page }) => {
+test('the Aa columns segments set 3 and 4 columns per spread', async ({ page }) => {
   await openReader(page);
   expect((await readState(page)).indicator).toMatch(/^1\D2\b/); // default: 2 per spread
 
-  await clickInReader(page, '.obr-btn[data-act="columns"]');
+  await clickReaderAction(page, 'columns', 3);
   await expect.poll(() => readState(page).then((s) => s.indicator)).toMatch(/^1\D3\b/);
 
-  await clickInReader(page, '.obr-btn[data-act="columns"]');
+  await clickReaderAction(page, 'columns', 4);
   await expect.poll(() => readState(page).then((s) => s.indicator)).toMatch(/^1\D4\b/);
 });
 
@@ -598,14 +599,14 @@ for (const mode of ['curl', 'book']) {
   });
 }
 
-test('the Theme button cycles paper -> light -> dark and persists', async ({ page }) => {
+test('the Aa theme segments set light and dark, and the choice persists', async ({ page }) => {
   await openReader(page);
   expect((await readState(page)).theme).toBe('paper');
 
-  await clickInReader(page, '.obr-btn[data-act="theme"]');
+  await clickReaderAction(page, 'theme', 'light');
   expect((await readState(page)).theme).toBe('light');
 
-  await clickInReader(page, '.obr-btn[data-act="theme"]');
+  await clickReaderAction(page, 'theme', 'dark');
   expect((await readState(page)).theme).toBe('dark');
 
   // Persisted to (shimmed) chrome.storage.sync.
@@ -634,9 +635,9 @@ test('the Auto theme follows the OS color scheme and flips live', async ({ page 
   );
   expect(stored.theme).toBe('auto');
 
-  // Pressing Theme while on Auto exits into an explicit concrete theme — from the resolved
+  // Pressing T while on Auto exits into an explicit concrete theme — from the resolved
   // 'paper' (OS light), the cycle advances to 'light' and persists it (no longer 'auto').
-  await clickInReader(page, '.obr-btn[data-act="theme"]');
+  await page.keyboard.press('t');
   expect((await readState(page)).theme).toBe('light');
   const stored2 = await page.evaluate(
     () => new Promise((r) => chrome.storage.sync.get('obr_settings', (d) => r(d.obr_settings)))
@@ -648,11 +649,11 @@ test('the A+ / A- buttons change font size within bounds', async ({ page }) => {
   await openReader(page);
   const base = (await readState(page)).fontSize;
 
-  await clickInReader(page, '.obr-btn[data-act="font+"]');
+  await clickReaderAction(page, 'font+');
   expect((await readState(page)).fontSize).toBe(base + 1);
 
-  await clickInReader(page, '.obr-btn[data-act="font-"]');
-  await clickInReader(page, '.obr-btn[data-act="font-"]');
+  await clickReaderAction(page, 'font-');
+  await clickReaderAction(page, 'font-');
   expect((await readState(page)).fontSize).toBe(base - 1);
 });
 
@@ -673,7 +674,7 @@ test('changing font size preserves reading progress (does not reset to page 1)',
   const fracBefore = progress(before);
   expect(fracBefore).toBeGreaterThan(0.4);
 
-  await clickInReader(page, '.obr-btn[data-act="font+"]');
+  await clickReaderAction(page, 'font+');
   const after = await readState(page);
   expect(after.fontSize).toBe(before.fontSize + 1);
   expect(after.translateX).toBeLessThan(0); // did NOT snap back to page 1
@@ -689,7 +690,7 @@ test('changing column count preserves reading progress (does not reset to page 1
   const fracBefore = progress(before);
   expect(fracBefore).toBeGreaterThan(0.4);
 
-  await clickInReader(page, '.obr-btn[data-act="columns"]'); // 2 -> 3 per spread
+  await clickReaderAction(page, 'columns', 3); // 2 -> 3 per spread
   const after = await readState(page);
   expect(after.translateX).toBeLessThan(0); // did NOT snap back to page 1
   // Re-anchoring across a column-COUNT change is granular: the restored spread can
@@ -1458,7 +1459,7 @@ test('the ⚙ Settings button asks the SW to open the options page', async ({ pa
     chrome.runtime = { lastError: null, sendMessage(m, cb) { window.__obrMsgs.push(m); if (cb) cb({ ok: true }); } };
     document.getElementById('obr-host').shadowRoot.querySelector('.obr-overlay').classList.remove('obr-chrome-hidden');
   });
-  await clickInReader(page, '.obr-btn[data-act="settings"]');
+  await clickReaderAction(page, 'settings');
   const msgs = await page.evaluate(() => window.__obrMsgs);
   expect(msgs.some((m) => m && m.type === 'obr-open-options')).toBe(true);
 });
@@ -1467,7 +1468,7 @@ test('the ⚠ Report button builds a feedback mailto with a parseable [feedback-
   await openReader(page);
   const r = await page.evaluate(() => {
     const root = document.getElementById('obr-host').shadowRoot;
-    const hasBtn = !!root.querySelector('.obr-btn[data-act="report"]');
+    const hasBtn = !!root.querySelector('.obr-menuitem[data-act="report"]');
     const url = globalThis.OBR._buildReportMailto({ source: 'reader-toolbar', mode: 'text', proseWords: 1234 });
     const body = decodeURIComponent((url.split('&body=')[1] || ''));
     let meta = null; try { meta = JSON.parse(body.split('[feedback-meta v1]\n')[1] || ''); } catch (e) {}
@@ -1608,7 +1609,7 @@ test('printReader prints the landing-site host beside a QR that still opens the 
 
 test('saveSettings persists only changed keys (default changes still apply)', async ({ page }) => {
   await openReader(page);
-  await clickInReader(page, '.obr-btn[data-act="font+"]'); // changes only fontSize
+  await clickReaderAction(page, 'font+'); // changes only fontSize
 
   const stored = await page.evaluate(
     () => new Promise((r) => chrome.storage.sync.get('obr_settings', (d) => r(d.obr_settings)))
@@ -1621,7 +1622,7 @@ test('saveSettings persists only changed keys (default changes still apply)', as
 
 test('settings persist across a full page reload', async ({ page }) => {
   await openReader(page);
-  await clickInReader(page, '.obr-btn[data-act="theme"]'); // paper -> light
+  await clickReaderAction(page, 'theme', 'light'); // paper -> light
   expect((await readState(page)).theme).toBe('light');
 
   // Reload the page entirely, re-inject, reopen. The localStorage-backed storage
@@ -1666,6 +1667,269 @@ test('injecting the engine a second time into a live page is a no-op', async ({ 
 /* ----------------------------------- content override: selection / picker / saved pick.
  * Uses the wrong-content fixture: #real-article (REAL-MARKER) is the genuine article;
  * #decoy (DECOY-MARKER) is a larger block the whole-page extractor latches onto. */
+test.describe('width-aware toolbar (Aa + ⋯)', () => {
+  const FLEX = ['pick', 'print', 'markdown'];
+  // Where each action can be reached right now. The invariant is exactly one place: an inline
+  // button hides its ⋯ twin, and a menu item without an inline twin is the only way in.
+  const placement = (page) => page.evaluate(() => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const bar = sr.querySelector('.obr-topbar');
+    const shown = (el) => !!el && !el.hidden && getComputedStyle(el).display !== 'none';
+    const where = {};
+    for (const act of ['pick', 'print', 'markdown', 'settings', 'report']) {
+      const at = [];
+      if (shown(sr.querySelector(`.obr-controls [data-act="${act}"]`))) at.push('inline');
+      if (shown(sr.querySelector(`.obr-menuitem[data-act="${act}"]`))) at.push('menu');
+      where[act] = at.join('+') || 'none';
+    }
+    const close = sr.querySelector('[data-act="close"]').getBoundingClientRect();
+    return { where, overflow: bar.scrollWidth > bar.clientWidth + 1,
+      barH: bar.getBoundingClientRect().height, closeRight: close.right, vw: innerWidth };
+  });
+  const popOpen = (page, name) => page.evaluate((n) =>
+    !document.getElementById('obr-host').shadowRoot.querySelector(`.obr-pop[data-for="${n}"]`).hidden, name);
+
+  test('Markdown is Beta and off by default: absent from the bar and the menu', async ({ page }) => {
+    expect(await page.evaluate(() => OBR.DEFAULTS.markdownExport)).toBe(false);
+    await openReader(page);
+    const p = await placement(page);
+    expect(p.where.markdown).toBe('none');
+    expect(p.where.pick).toBe('inline');
+    expect(p.where.print).toBe('inline');
+    // Switching it on from the Options page brings it in without a reopen.
+    await page.evaluate(() => OBR.saveSettings({ markdownExport: true }));
+    await expect.poll(() => placement(page).then((q) => q.where.markdown)).toBe('inline');
+  });
+
+  test('every action is reachable exactly once, in one row, at every width', async ({ page }) => {
+    await seedSettings(page, { markdownExport: true });
+    await openReader(page);
+    const seen = {};
+    for (const width of [1280, 900, 700, 520, 412, 360]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.waitForTimeout(300); // the resize handler is debounced 150ms
+      const p = await placement(page);
+      for (const [act, at] of Object.entries(p.where)) expect(at, `${act} at ${width}px`).toMatch(/^(inline|menu)$/);
+      expect(p.where.settings).toBe('menu');
+      expect(p.where.report).toBe('menu');
+      // The inline actions are a priority PREFIX: never Print inline while Pick is in the menu.
+      const inline = FLEX.map((a) => p.where[a] === 'inline');
+      expect(inline.indexOf(false) < 0 || inline.slice(inline.indexOf(false)).every((x) => !x), `prefix at ${width}px`).toBe(true);
+      expect(p.overflow, `overflow at ${width}px`).toBe(false);
+      expect(p.barH, `one row at ${width}px`).toBeLessThan(70);
+      expect(p.closeRight).toBeLessThanOrEqual(p.vw);
+      seen[width] = inline.filter(Boolean).length;
+    }
+    // The fit is not vacuous: the wide window keeps all three inline, the phone keeps none.
+    expect(seen[1280]).toBe(3);
+    expect(seen[360]).toBe(0);
+  });
+
+  test('a pick cancelled after a resize leaves the bar fitted (✕ reachable)', async ({ page }) => {
+    await openReader(page);
+    await clickReaderAction(page, 'pick');
+    await page.setViewportSize({ width: 520, height: 800 }); // the reader's resize handler skips this
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Escape'); // cancel: nothing re-renders
+    await page.waitForTimeout(300);
+    const p = await placement(page);
+    expect(p.overflow).toBe(false);
+    expect(p.closeRight).toBeLessThanOrEqual(p.vw);
+  });
+
+  test('Escape closes an open popover first, then the reader', async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '[data-pop="more"]');
+    expect(await popOpen(page, 'more')).toBe(true);
+    await page.keyboard.press('Escape');
+    expect(await popOpen(page, 'more')).toBe(false);
+    expect((await readState(page)).hostDisplay).not.toBe('none'); // the reader is still open
+    await page.keyboard.press('Escape');
+    expect((await readState(page)).hostDisplay).toBe('none');
+  });
+
+  test('a click outside an open popover closes it without turning the page', async ({ page }) => {
+    await openReader(page);
+    const before = (await readState(page)).indicator;
+    await clickInReader(page, '[data-pop="type"]');
+    expect(await popOpen(page, 'type')).toBe(true);
+    await page.mouse.click(1270, 500); // the right-edge band: a page turn on its own
+    expect(await popOpen(page, 'type')).toBe(false);
+    expect((await readState(page)).indicator).toBe(before);
+    await page.mouse.click(1270, 500); // with nothing open, the same click turns the page
+    await expect.poll(() => readState(page).then((s) => s.indicator)).not.toBe(before);
+  });
+
+  test('the toolbar stays up while a popover is open, and hides again once it closes', async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '[data-pop="more"]');
+    await page.mouse.move(640, 500); // off the bar: mouseleave schedules the auto-hide
+    await page.waitForTimeout(2600); // past CHROME_HIDE_MS (2200)
+    expect((await page.evaluate(() => OBR._diagReader())).chromeHidden).toBe(false);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() => OBR._diagReader().chromeHidden), { timeout: 5000 }).toBe(true);
+  });
+
+  test('Aa mirrors the live settings: its controls, the keys, and an Options-page change', async ({ page }) => {
+    await openReader(page);
+    const aa = () => page.evaluate(() => {
+      const sr = document.getElementById('obr-host').shadowRoot;
+      const on = (act) => sr.querySelector(`.obr-set-btn[data-act="${act}"][aria-pressed="true"]`)?.dataset.val;
+      return { size: sr.querySelector('.obr-font-size').textContent, theme: on('theme'), cols: on('columns') };
+    });
+    const base = (await readState(page)).fontSize;
+    await clickInReader(page, '[data-pop="type"]');
+    expect(await aa()).toEqual({ size: `${base} px`, theme: 'paper', cols: '2' });
+
+    await clickReaderAction(page, 'font+');
+    expect((await aa()).size).toBe(`${base + 1} px`);
+    expect(await popOpen(page, 'type')).toBe(true); // Aa stays open while adjusting
+
+    await page.keyboard.press('t'); // the key path, not the popover
+    expect((await aa()).theme).toBe('light');
+
+    await page.evaluate(() => OBR.saveSettings({ columns: 4 })); // as the Options page would
+    await expect.poll(() => aa().then((a) => a.cols)).toBe('4');
+  });
+});
+
+test.describe('⤓ Markdown export', () => {
+  test('the button downloads the open article as a .md file with front matter', async ({ page }) => {
+    await seedSettings(page, { markdownExport: true }); // Beta, off by default
+    await openReader(page);
+    const [dl] = await Promise.all([
+      page.waitForEvent('download'),
+      clickReaderAction(page, 'markdown'),
+    ]);
+    expect(dl.suggestedFilename()).toBe('The Art of Slow Reading.md');
+    const md = fs.readFileSync(await dl.path(), 'utf8');
+    expect(md.startsWith('---\ntitle: "The Art of Slow Reading"\n')).toBe(true);
+    expect(md).toContain(`\nsource: ${JSON.stringify(page.url())}\n---\n`);
+    expect(md).toContain('\n# The Art of Slow Reading\n');
+    expect(md).toContain('unhurried act');                                // body converted
+    expect(md).not.toContain('boilerplate that should not appear');      // same cleaning as the reader
+    expect(md).not.toMatch(/<p>|<div/);                                   // Markdown, not HTML
+  });
+
+  test('_buildMarkdown: YAML-safe front matter, tables kept as HTML, empty fields omitted', async ({ page }) => {
+    const r = await page.evaluate(() => ({
+      full: OBR._buildMarkdown({
+        title: 'Q: "why"\n  *now*', byline: 'Jane   Doe',
+        content: '<p>Hello <em>world</em>.</p><table><tr><td>a</td><td>b</td></tr></table>',
+        url: 'https://ex.com/a?b=1#c',
+      }),
+      bare: OBR._buildMarkdown({ title: 'T', byline: '', content: '<p>x</p>', url: '' }),
+    }));
+    const lines = r.full.split('\n');
+    expect(lines[0]).toBe('---');
+    // A JSON string is a YAML double-quoted scalar: a colon and quotes in the title survive.
+    expect(JSON.parse(lines[1].replace(/^title: /, ''))).toBe('Q: "why" *now*');
+    expect(JSON.parse(lines[2].replace(/^author: /, ''))).toBe('Jane Doe');
+    expect(JSON.parse(lines[3].replace(/^source: /, ''))).toBe('https://ex.com/a?b=1#c');
+    expect(lines[4]).toBe('---');
+    expect(r.full).toContain('\n# Q: "why" \\*now\\*\n');   // heading text is Markdown-escaped
+    expect(r.full).toContain('Hello *world*.');
+    expect(r.full).toMatch(/<table>.*<td>a<\/td><td>b<\/td>.*<\/table>/s);
+    expect(r.bare).toBe('---\ntitle: "T"\n---\n\n# T\n\nx\n');      // no author / source lines
+  });
+
+  test('_buildMarkdown renumbers body headings from ## with no skipped level', async ({ page }) => {
+    const md = await page.evaluate(() => OBR._buildMarkdown({
+      title: 'T', content: '<h3>A</h3><p>x</p><h5>B</h5><p>y</p><h1>C</h1><p>z</p>',
+    }));
+    // Levels present are 1, 3, 5 -> 2, 3, 4: order kept, holes closed, the title stays the only H1.
+    expect(md.split('\n').filter((l) => /^#/.test(l))).toEqual(['# T', '### A', '#### B', '## C']);
+  });
+
+  test('_mdFilename strips path and reserved characters and caps the length', async ({ page }) => {
+    const r = await page.evaluate(() => ({
+      reserved: OBR._mdFilename('a/b: c?\t"d"'),
+      dots: OBR._mdFilename('...'),
+      empty: OBR._mdFilename(''),
+      long: OBR._mdFilename('x'.repeat(150)),
+      astral: OBR._mdFilename('😀'.repeat(150)),
+    }));
+    expect(r.reserved).toBe('a b c d.md');
+    expect(r.dots).toBe('article.md');
+    expect(r.empty).toBe('article.md');
+    expect(r.long).toBe('x'.repeat(100) + '.md');
+    expect(r.astral).toBe('😀'.repeat(100) + '.md');                  // capped by code point, none split
+  });
+});
+
+test.describe('heading chrome', () => {
+  // tests/fixtures/heading-chrome.html carries the three shapes real sites ship: Wikipedia's
+  // [edit] link beside each heading in a div.mw-heading, a Sphinx ¶ permalink inside a heading,
+  // and a self-link wrapping a heading's whole text.
+  test.beforeEach(async ({ page }) => {
+    await gotoFixture(page, 'heading-chrome.html');
+    await injectReader(page);
+    await seedSettings(page, { markdownExport: true });
+    await openReader(page);
+  });
+
+  test('every section heading survives extraction, without its chrome', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const c = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content');
+      return {
+        heads: [...c.querySelectorAll('h2, h3, h4')].map((h) => h.tagName + ' ' + h.textContent.replace(/\s+/g, ' ').trim()),
+        text: c.textContent,
+      };
+    });
+    // Readability drops a heading whose wrapper also holds the [edit] link (link-heavy boilerplate).
+    expect(r.heads).toEqual(['H2 History', 'H3 Early lights', 'H2 Duties', 'H3 The night watch']);
+    expect(r.text).not.toContain('¶');
+    expect(r.text).not.toMatch(/\[\s*edit\s*\]/);
+    expect(r.text).toContain('stoking to cleaning'); // the body is all still there
+  });
+
+  test('a byline link right after the title survives (short and link-only, but not chrome)', async ({ page }) => {
+    const byline = await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-byline')?.textContent || '');
+    expect(byline).toContain('Ada Quill');
+  });
+
+  test('the rule removes only signalled chrome: [edit], icon anchors, ¶, self-links — never short content links', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const run = (html) => {
+        const d = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
+        OBR._stripHeadingChrome(d.body);
+        return d.body.innerHTML;
+      };
+      return {
+        wiki: run('<div><h2>History</h2><span class="mw-editsection"><span>[</span><a href="/w/index.php?action=edit">edit</a><span>]</span></span></div>'),
+        wikiZh: run('<div><h2>背景</h2><span><span>[</span><a href="/w/index.php?action=edit">编辑</a><span>]</span></span></div>'),
+        icon: run('<div><h2>Usage</h2><a class="anchor" href="#usage"><svg></svg></a></div>'),
+        glyph: run('<h2>Numbers<a href="#numbers">¶</a></h2>'),
+        selfLink: run('<h3><a href="#step-1">Step 1</a></h3>'),
+        // content that shares every other trait — short, link-only, right after a heading
+        byline: run('<header><h1>Title</h1><a rel="author" href="/a/jane">By Jane Doe</a></header>'),
+        download: run('<section><h3>Download</h3><p><a href="/f.pdf">PDF (2 MB)</a></p></section>'),
+        seeAlso: run('<div><h2>See also</h2><a href="/wiki/Beacon">Beacon</a></div>'),
+        crumb: run('<div><div><a href="/news/">News</a>|<a href="/ru/">Russia</a></div><h1>Title</h1></div>'),
+        cta: run('<div><h2>Get started</h2><a href="/signup">Sign up</a></div>'),
+      };
+    });
+    expect(r.wiki).toBe('<div><h2>History</h2></div>');
+    expect(r.wikiZh).toBe('<div><h2>背景</h2></div>');
+    expect(r.icon).toBe('<div><h2>Usage</h2></div>');
+    expect(r.glyph).toBe('<h2>Numbers</h2>');
+    expect(r.selfLink).toBe('<h3>Step 1</h3>');
+    expect(r.byline).toContain('By Jane Doe');
+    expect(r.download).toContain('PDF (2 MB)');
+    expect(r.seeAlso).toContain('Beacon');
+    expect(r.crumb).toContain('Russia');
+    expect(r.cta).toContain('Sign up');
+  });
+
+  test('the exported outline is clean headings only', async ({ page }) => {
+    const [dl] = await Promise.all([page.waitForEvent('download'), clickReaderAction(page, 'markdown')]);
+    const md = fs.readFileSync(await dl.path(), 'utf8');
+    const heads = md.split('\n').filter((l) => /^#/.test(l));
+    expect(heads.slice(1)).toEqual(['## History', '### Early lights', '## Duties', '### The night watch']);
+  });
+});
+
 test.describe('content override', () => {
   test.beforeEach(async ({ page }) => {
     await gotoWrongContent(page);
@@ -2043,7 +2307,7 @@ test.describe('content override', () => {
 
   test('the ⌖ Pick button enters picker mode and reads the clicked block', async ({ page }) => {
     await openReader(page);
-    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    await clickReaderAction(page, 'pick');
 
     // Picker host is up and the reader is hidden so the page shows through.
     const picking = await page.evaluate(() => ({
@@ -2066,7 +2330,7 @@ test.describe('content override', () => {
 
   test('Escape cancels the picker and leaves the original content untouched', async ({ page }) => {
     await openReader(page);
-    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    await clickReaderAction(page, 'pick');
     await page.keyboard.press('Escape');
     await expect
       .poll(() => page.evaluate(() => getComputedStyle(document.getElementById('obr-host')).display))
@@ -2080,7 +2344,7 @@ test.describe('content override', () => {
 
   test('saves a pick per site, auto-applies it on reopen, then clears it', async ({ page }) => {
     await openReader(page);
-    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    await clickReaderAction(page, 'pick');
     const p = await realParaPoint(page);
     await page.mouse.move(p.x, p.y);
     await page.mouse.click(p.x, p.y);
@@ -2134,7 +2398,7 @@ test.describe('picking an image-rich block', () => {
   // The real picker flow: ⌖, then click the gallery section's top padding (the padding
   // makes elementFromPoint yield the SECTION itself, not one of its figures).
   const pickGallerySection = async (page) => {
-    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    await clickReaderAction(page, 'pick');
     const pt = await page.evaluate(() => {
       const r = document.getElementById('photo-gallery').getBoundingClientRect();
       return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 12) };
@@ -2162,6 +2426,33 @@ test.describe('picking an image-rich block', () => {
     expect(after.text).toContain('GCAP-6');
   });
 
+  test('⤓ Markdown from a picked block carries absolute URLs (rawFallback absolutizes)', async ({ page }) => {
+    // The raw fallback copies the live DOM's attribute TEXT, which is page-relative. That
+    // resolves inside the reader, so only content that LEAVES the page shows the defect — the
+    // assertion therefore runs on the exported file, through the real pick + button wiring.
+    await page.evaluate(() => {
+      const p = document.createElement('p');
+      p.innerHTML = 'See <a href="notes/keeper.html">the notes</a> and <a href="#lamp">the lamp</a>.';
+      document.getElementById('photo-gallery').appendChild(p);
+    });
+    await seedSettings(page, { markdownExport: true });
+    await openReader(page);
+    await pickGallerySection(page);
+    // Landmark: six figures means the raw fallback built this content, not Readability.
+    await expect.poll(() => rendered(page).then((r) => r.imgs)).toBe(6);
+
+    const [dl] = await Promise.all([
+      page.waitForEvent('download'),
+      clickReaderAction(page, 'markdown'),
+    ]);
+    const md = fs.readFileSync(await dl.path(), 'utf8');
+    const origin = new URL(page.url()).origin;
+    expect(md).toContain(`](${origin}/pic.png?f=1)`);
+    expect(md).toContain(`[the notes](${origin}/notes/keeper.html)`);
+    expect(md).toContain('[the lamp](#lamp)');                      // in-page anchors stay relative
+    expect(md).not.toMatch(/\]\(pic\.png/);
+  });
+
   test('the fallback fires for a LAZY-placeholder gallery too (guard counts the hydrated block)', async ({ page }) => {
     // The shape a JS-lazy gallery has before its own script runs: every img holds a
     // placeholder src and the real URL sits in data-src. The guard must count the
@@ -2186,7 +2477,7 @@ test.describe('picking an image-rich block', () => {
   // of which path served it.
   test('a text-only pick renders the picked prose, nothing dragged in', async ({ page }) => {
     await openReader(page);
-    await clickInReader(page, '.obr-btn[data-act="pick"]');
+    await clickReaderAction(page, 'pick');
     // Pick the decoy aside: plenty of text, no images — the parse path, not rawFallback.
     // It sits below the six figures, so bring it into the viewport first (picker mode
     // unlocks page scroll for exactly this reason).

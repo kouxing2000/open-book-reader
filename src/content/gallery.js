@@ -154,21 +154,6 @@
     return null;
   }
 
-  // The anchor is NEVER attached to the page. A blob URL minted by a content script
-  // belongs to the PAGE's origin, so an element carrying it in the page's light DOM
-  // hands page script a readable handle on the archive for as long as the URL lives —
-  // and the archive is bytes the worker fetched with host permissions the page does
-  // not have. A detached click downloads identically in Chromium (both halves are
-  // pinned by tests/gallery.spec.js).
-  function saveBlob(blob, name) {
-    const u = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = u;
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(u), 10000);
-  }
-
   /* -------------------------------------------------- state */
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbCounter, lbStrip, lbSecsEl, lbControls;
@@ -971,7 +956,7 @@
           const names = uniquifyNames(ok.map((r, k) => filenameFromUrl(r.url, k)));
           const files = ok.map((r, k) => ({ name: names[k], bytes: b64ToBytes(r.b64) }));
           const zip = OBR._buildZip(files);
-          saveBlob(new Blob([zip], { type: 'application/zip' }), 'images.zip');
+          OBR.saveBlob(new Blob([zip], { type: 'application/zip' }), 'images.zip');
           const failed = urls.length - ok.length;
           setStatus(failed ? OBR.t('galleryDoneSavedFailed', [String(ok.length), String(failed)]) : OBR.t('galleryDoneSaved', [String(ok.length)]));
         }

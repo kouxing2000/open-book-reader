@@ -108,8 +108,10 @@ test('the toolbar still auto-hides after a toolbar button is tapped', async ({ p
   expect((await diag(page)).chromeHidden).toBe(false);
 
   const before = (await readState(page)).fontSize;
-  await page.locator('#obr-host >> .obr-btn[data-act="font+"]').tap();
+  await page.locator('#obr-host >> [data-pop="type"]').tap();          // open Aa
+  await page.locator('#obr-host >> .obr-pop [data-act="font+"]').tap();
   expect((await readState(page)).fontSize).toBeGreaterThan(before); // the tap really landed
+  await page.locator('#obr-host >> [data-pop="type"]').tap();          // close Aa: an open popover holds the chrome up
 
   await waitForChromeHidden(page);
 });
@@ -175,41 +177,32 @@ test('the phone layout spends its width on text, not on desktop-sized margins', 
   expect(m.text / m.vw).toBeGreaterThan(0.85);
 });
 
-test('the wrapped toolbar is opaque behind its buttons, and the footer splits hint from count',
+test('the phone toolbar is one row with every action reachable, and the footer splits hint from count',
   async ({ page }) => {
     const s = await page.evaluate(() => {
       const sr = document.getElementById('obr-host').shadowRoot;
       const bar = sr.querySelector('.obr-topbar');
       const foot = sr.querySelector('.obr-footer');
-      const btn = sr.querySelector('.obr-controls .obr-btn');
+      const close = sr.querySelector('[data-act="close"]').getBoundingClientRect();
+      const tops = [...sr.querySelectorAll('.obr-controls .obr-btn')].filter((b) => !b.hidden)
+        .map((b) => Math.round(b.getBoundingClientRect().top));
+      const inMenu = [...sr.querySelectorAll('.obr-menuitem')].filter((b) => !b.hidden).map((b) => b.dataset.act);
       return {
-        bg: getComputedStyle(bar).backgroundImage,
         barH: bar.getBoundingClientRect().height,
-        btnTop: btn.getBoundingClientRect().top,
+        rows: new Set(tops).size,
+        overflow: bar.scrollWidth > bar.clientWidth + 1,
+        closeRight: close.right, vw: window.innerWidth, inMenu,
         justify: getComputedStyle(foot).justifyContent,
         hintOrder: getComputedStyle(sr.querySelector('.obr-hint')).order,
       };
     });
-    // The controls really did wrap onto a second row -- otherwise the gradient bug can't occur
-    // and the assertion below would pass against a layout that was never broken.
-    expect(s.btnTop).toBeGreaterThan(40);
-    expect(s.barH).toBeGreaterThan(70);
+    // One row: a wrapped row sits in the bar's transparent gradient tail, with the article
+    // reading straight through the buttons.
+    expect(s.rows).toBe(1);
+    expect(s.barH).toBeLessThan(70);
+    expect(s.overflow).toBe(false);
+    expect(s.closeRight).toBeLessThanOrEqual(s.vw);
+    expect(s.inMenu.sort()).toEqual(['pick', 'print', 'report', 'settings']); // Markdown is Beta, off by default
     expect(s.justify).toBe('space-between');
     expect(s.hintOrder).toBe('-1');   // hint left, page count right
-    // GEOMETRY, not the declaration. Asserting the gradient string passes for any fade length,
-    // including one whose tail swallows a whole button row -- which is what it was doing: the
-    // fade is anchored 18px above the bar's bottom while the base padding left the buttons only
-    // 6px above it, so the last row sat 12px inside the tail with article text showing through.
-    const gap = await page.evaluate(() => {
-      const sr = document.getElementById('obr-host').shadowRoot;
-      const bar = sr.querySelector('.obr-topbar').getBoundingClientRect();
-      let lowest = 0;
-      for (const b of sr.querySelectorAll('.obr-controls .obr-btn')) {
-        lowest = Math.max(lowest, b.getBoundingClientRect().bottom);
-      }
-      return Math.round(bar.bottom - lowest);       // clear space under the last button row
-    });
-    const fade = Number(/calc\(100% - (\d+)px\)/.exec(s.bg)[1]);
-    expect(fade).toBeGreaterThan(0);                 // the bar really does fade at its bottom
-    expect(gap).toBeGreaterThanOrEqual(fade);        // ...and no button reaches into the fade
   });

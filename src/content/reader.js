@@ -8,6 +8,16 @@
   OBR._engineLoaded = true;
 
   const THEMES = ['paper', 'light', 'dark'];
+  const THEME_LABELS = { paper: 'optThemePaper', light: 'optThemeLight', dark: 'optThemeDark' };
+  const COLUMN_OPTS = [2, 3, 4];
+  // The toolbar actions that sit inline while there is room, in priority order: the first
+  // keeps its inline slot longest. Anything else lives in the ⋯ menu or the Aa popover. An action
+  // with a `setting` exists only while that setting is on (a Beta feature that is off by default).
+  const FLEX_ACTS = [
+    { act: 'pick', label: 'readerBtnPickLabel', title: 'readerBtnPickTitle' },
+    { act: 'print', label: 'readerBtnPrintLabel', title: 'readerBtnPrintTitle' },
+    { act: 'markdown', label: 'readerBtnMarkdownLabel', title: 'readerBtnMarkdownTitle', setting: 'markdownExport' },
+  ];
   const FONT_STACKS = {
     serif: 'Georgia, "Songti SC", "STSong", "Noto Serif SC", serif',
     sans: '-apple-system, system-ui, "PingFang SC", "Noto Sans SC", sans-serif'
@@ -26,6 +36,7 @@
   let pickerActive = false, pickHost = null, pickRoot = null, pickBox = null, pickLabel = null, pickHoverNode = null;
   let active = false, built = false;
   let chromeTimer = null, overControls = false;
+  let openPop = null; // the open toolbar popover: 'type' (Aa) | 'more' (⋯) | null
   // How long the floating chrome stays up before auto-hiding. Touch gets longer: a mouse
   // re-reveals itself with a twitch (the mousemove listener), a finger has no hover and pays
   // a whole extra tap for every dismissal it did not mean.
@@ -172,17 +183,32 @@
         <span class="obr-topdiv"></span>
         <span class="obr-doc-title"></span>
         <span class="obr-doc-meta"></span>
+        <!-- Aa, ⋯ and ✕ always show. The .obr-flex actions sit inline while the bar has room
+             and move into ⋯ as it narrows (fitControls); each has a twin menu item there. -->
         <span class="obr-controls">
-          <button class="obr-btn" data-act="font-" title="${OBR.t('readerBtnFontSmallerTitle')}">A−</button>
-          <button class="obr-btn" data-act="font+" title="${OBR.t('readerBtnFontLargerTitle')}">A+</button>
-          <button class="obr-btn" data-act="theme" title="${OBR.t('readerBtnThemeTitle')}">${OBR.t('readerBtnThemeLabel')}</button>
-          <button class="obr-btn" data-act="columns" title="${OBR.t('readerBtnColumnsTitle')}">⊞ 2</button>
-          <button class="obr-btn" data-act="pick" title="${OBR.t('readerBtnPickTitle')}">${OBR.t('readerBtnPickLabel')}</button>
-          <button class="obr-btn" data-act="print" title="${OBR.t('readerBtnPrintTitle')}">${OBR.t('readerBtnPrintLabel')}</button>
-          <button class="obr-btn" data-act="report" title="${OBR.t('readerBtnReportTitle')}">${OBR.t('readerBtnReportLabel')}</button>
-          <button class="obr-btn" data-act="settings" title="${OBR.t('readerBtnSettingsTitle')}">${OBR.t('readerBtnSettingsLabel')}</button>
-          <button class="obr-btn" data-act="close" title="${OBR.t('readerBtnCloseTitle')}">${OBR.t('readerBtnCloseLabel')}</button>
+          <button class="obr-btn" data-pop="type" aria-haspopup="true" aria-expanded="false" title="${OBR.t('readerBtnTypeTitle')}">Aa</button>
+          ${FLEX_ACTS.map((a) => `<button class="obr-btn obr-flex" data-act="${a.act}" title="${OBR.t(a.title)}">${OBR.t(a.label)}</button>`).join('')}
+          <button class="obr-btn" data-pop="more" aria-haspopup="menu" aria-expanded="false" title="${OBR.t('readerBtnMoreTitle')}">⋯</button>
+          <button class="obr-btn" data-act="close" title="${OBR.t('readerBtnCloseTitle')}" aria-label="${OBR.t('readerBtnCloseTitle')}">✕</button>
         </span>
+        <div class="obr-pop" data-for="type" hidden>
+          <div class="obr-pop-lab">${OBR.t('optFontSize')}</div>
+          <div class="obr-pop-row">
+            <button class="obr-btn" data-act="font-" title="${OBR.t('readerBtnFontSmallerTitle')}">A−</button>
+            <span class="obr-font-size"></span>
+            <button class="obr-btn" data-act="font+" title="${OBR.t('readerBtnFontLargerTitle')}">A+</button>
+          </div>
+          <div class="obr-pop-lab">${OBR.t('optTheme')}</div>
+          <div class="obr-set">${THEMES.map((t) => `<button class="obr-set-btn" data-act="theme" data-val="${t}" aria-pressed="false">${OBR.t(THEME_LABELS[t])}</button>`).join('')}</div>
+          <div class="obr-pop-lab">${OBR.t('optColumns')}</div>
+          <div class="obr-set">${COLUMN_OPTS.map((n) => `<button class="obr-set-btn" data-act="columns" data-val="${n}" aria-pressed="false">${n}</button>`).join('')}</div>
+        </div>
+        <div class="obr-pop" data-for="more" role="menu" hidden>
+          ${FLEX_ACTS.map((a) => `<button class="obr-menuitem" role="menuitem" data-act="${a.act}" title="${OBR.t(a.title)}">${OBR.t(a.label)}</button>`).join('')}
+          <hr>
+          <button class="obr-menuitem" role="menuitem" data-act="settings" title="${OBR.t('readerBtnSettingsTitle')}">${OBR.t('readerBtnSettingsLabel')}</button>
+          <button class="obr-menuitem" role="menuitem" data-act="report" title="${OBR.t('readerBtnReportTitle')}">${OBR.t('readerBtnReportLabel')}</button>
+        </div>
       </div>
       <div class="obr-book">
         <div class="obr-paper">
@@ -215,6 +241,8 @@
     // turns. Clicks on links/buttons/chrome are left to their own handlers.
     overlay.addEventListener('click', (e) => {
       if (!active || pickerActive) return;
+      // A click outside an open popover only dismisses it — it must not also turn the page.
+      if (openPop && !e.target.closest('.obr-pop, [data-pop]')) { closePop(); return; }
       if (e.target.closest('a, button, input, label, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
       // The content is in an open shadow root; window.getSelection() can't see selections inside
       // it, so use shadowRoot.getSelection() (Chrome) and fall back to the document selection.
@@ -227,8 +255,10 @@
       // which already reveals on mousemove and would otherwise flicker on every stray click.
       else if (touchMode) toggleChrome();
     });
-    overlay.querySelectorAll('.obr-btn, .obr-seg-btn').forEach((b) =>
-      b.addEventListener('click', () => handleAction(b.dataset.act)));
+    overlay.querySelectorAll('[data-act]').forEach((b) =>
+      b.addEventListener('click', () => handleAction(b.dataset.act, b.dataset.val, b)));
+    overlay.querySelectorAll('[data-pop]').forEach((b) =>
+      b.addEventListener('click', () => togglePop(b.dataset.pop)));
 
     // Capture phase, so a tap on a toolbar button latches too. pointerdown fires at touch-start,
     // BEFORE the compatibility mouse events that follow touchend — so the very first tap of a
@@ -279,10 +309,80 @@
 
   function scheduleHideChrome() {
     clearTimeout(chromeTimer);
-    if (overControls) return;
+    if (overControls || openPop) return; // an open popover holds the chrome up
     chromeTimer = setTimeout(() => {
-      if (!overControls) hideChrome();
+      if (!overControls && !openPop) hideChrome();
     }, touchMode ? CHROME_HIDE_TOUCH_MS : CHROME_HIDE_MS);
+  }
+
+  /* ------------------------------------------------- toolbar popovers + width fit */
+  // Aa (text size / theme / columns) and ⋯ (everything else) are hand-rolled rather than the
+  // popover attribute: that needs Chrome 114 and the manifest's floor is 102. Both live inside
+  // .obr-topbar, so the page-flip click handler already ignores clicks in them.
+  function togglePop(name) {
+    const was = openPop;
+    closePop();
+    if (was === name || !overlay) return;
+    const pop = overlay.querySelector('.obr-pop[data-for="' + name + '"]');
+    const btn = overlay.querySelector('[data-pop="' + name + '"]');
+    if (!pop || !btn) return;
+    const bar = btn.closest('.obr-topbar').getBoundingClientRect();
+    pop.style.right = Math.max(8, Math.round(bar.right - btn.getBoundingClientRect().right)) + 'px';
+    pop.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    openPop = name;
+    if (name === 'type') syncTypePop();
+    showChrome();
+  }
+
+  function closePop() {
+    if (!openPop || !overlay) return;
+    overlay.querySelectorAll('.obr-pop').forEach((p) => { p.hidden = true; });
+    overlay.querySelectorAll('[data-pop]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    openPop = null;
+    scheduleHideChrome();
+  }
+
+  // The Aa popover mirrors the live settings — the size readout and which theme / column segment
+  // is marked. Every path that changes them calls this: the popover itself, the + − T keys, an
+  // Options-page change, and the OS flipping an 'auto' theme.
+  function syncTypePop() {
+    if (!overlay) return;
+    const size = overlay.querySelector('.obr-font-size');
+    if (size) size.textContent = settings.fontSize + ' px';
+    const theme = resolveTheme();
+    overlay.querySelectorAll('.obr-set-btn[data-act="theme"]').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.dataset.val === theme)));
+    overlay.querySelectorAll('.obr-set-btn[data-act="columns"]').forEach((b) =>
+      b.setAttribute('aria-pressed', String(Number(b.dataset.val) === settings.columns)));
+  }
+
+  // Priority+ toolbar. Widths are MEASURED rather than set by breakpoints because the labels
+  // differ by locale: one fixed width either strands room in English or overflows in Russian.
+  // Everything starts shown, then the least-needed piece goes first until the row fits: the
+  // inline actions from the right (each stays one tap away as its ⋯ twin), then the reading-time
+  // meta, then the mode switch's text labels (its icons stay). Stopping at the first fit keeps
+  // the inline actions a priority prefix. The title is the elastic part; TITLE_MIN is what it
+  // keeps (or its whole width, if shorter) before an action is moved out.
+  const TITLE_MIN = 96;
+  function fitControls() {
+    if (!built || !active) return;
+    const bar = overlay.querySelector('.obr-topbar');
+    const pair = (a) => [bar.querySelector('.obr-controls [data-act="' + a.act + '"]'),
+      bar.querySelector('.obr-menuitem[data-act="' + a.act + '"]')];
+    const live = FLEX_ACTS.filter((a) => !a.setting || settings[a.setting]);
+    FLEX_ACTS.filter((a) => live.indexOf(a) < 0).forEach((a) => pair(a).forEach((el) => { el.hidden = true; }));
+    const steps = live.slice().reverse().map((a) => {
+      const [inline, twin] = pair(a);
+      return (on) => { inline.hidden = !on; twin.hidden = on; };
+    }).concat([
+      (on) => { metaEl.hidden = !on; },
+      (on) => { bar.classList.toggle('obr-compact', !on); },
+    ]);
+    steps.forEach((s) => s(true));
+    const fits = () => bar.scrollWidth <= bar.clientWidth + 1
+      && titleEl.clientWidth >= Math.min(TITLE_MIN, titleEl.scrollWidth);
+    for (const s of steps) { if (fits()) break; s(false); }
   }
 
   // Swap the footer hint when the input modality changes: readerFooterHint is keyboard advice and
@@ -303,19 +403,23 @@
     hintEl.textContent = OBR.t(touchMode || coarsePrimary ? 'readerFooterHintTouch' : 'readerFooterHint');
   }
 
-  function handleAction(act) {
+  function handleAction(act, val, el) {
+    // Anything but the Aa controls dismisses an open popover; those stay open so the reader can
+    // step the size or try a theme and watch the page change underneath.
+    if (!(el && el.closest('.obr-pop[data-for="type"]'))) closePop();
     if (act === 'close') return close();
     if (act === 'report') return OBR.reportBroken && OBR.reportBroken({
       source: 'reader-toolbar', mode: 'text',
       proseWords: OBR._articleWordCount ? OBR._articleWordCount() : undefined,
     });
     if (act === 'settings') return OBR.openOptions && OBR.openOptions(OBR.normalizeHost(location.href));
-    if (act === 'theme') return cycleTheme();
+    if (act === 'theme') return val ? setTheme(val) : cycleTheme();
     if (act === 'font+') return changeFont(1);
     if (act === 'font-') return changeFont(-1);
-    if (act === 'columns') return cycleColumns();
+    if (act === 'columns') return setColumns(Number(val));
     if (act === 'pick') return startPicker();
     if (act === 'print') return printReader();
+    if (act === 'markdown') return saveMarkdown();
     if (act === 'text') return; // already in the text reader — active segment is a no-op
     if (act === 'images') { close({ suppress: false }); if (OBR.openGallery) OBR.openGallery(); return; } // mode switch — still reading, not dismissing
   }
@@ -520,6 +624,80 @@
   }
   OBR.printReader = printReader;
 
+  /* ------------------------------------------------------------ save as Markdown */
+  // Pure: the cleaned article as a Markdown document — YAML front matter, the title as an H1,
+  // then the body converted by the vendored Turndown (turndown.js, loaded before this file).
+  // Tables are KEPT as HTML: core Turndown has no table rule and flattens one into run-on
+  // text, while GitHub / Obsidian render an inline HTML table. Front-matter values go through
+  // JSON.stringify — a JSON string is a valid YAML double-quoted scalar, so a title holding
+  // ':' or '"' needs no YAML escaper. Returns '' when the converter is not loaded.
+  function buildMarkdown({ title, byline, content, url }) {
+    if (typeof TurndownService !== 'function') return '';
+    const td = new TurndownService({
+      headingStyle: 'atx', codeBlockStyle: 'fenced', bulletListMarker: '-', emDelimiter: '*',
+    });
+    td.keep(['table']);
+    const oneLine = (v) => String(v || '').replace(/\s+/g, ' ').trim();
+    const t = oneLine(title), by = oneLine(byline);
+    const meta = [];
+    if (t) meta.push('title: ' + JSON.stringify(t));
+    if (by) meta.push('author: ' + JSON.stringify(by));
+    if (url) meta.push('source: ' + JSON.stringify(url));
+    const front = meta.length ? '---\n' + meta.join('\n') + '\n---\n\n' : '';
+    const head = t ? '# ' + td.escape(t) + '\n\n' : '';
+    let body = '';
+    if (content) {
+      const doc = new DOMParser().parseFromString(content, 'text/html'); // inert: nothing loads
+      renumberHeadings(doc.body);
+      body = td.turndown(doc.body);
+    }
+    return front + head + body + '\n';
+  }
+
+  // The title is the file's only H1, so the body's headings start at ## and skip no level: a page
+  // that goes h1 title -> h3 sections, or h3 -> h5, would otherwise give the outline holes. The
+  // levels keep their relative order; only the gaps close. (With all six levels present the
+  // deepest two share ######: Markdown has six and the title takes one.)
+  function renumberHeadings(root) {
+    const hs = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+    const levels = Array.from(new Set(hs.map((h) => Number(h.tagName[1])))).sort((a, b) => a - b);
+    hs.forEach((h) => {
+      const lv = Math.min(6, 2 + levels.indexOf(Number(h.tagName[1])));
+      if (lv === Number(h.tagName[1])) return;
+      const n = root.ownerDocument.createElement('h' + lv);
+      n.append(...Array.from(h.childNodes));
+      h.replaceWith(n);
+    });
+  }
+  OBR._buildMarkdown = buildMarkdown;
+
+  // A download name from the title: control and path/reserved characters out, whitespace
+  // collapsed, no leading or trailing dots, capped by code point so an astral character is
+  // never split.
+  function mdFilename(title) {
+    const clean = String(title || '').replace(/[\u0000-\u001f\u007f\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ');
+    const base = Array.from(clean).slice(0, 100).join('').replace(/^[.\s]+|[.\s]+$/g, '');
+    return (base || 'article') + '.md';
+  }
+  OBR._mdFilename = mdFilename;
+
+  // ⤓ Markdown: the article Print uses (lastArticle — set on every content path), saved as a
+  // local .md file through the same detached-anchor download as the gallery's ZIP. The source
+  // URL is always written: attribution is what a saved note is for, and printSourceUrl is
+  // scoped to print. A deliberate download, so it is not behind skipPassiveWrite().
+  function saveMarkdown() {
+    const a = lastArticle;
+    if (!a || !a.content) return;
+    let url = '';
+    try { url = location.href; } catch (e) { /* opaque origin */ }
+    let md = '';
+    try {
+      md = buildMarkdown({ title: a.title || document.title, byline: a.byline, content: a.content, url });
+    } catch (e) { console.warn('[OpenBookReader] Markdown conversion failed:', e); return; }
+    if (!md) { console.warn('[OpenBookReader] Markdown export unavailable: turndown.js not loaded'); return; }
+    OBR.saveBlob(new Blob([md], { type: 'text/markdown;charset=utf-8' }), mdFilename(a.title || document.title));
+  }
+
   /* ---------------------------------------------------------------- extract */
   // Forums and image boards often defer the real image URL into a non-standard
   // attribute and leave src empty or pointing at a placeholder / anti-adblock
@@ -567,6 +745,49 @@
       if (rescued && !DECOY_URL.test(rescued)) img.setAttribute('src', rescued);
     });
   }
+
+  // Headings carry page chrome that is not part of their text: a permalink glyph or icon link
+  // inside the heading (¶ on Sphinx docs, an SVG anchor on React docs), a self-link wrapping the
+  // whole heading text (MDN, mdBook, many blogs), and a short link-only sibling beside the heading
+  // in its own wrapper (Wikipedia's [edit], GitHub's anchor icon). Readability scores such a
+  // wrapper as link-heavy boilerplate and drops the heading WITH it — 14 of 16 section headings
+  // on a Wikipedia article — and what survives shows the glyph as stray text in the reader and
+  // as [¶](#…) in Markdown. Runs on the clone before parsing, on every content path. Narrow on
+  // purpose: only in-page (#) links inside a heading are touched, and a sibling goes only when
+  // it is the heading's ONE companion in its wrapper, comes right after it, is short, link-only
+  // and media-free, AND carries a chrome signal — bracketed like MediaWiki's [edit] (localized
+  // wikis keep the brackets), or nothing but text-less in-page anchors (an icon permalink). A
+  // byline, a lone "Download" or "See also" link, a breadcrumb: none of those has the signal.
+  const PERMALINK_TEXT = /^[\s¶§#🔗⚓\uFE0F]*$/u;
+  const squash = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+  function isLinkChrome(el) {
+    if (/^H[1-6]$/.test(el.tagName) || el.matches('img, picture, video, iframe, canvas')) return false;
+    if (el.querySelector('img, picture, video, iframe, canvas, h1, h2, h3, h4, h5, h6')) return false;
+    const links = el.matches('a[href]') ? [el] : Array.from(el.querySelectorAll('a[href]'));
+    const text = squash(el);
+    if (!links.length || text.length > 24) return false;
+    let rest = text;
+    links.forEach((a) => { rest = rest.replace(squash(a), ''); });
+    if (!/^[\s[\]()|·•:,–—-]*$/.test(rest)) return false; // words outside the links: content
+    const bracketed = /^\[.*\]$/.test(text);
+    const anchorsOnly = links.every((a) => (a.getAttribute('href') || '').charAt(0) === '#' && PERMALINK_TEXT.test(squash(a)));
+    return bracketed || anchorsOnly;
+  }
+  function stripHeadingChrome(root) {
+    root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((h) => {
+      const whole = squash(h);
+      h.querySelectorAll('a[href^="#"]').forEach((a) => {
+        const t = squash(a);
+        if (PERMALINK_TEXT.test(t) && !a.querySelector('img, picture, video')) a.remove();
+        else if (t && t === whole) a.replaceWith(...Array.from(a.childNodes));
+      });
+      // Edit and anchor links FOLLOW their heading; a short link row before it is a breadcrumb.
+      const wrap = h.parentElement;
+      const others = wrap ? Array.from(wrap.children).filter((c) => c !== h) : [];
+      if (others.length === 1 && others[0] === h.nextElementSibling && isLinkChrome(others[0])) others[0].remove();
+    });
+  }
+  OBR._stripHeadingChrome = stripHeadingChrome;
 
   // Distinct content-image URLs under a DOM scope / in a fragment of HTML, used
   // to compare how many of the page's images each extraction pass preserved.
@@ -626,6 +847,7 @@
 
   function parseBaseDoc(base) {
     hydrateLazyImages(base);
+    stripHeadingChrome(base);
     // parse() mutates the document it's given, so hand each pass its own copy.
     let article = new Readability(base.cloneNode(true)).parse();
     if (!article || !article.content) return article || null;
@@ -829,12 +1051,31 @@
   function rawFallback(el) {
     const clone = el.cloneNode(true);
     hydrateLazyImages(clone);
+    stripHeadingChrome(clone);
+    absolutizeUrls(clone);
     return {
       title: document.title || '',
       byline: '',
       content: sanitizeContentHTML(clone.innerHTML),
       textContent: clone.textContent || '',
     };
+  }
+
+  // The live DOM's attribute text is page-relative ("/img/a.png", "../post"). That resolves
+  // inside the reader, which shares the page's base, but dies once the content leaves the
+  // page as a saved Markdown file. Readability's path already absolutizes (_fixRelativeUris),
+  // so this gives rawFallback the same contract — including Readability's rule of leaving a
+  // '#frag' link relative when the document has no separate <base>.
+  function absolutizeUrls(scope) {
+    const base = document.baseURI;
+    const keepHash = base === document.documentURI;
+    const fix = (el, at) => {
+      const v = (el.getAttribute(at) || '').trim();
+      if (!v || (keepHash && v.charAt(0) === '#')) return;
+      try { el.setAttribute(at, new URL(v, base).href); } catch (e) { /* unparseable: leave it */ }
+    };
+    scope.querySelectorAll('a[href]').forEach((el) => fix(el, 'href'));
+    scope.querySelectorAll('img[src]').forEach((el) => fix(el, 'src'));
   }
 
   // Extract from a single live element (a picked node or a selection wrapper):
@@ -1005,6 +1246,7 @@
 
   function startPicker() {
     if (pickerActive || !active) return;
+    closePop(); // the hint banner can start a pick while Aa is open
     endActiveFlip();
     buildPickHost();
     pickerActive = true;
@@ -1033,6 +1275,7 @@
     // Restore the reader: re-lock scroll and show the host again.
     document.documentElement.style.overflow = 'hidden';
     host.style.display = '';
+    fitControls(); // a resize during the pick was skipped while the host was hidden
     if (node) {
       lastArticle = extractFromNode(node);
       pickNode = node;
@@ -1311,6 +1554,7 @@
     const words = OBR._articleWordCount ? OBR._articleWordCount() : 0;
     const mins = OBR.readingTimeMin ? OBR.readingTimeMin(words) : 0;
     if (metaEl) metaEl.textContent = mins ? OBR.t('readerReadingTime', [String(mins)]) : '';
+    fitControls(); // the title and meta just changed width (a no-op until the host is shown)
     pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
     pagesEl.innerHTML =
       `<div class="obr-content">
@@ -2849,7 +3093,17 @@
     restoreAnchor = null; // live anchor supersedes any pending resume
     settings.fontSize = next;
     OBR.saveSettings({ fontSize: next });
+    syncTypePop();
     layout(true, anchor);
+    showChrome();
+  }
+
+  function setTheme(theme) {
+    if (THEMES.indexOf(theme) < 0) return;
+    settings.theme = theme;
+    overlay.className = 'obr-overlay ' + theme;
+    OBR.saveSettings({ theme });
+    syncTypePop();
     showChrome();
   }
 
@@ -2857,31 +3111,21 @@
     // Cycle the three concrete themes only (not 'auto'). Starting from the currently
     // *resolved* theme means each press changes the visible look, and pressing T while
     // on 'auto' exits it into an explicit choice rather than re-picking the same look.
-    const idx = (THEMES.indexOf(resolveTheme()) + 1) % THEMES.length;
-    settings.theme = THEMES[idx];
-    overlay.className = 'obr-overlay ' + settings.theme;
-    OBR.saveSettings({ theme: settings.theme });
-    showChrome();
+    setTheme(THEMES[(THEMES.indexOf(resolveTheme()) + 1) % THEMES.length]);
   }
 
-  const COLUMN_OPTS = [2, 3, 4];
-  function cycleColumns() {
+  function setColumns(n) {
+    if (COLUMN_OPTS.indexOf(n) < 0 || n === settings.columns) return;
     // Preserve reading position across the re-pagination (same fraction-anchor
     // trick as changeFont — the spread index isn't portable when the column
     // count changes, but the progress fraction is).
     const anchor = totalColumns > 0 ? (currentSpread * pagesPerSpread) / totalColumns : 0;
     restoreAnchor = null; // live anchor supersedes any pending resume
-    const idx = (COLUMN_OPTS.indexOf(settings.columns) + 1) % COLUMN_OPTS.length;
-    settings.columns = COLUMN_OPTS[idx];
-    OBR.saveSettings({ columns: settings.columns });
-    updateColumnsBtn();
+    settings.columns = n;
+    OBR.saveSettings({ columns: n });
+    syncTypePop();
     layout(true, anchor);
     showChrome();
-  }
-
-  function updateColumnsBtn() {
-    const btn = overlay && overlay.querySelector('[data-act="columns"]');
-    if (btn) btn.textContent = '⊞ ' + Math.max(2, Math.min(4, settings.columns || 2));
   }
 
   // Advertise how many gallery-worthy images the page has, on the Images segment
@@ -2936,7 +3180,7 @@
     build();
     applyStylesheet();
     overlay.className = 'obr-overlay ' + resolveTheme();
-    updateColumnsBtn();
+    syncTypePop();
     updateImagesBadge();
     if (t) t.mark('build');
 
@@ -3031,6 +3275,7 @@
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
     active = true;
+    fitControls(); // first point where the bar has real widths to measure
     readMs = 0;
     lastTick = Date.now();
     colSeenThisOpen = false;
@@ -3164,6 +3409,7 @@
   function close(opts) {
     openGen++; // invalidate any in-flight open() (e.g. the gallery taking over mid-open)
     if (!active) return;
+    closePop();
     if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
     if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
     clearInterval(ctxTimer);  // nothing to watch once the overlay is gone
@@ -3230,7 +3476,8 @@
   window.addEventListener('resize', () => {
     if (!active || pickerActive) return; // don't relayout against the hidden overlay mid-pick
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { if (!pickerActive) layout(true); }, 150);
+    closePop(); // its right offset was measured against the old bar
+    resizeTimer = setTimeout(() => { if (!pickerActive) { fitControls(); layout(true); } }, 150);
   });
 
   document.addEventListener('keydown', (e) => {
@@ -3253,7 +3500,7 @@
         e.preventDefault(); e.stopPropagation(); flip(-1); break;
       case 'Home': e.preventDefault(); jumpTo(0); break;
       case 'End': e.preventDefault(); jumpTo(totalSpreads - 1); break;
-      case 'Escape': e.preventDefault(); e.stopPropagation(); close(); break;
+      case 'Escape': e.preventDefault(); e.stopPropagation(); if (openPop) closePop(); else close(); break;
       case '+': case '=': if (mod) break; e.preventDefault(); changeFont(1); break;
       case '-': case '_': if (mod) break; e.preventDefault(); changeFont(-1); break;
       case 't': case 'T': if (mod) break; e.preventDefault(); cycleTheme(); break;
@@ -3283,7 +3530,8 @@
         settings = s;
         overlay.className = 'obr-overlay ' + resolveTheme() + (wasHidden ? ' obr-chrome-hidden' : '');
         pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
-        updateColumnsBtn();
+        syncTypePop();
+        fitControls(); // a Beta action may have been switched on or off
         applyStylesheet();
         layout(true);
       });
@@ -3299,6 +3547,7 @@
       if (!active || !built || settings.theme !== 'auto') return;
       const wasHidden = overlay.classList.contains('obr-chrome-hidden');
       overlay.className = 'obr-overlay ' + resolveTheme() + (wasHidden ? ' obr-chrome-hidden' : '');
+      syncTypePop();
     });
   } catch (e) { /* MediaQueryList.addEventListener unavailable */ }
 })();

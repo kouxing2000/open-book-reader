@@ -249,6 +249,9 @@
                            // ONLY that selection instead of the whole page (a manual override
                            // for when auto-extraction picks the wrong content). The selection
                            // is read exactly as highlighted. Off = always read the whole page.
+    markdownExport: false, // BETA, text reader: show the ⤓ Markdown action (inline or in ⋯) that
+                           // saves the article as a .md file. Off by default while in beta;
+                           // off = no Markdown action anywhere in the toolbar.
     printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
                            // so the saved copy links back to the article. Off = omit it
                            // (e.g. when sharing a PDF and you'd rather not expose the URL).
@@ -408,6 +411,22 @@
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(cssText);
     root.adoptedStyleSheets = [sheet];
+  };
+
+  // Hand a Blob to the browser as a download — the gallery's ZIP and the reader's Markdown.
+  // No `downloads` permission: a plain <a download> click. The anchor is NEVER attached to
+  // the page. A blob URL minted by a content script belongs to the PAGE's origin, so an
+  // element carrying it in the page's light DOM hands page script a readable handle on the
+  // bytes for as long as the URL lives — and a ZIP holds bytes the worker fetched with host
+  // permissions the page does not have. A detached click downloads identically in Chromium
+  // (both halves are pinned by tests/gallery.spec.js).
+  OBR.saveBlob = function (blob, name) {
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(u), 10000);
   };
 
   // Where "Report a problem" emails go. This is the ONLY developer-facing channel and

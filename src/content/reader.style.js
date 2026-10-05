@@ -54,27 +54,13 @@
     .obr-topdiv { flex: none; width: 1px; align-self: center; height: 22px; background: currentColor; opacity: .2; }
     .obr-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; max-width: 45%; min-width: 0; }
     .obr-controls { display: flex; gap: 6px; flex: none; justify-content: flex-end; margin-left: auto; }
-    /* Too narrow to hold the buttons beside the title (split / zoomed / small window):
-       drop the whole controls block onto its own row and let the buttons wrap there, so the
-       bar grows (min-height) and Settings/Close stay reachable instead of overflowing off
-       the right edge. ~840px ≈ the controls' natural width + margins — revisit if the button
-       set changes. Buttons still never char-wrap; only the block reflows. */
-    @media (max-width: 840px) {
-      .obr-topbar { flex-wrap: wrap; }
-      .obr-controls { flex-basis: 100%; flex-wrap: wrap; }
-      /* The one-row gradient above fades out by 100% of the bar's height, so once the
-         controls wrap the whole button row sits in the transparent tail and the article
-         reads straight through the buttons. Anchor the fade to a fixed 18px instead of a
-         percentage, so it survives however many rows the bar grows to — and give the bar
-         18px of bottom padding to match, or the fade tail still overlaps the last row:
-         the base rule's 6px leaves the buttons 12px inside it, which measured as ~900
-         article pixels still showing through Report / Settings / Close. */
-      .obr-topbar {
-        background: linear-gradient(to bottom,
-          rgb(var(--obr-bg)) calc(100% - 18px), rgba(var(--obr-bg),0) 100%);
-        padding-bottom: 18px;
-      }
-    }
+    /* The bar is ONE row at every width. fitControls (reader.js) keeps it there by measuring:
+       inline actions move into the ⋯ menu, then the reading-time meta hides, then the mode
+       switch drops to icons (.obr-compact). Never wrap it back: a wrapped row sits in the
+       gradient's transparent tail, so the article reads through the buttons. */
+    .obr-topbar [hidden] { display: none; }
+    .obr-topbar.obr-compact .obr-seg-btn > span:not(.obr-seg-badge) { display: none; }
+    .obr-topbar.obr-compact .obr-seg-btn { padding: 5px 9px; }
     .obr-btn {
       border: none; cursor: pointer; padding: 6px 10px; border-radius: 6px;
       font-size: 13px; background: rgba(0,0,0,.10); color: inherit; font-family: inherit;
@@ -83,6 +69,41 @@
     .obr-btn:hover { background: rgba(0,0,0,.22); }
     .obr-overlay.dark .obr-btn { background: rgba(255,255,255,.12); }
     .obr-overlay.dark .obr-btn:hover { background: rgba(255,255,255,.24); }
+    .obr-btn[aria-expanded="true"] { background: rgba(0,0,0,.26); }
+    .obr-overlay.dark .obr-btn[aria-expanded="true"] { background: rgba(255,255,255,.28); }
+    /* Toolbar popovers: Aa (text size / theme / columns) and ⋯ (the other actions). They hang
+       under the bar, right-aligned to their trigger (togglePop sets the right offset). Solid,
+       slightly lifted from the page colour, because the bar itself fades to transparent. */
+    .obr-pop {
+      position: absolute; top: calc(100% - 2px); right: 18px; z-index: 11;
+      display: flex; flex-direction: column; gap: 2px; min-width: 210px; padding: 6px;
+      border-radius: 12px; background-color: rgb(var(--obr-bg));
+      background-image: linear-gradient(rgba(255,255,255,.38), rgba(255,255,255,.38));
+      box-shadow: 0 12px 30px rgba(0,0,0,.24), 0 0 0 1px rgba(0,0,0,.07);
+    }
+    .obr-overlay.dark .obr-pop {
+      background-image: linear-gradient(rgba(255,255,255,.07), rgba(255,255,255,.07));
+      box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);
+    }
+    .obr-pop-lab { font-size: 11.5px; opacity: .6; padding: 6px 8px 2px; }
+    .obr-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 6px 4px; }
+    .obr-font-size { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
+    .obr-set { display: flex; gap: 2px; padding: 3px; margin: 0 6px 4px; border-radius: 8px; background: rgba(0,0,0,.09); }
+    .obr-overlay.dark .obr-set { background: rgba(255,255,255,.08); }
+    .obr-set-btn {
+      flex: 1; border: none; cursor: pointer; padding: 5px 10px; border-radius: 6px;
+      background: transparent; color: inherit; font: inherit; white-space: nowrap;
+    }
+    .obr-set-btn[aria-pressed="true"] { background: rgba(255,255,255,.8); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+    .obr-overlay.dark .obr-set-btn[aria-pressed="true"] { background: rgba(255,255,255,.22); }
+    .obr-menuitem {
+      display: flex; align-items: center; border: none; cursor: pointer; padding: 8px 10px;
+      border-radius: 7px; background: transparent; color: inherit; font: inherit;
+      text-align: left; white-space: nowrap;
+    }
+    .obr-menuitem:hover, .obr-menuitem:focus-visible { background: rgba(0,0,0,.10); outline: none; }
+    .obr-overlay.dark .obr-menuitem:hover, .obr-overlay.dark .obr-menuitem:focus-visible { background: rgba(255,255,255,.12); }
+    .obr-pop hr { border: 0; border-top: 1px solid currentColor; opacity: .15; margin: 4px 6px; }
     /* Mode switch = an iOS-style segmented control: a recessed track holding a
        raised brand-accent "thumb" on the current side. The depth (inset track vs.
        lifted thumb) makes it read as a physical toggle — this side is selected,

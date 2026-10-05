@@ -53,7 +53,7 @@ function storageShim() {
 
 // chrome.i18n shim. THE TRAP: the content scripts are injected into the MAIN world by
 // addScriptTag, where chrome.i18n does not exist, so OBR.t() falls back to echoing the KEY —
-// any capture that shows the reader's toolbar then renders `readerBtnThemeLabel`,
+// any capture that shows the reader's toolbar then renders `readerBtnPickLabel`,
 // `readerPageIndicator`, `readerFooterHint` as visible UI text on a marketing asset. This is
 // NOT hypothetical and NOT limited to the video: capture-screenshots.mjs deliberately does
 // `page.mouse.move(640, 8)` to REVEAL the topbar before shot 02, so a plain re-run puts raw

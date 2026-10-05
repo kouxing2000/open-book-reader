@@ -25,6 +25,7 @@ export const CONTENT_FILES = [
   path.join(CONTENT, 'readability.js'),
   path.join(CONTENT, 'reader.style.js'),
   path.join(CONTENT, 'qrcode.js'),   // vendored QR encoder (print branding); loads before reader.js
+  path.join(CONTENT, 'turndown.js'), // vendored HTML-to-Markdown converter (⤓ Markdown export)
   READER_JS,
   path.join(CONTENT, 'notice.js'), // OBR._notice — the page-level banner reader.js falls back to
 ];
@@ -213,6 +214,24 @@ export function readState(page) {
 /** Click a control/zone inside the reader's shadow DOM (Playwright pierces open roots). */
 export async function clickInReader(page, selector) {
   await page.locator(`#obr-host >> ${selector}`).click();
+}
+
+/** Run a reader toolbar action wherever the width-aware toolbar put it: inline in the bar, in
+ *  the Aa popover (font / theme / columns, `val` picks a segment), or in the ⋯ menu — opening
+ *  the popover first when it is closed. */
+export async function clickReaderAction(page, act, val) {
+  const sel = `[data-act="${act}"]` + (val != null ? `[data-val="${val}"]` : '');
+  const home = await page.evaluate((s) => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const inline = sr.querySelector('.obr-controls ' + s);
+    if (inline && !inline.hidden) return { pop: null };
+    const item = [...sr.querySelectorAll('.obr-pop ' + s)].find((el) => !el.hidden);
+    const pop = item && item.closest('.obr-pop');
+    return { pop: pop ? pop.dataset.for : 'missing', open: !!pop && !pop.hidden };
+  }, sel);
+  if (home.pop === 'missing') throw new Error(`no reachable toolbar control for ${sel}`);
+  if (home.pop && !home.open) await clickInReader(page, `[data-pop="${home.pop}"]`);
+  await page.locator(`#obr-host >> ${home.pop ? `.obr-pop[data-for="${home.pop}"] ` : '.obr-controls '}${sel}`).click();
 }
 
 /** Click inside the gallery's shadow DOM. */

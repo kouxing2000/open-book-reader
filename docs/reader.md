@@ -57,6 +57,29 @@ gets no colophon (it only fills a blank page), so without this it looks like any
 next-key press reads as broken. Reduced motion, or a turn still in flight, skips the nudge but
 keeps the label.
 
+## The toolbar — Aa, ⋯, and a width fit instead of breakpoints
+
+The topbar is the mode switch, the title, and then **Aa · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
+is a popover with text size, theme and columns (the `+` `−` `T` keys reach the same settings); ⋯ is a
+menu with everything else. Both are hand-rolled (`togglePop` / `closePop`) because the `popover`
+attribute needs Chrome 114 and the manifest's floor is 102. They live inside `.obr-topbar`, so the
+page-flip click handler already ignores clicks in them; a click anywhere else while one is open only
+closes it (no page turn), Escape closes it before it closes the reader, and `scheduleHideChrome`
+never hides the bar while one is open.
+
+**Pick, Print and Markdown are `FLEX_ACTS`**: inline while the bar has room, in ⋯ when it does not —
+each has a twin menu item, and exactly one of the pair is shown. `fitControls` decides by MEASURING,
+not by breakpoints, because labels differ by locale (a fixed width either strands room in English or
+overflows in Russian). It shows everything, then drops the least-needed piece until the one row fits:
+the inline actions from the right, then the reading-time meta, then the mode switch's text labels
+(`.obr-compact`). Stopping at the first fit keeps the inline set a priority prefix. It runs when the
+host is first shown, after every render (title and meta change width), on resize, and when the picker
+ends — a resize during a pick is skipped while the host is hidden, and a cancelled pick re-renders
+nothing, so without that call a narrowed window leaves ✕ off-screen. **The bar is
+never allowed to wrap**: a second row sits in the bar's transparent gradient tail with the article
+showing through the buttons. `syncTypePop` keeps the Aa readout and marked segments true on every path
+that changes them, including an Options-page change and the OS flipping an 'auto' theme.
+
 ## Page-turn animation
 
 **Page-turn animation** (`reader.js`: `flip` → `bookFlip` / `curlFlip` / `endActiveFlip`, setting
@@ -164,7 +187,7 @@ instead of a maybe. Purely local, nothing is sent anywhere.
 ## Print / Save as PDF
 
 **Print / Save as PDF** (`reader.js`: `OBR.printReader` + the pure, testable `OBR._buildPrintDoc`): the
-🖨 topbar button (and the `P` key) reuse the article Readability already parsed (`lastArticle`, captured
+🖨 Print action (inline in the topbar or in its ⋯ menu, and the `P` key) reuse the article Readability already parsed (`lastArticle`, captured
 in `open()`) to build a clean, flat, **vertically-flowing** document and hand it to the browser's print
 dialog — which is also where "Save as PDF" lives, so print and PDF are one feature, no library. The
 print doc is always a white paper theme (honors font family + line-height, but NOT the screen px size or
@@ -184,6 +207,33 @@ MIT — injected before `reader.js`; pure array math, CSP-safe). `_buildPrintDoc
 `printReader` passes it a `brand` object (name + a display domain + pre-rendered `qrSvg`). The
 display domain is the landing site's host (`OBR.SITE_URL`), not the store's: it is the line a
 reader types off paper, and the store item URL is an opaque 32-letter id.
+
+## Save as Markdown
+
+**⤓ Markdown** (`reader.js`: `saveMarkdown` + the pure, testable `OBR._buildMarkdown` and
+`OBR._mdFilename`) saves the same `lastArticle` Print uses as a local `.md` file. It is **Beta and off
+by default**: the action exists only while the `markdownExport` setting (an Options checkbox) is on —
+`FLEX_ACTS` marks it with `setting`, and `fitControls` hides both the inline button and its ⋯ twin
+otherwise. The body is
+converted by the **vendored** `turndown.js` (Turndown, MIT — injected before `reader.js`, notice in
+`TURNDOWN-LICENSE.md`); output is YAML front matter (`title`, `author` when there is a byline,
+`source`), the title as an H1, then the body. Three choices hold it together:
+
+- **Front-matter values are `JSON.stringify`'d.** A JSON string is a valid YAML double-quoted
+  scalar, so a title holding `:` or `"` needs no YAML escaper.
+- **Tables are kept as HTML** (`keep(['table'])`). Core Turndown has no table rule and flattens a
+  table into run-on text; GitHub and Obsidian render an inline HTML table. That avoids a second
+  vendored file (the GFM plugin).
+- **The download is `OBR.saveBlob`** (`settings.js`), the same detached-anchor click as the
+  gallery's ZIP, so there is no `downloads` permission. The source URL is always written:
+  `printSourceUrl` is scoped to print, and attribution is what a saved note is for.
+
+Images stay remote links, so the file is small and the images load from their origin when a
+Markdown viewer renders them. **Every URL in `lastArticle.content` must be absolute**, or the
+saved file carries dead links: Readability's path already absolutizes (`_fixRelativeUris`), and
+`rawFallback` (picks / selections Readability rejects) does the same through `absolutizeUrls`,
+leaving a `#frag` link relative by Readability's own rule. Inside the reader the difference is
+invisible (same base), which is why the regression test asserts on the exported file.
 
 ## Reading progress is a fraction, never a spread index
 
@@ -334,6 +384,38 @@ inside `<body>`. `tests/silent-failure.spec.js` drives both against `tests/fixtu
 a normal article that takes one hostile trait per `?mode=` — the file to extend when a new "it
 doesn't work on this site" report arrives.
 
+## Heading chrome is stripped before Readability sees the page
+
+Headings on real pages carry chrome that is not their text: a permalink glyph or icon link inside
+the heading (Sphinx's ¶, an SVG anchor on React docs), a self-link wrapping the whole heading (MDN,
+mdBook, many blogs), and a short link beside the heading in its own wrapper (Wikipedia's `[edit]`,
+GitHub's anchor icon). Readability scores a heading wrapper that holds an `[edit]` link as
+link-heavy boilerplate and drops the HEADING with it — nearly every section heading of a Wikipedia
+article, in every language edition (upstream Readability 0.6.0 does the same). Whatever survives
+shows the glyph as stray text in the reader and as `[¶](#…)` in Markdown.
+
+`stripHeadingChrome` (`reader.js`) runs on the clone before parsing, in `parseBaseDoc` and in
+`rawFallback`, so every content path sees clean headings. It is deliberately narrow, because it runs
+ahead of Readability and can change what Readability picks:
+
+- inside a heading, only in-page (`#…`) links are touched — removed when their text is empty or a
+  permalink glyph, unwrapped (text kept) when they wrap the heading's whole text;
+- a sibling is removed only when it is the heading's ONE companion in its wrapper, comes right AFTER
+  it (a short link row BEFORE a title is a breadcrumb, not chrome), is short (≤ 24 chars), link-only
+  and media-free, AND carries a chrome signal: bracketed text like MediaWiki's `[edit]`, or nothing
+  but text-less in-page anchors. Short link-only content shares every other trait — a byline beside
+  the title, a lone "Download (PDF)" link, a one-item "See also" — so the signal is what keeps it.
+
+Judge any change to it on real pages, A/B on the SAME frozen DOM (two live loads differ by
+themselves — ads, consent walls, A/B tests): where it touches nothing the parse is identical by
+construction, so only pages where it removes or unwraps something need comparing.
+
+Readability also renames every in-article `<h1>` to `<h2>` (`readability.js:720`), so a page using
+`h1` sections over `h2` subsections loses a level. That one is left alone: vendored code, and no
+page in the sweep showed it. The Markdown export closes the other kind of hole — a page that jumps
+`h1` → `h3` — by renumbering body headings to start at `##` with no gap (`renumberHeadings`); the
+reader keeps the source's sizes.
+
 ## Content override — when extraction picks the wrong block
 
 **Content override — when extraction picks the WRONG block** (`reader.js`, plus pick storage in
@@ -341,7 +423,7 @@ doesn't work on this site" report arrives.
 zero-new-permission. (1) **Selection** — if text is selected when the reader opens (and the
 `readSelection` setting is on, default), read EXACTLY that selection: `extractFromSelection` wraps
 `range.cloneContents()` and runs it through the scoped path. (2) **Element picker** — the ⌖ Pick
-toolbar button (and the "Wrong content?" hint banner) starts `startPicker()`: a uBlock-style hover-to-
+toolbar action (and the "Wrong content?" hint banner) starts `startPicker()`: a uBlock-style hover-to-
 highlight over the REAL page in a SEPARATE shadow host (`#obr-pick-host`), with the reader hidden and
 page scroll unlocked (the same toggles `open()`/`close()` and the gallery's `hydratePage` use); a
 click re-renders in place via `endPicker(node)` → `extractFromNode`. The reader keydown handler gates
@@ -349,8 +431,8 @@ on `pickerActive` so the picker owns Escape/arrows while it's up. The "Wrong con
 auto-pop on every whole-page open — only when the extraction looks **suspect** (`wholeExtractionSuspect`:
 it failed/returned the placeholder, OR — on a page with **≥200 prose words** (`proseWordCount`) — the
 extracted text totals **< half** that prose, the "grabbed a sidebar / teaser / truncated" cases). A
-confident or same-size-wrong parse stays quiet; the permanent ⌖ Pick toolbar button is the
-always-available affordance, and an explicit "Use full page" (`reExtractWholePage`) clears the suspect
+confident or same-size-wrong parse stays quiet; the ⌖ Pick toolbar action (inline, or in ⋯ on a
+narrow window) is the always-available affordance, and an explicit "Use full page" (`reExtractWholePage`) clears the suspect
 flag so it won't second-guess the user's choice. It's a heuristic — a short post on a comment-heavy page
 can false-positive (acceptable: non-blocking hint, ⌖ Pick always there). (3) **Saved pick** — "Save for this
 site" stores a CSS selector per host in `chrome.storage.SYNC` (`obr_picks`, bounded/LRU to `PICKS_MAX`,

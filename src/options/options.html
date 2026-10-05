@@ -16,6 +16,8 @@
     .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid rgba(127,127,127,.18); }
     .row label { font-size: 14px; }
     .row .hint { display: block; font-size: 12px; opacity: .55; margin-top: 2px; }
+    .beta { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; vertical-align: 1px; color: #6a59f2; background: rgba(124,108,255,.14); }
+    @media (prefers-color-scheme: dark) { .beta { color: #b3a8ff; background: rgba(124,108,255,.22); } }
     input[type="range"] { width: 180px; }
     select, input[type="number"] { padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
     .val { display: inline-block; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; opacity: .7; }
@@ -146,7 +148,7 @@
       <ul>
         <li data-i18n-html="optGuideReadFlip"><kbd>←</kbd> <kbd>→</kbd> flip pages — or click the left / right edge of the book</li>
         <li data-i18n-html="optGuideReadHomeEnd"><kbd>Home</kbd> / <kbd>End</kbd> first / last spread · <kbd>Esc</kbd> close</li>
-        <li data-i18n-html="optGuideReadTopbar">Topbar: ⊞ columns (2/3/4) · theme · <kbd>A−</kbd> / <kbd>A+</kbd> font size · 🖼 switch to gallery</li>
+        <li data-i18n-html="optGuideReadTopbar">Topbar: <kbd>Aa</kbd> font size · theme · columns (2/3/4) · <kbd>⋯</kbd> Pick · Print · Settings · Report (a wide window shows some of these right in the bar) · 🖼 switch to gallery</li>
       </ul>
 
       <p data-i18n-html="optGuideWrongTitle"><b>Picked the wrong content?</b> Sometimes the reader grabs a sidebar or the wrong block. Three ways to fix it:</p>
@@ -236,6 +238,11 @@
     <div class="row">
       <label><span data-i18n="optReadSel">Read selected text</span> <span class="hint" data-i18n="optReadSelHint">If you've selected text on the page when you open the reader, read just that selection instead of the whole page - a quick override for when auto-extraction grabs the wrong content. Off = always read the whole page.</span></label>
       <span><input type="checkbox" id="readSelection" /></span>
+    </div>
+
+    <div class="row">
+      <label><span data-i18n="optMarkdownExport">Save as Markdown</span><span class="beta" data-i18n="optBeta">Beta</span> <span class="hint" data-i18n="optMarkdownExportHint">Adds ⤓ Markdown to the reader’s toolbar (or its ⋯ menu): saves the article as a .md file, with the title, author and source link at the top and images linked to where they live online. Off = no Markdown action.</span></label>
+      <span><input type="checkbox" id="markdownExport" /></span>
     </div>
 
     <div class="row">
