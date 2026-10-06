@@ -22,12 +22,15 @@
   try { const lang = chrome.i18n.getUILanguage && chrome.i18n.getUILanguage(); if (lang) document.documentElement.lang = lang; } catch (e) { /* */ }
 
   // Explain in plain language what's being asked and why. `reason=auto-open` marks the
-  // per-site auto-open flow (an origin request for just that site); a plain origins
-  // request is the ZIP download's cross-origin fetch.
+  // per-site auto-open flow (an origin request for just that site); `reason=shared-links` is
+  // the opt-in to open shared links straight in reading mode (all sites, asked from the share
+  // landing page); a plain origins request is the ZIP download's cross-origin fetch.
   const reason = params.get('reason') || '';
   const host = params.get('host') || '';
   document.getElementById('why').textContent =
-    reason === 'auto-open' && origins.length
+    reason === 'shared-links'
+      ? msg('permWhySharedLinks', 'To open the articles friends share with you straight in reading mode, Open Book Reader needs permission to read the page it opens for you. It uses this permission only when you open a shared link, download images from the gallery, or visit a site you turned auto-open on for. Everything stays on your device — nothing is collected or sent anywhere — and you can turn it off any time in Open Book’s Site access settings.')
+      : reason === 'auto-open' && origins.length
       ? msg('permWhyAutoOpen', 'To open reading mode automatically on ' + (host || 'this site') + ', Open Book Reader needs permission to check that site’s pages when they load. Everything stays on your device — nothing is collected or sent anywhere.', [host || 'this site'])
       : origins.length
         ? msg('permWhyZip', 'To bundle a ZIP, Open Book Reader needs permission to fetch the selected images from the sites they live on. The files are saved only to your device — nothing is sent anywhere else.')
@@ -43,7 +46,7 @@
   // The ZIP fetch asks for the origins its images actually live on (background.js permsFor),
   // so LIST them — "Allow" should be an informed click, not a leap of faith. The auto-open
   // flow names its one site in the `why` text already, so it skips the list.
-  const isZip = origins.length && reason !== 'auto-open';
+  const isZip = origins.length && reason !== 'auto-open' && reason !== 'shared-links';
   if (isZip) {
     const list = document.getElementById('origins');
     origins.forEach((o) => {

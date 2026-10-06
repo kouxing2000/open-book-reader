@@ -330,7 +330,7 @@ async function runInvoke(tabId, url, mode, opts) {
     // that quietly does nothing is visible in the trace instead of looking like a dead trigger.
     const [{ result: acted } = {}] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (m, auto, debug, incognito) => {
+      func: (m, auto, debug, incognito, trigger) => {
         const OBR = globalThis.OBR;
         if (!OBR) return { did: 'NO OBR IN PAGE — injection did not take' };
         OBR._debug = !!debug; // carry the flag BOTH ways, so turning debug off propagates too
@@ -342,7 +342,11 @@ async function runInvoke(tabId, url, mode, opts) {
         const before = snap();
         let did = 'dispatched';
         try {
-          if (auto) {
+          if (trigger) {
+            // A named non-gesture open (a shared link handed over by read.html): open directly,
+            // under its own name so the page does not take it for the auto-open sentinel.
+            if (OBR.open) OBR.open({ trigger: trigger }); else did = 'NO open';
+          } else if (auto) {
             // Sentinel-triggered: open directly (mode was resolved page-side).
             if (m === 'images') { if (OBR.openGallery) OBR.openGallery({ trigger: 'auto' }); else did = 'NO openGallery'; }
             else if (OBR.open) OBR.open({ trigger: 'auto' }); else did = 'NO open';
@@ -362,7 +366,7 @@ async function runInvoke(tabId, url, mode, opts) {
         }
         return { did: did, before: before, after: snap() };
       },
-      args: [mode, !!(opts && opts.auto), dbg, !!(opts && opts.incognito)]
+      args: [mode, !!(opts && opts.auto), dbg, !!(opts && opts.incognito), (opts && opts.trigger) || null]
     });
     if (t) t.mark('dispatch');
     if (swWant()) swLog('dispatch:', JSON.stringify(acted));
@@ -1151,7 +1155,7 @@ function openPermPopup(need) {
   // room than a plain permission ask. Start close to the right size (permission.js fine-tunes to
   // the exact content height after load) so there's no visible jump — and so the escape link is
   // visible even if that resize ever no-ops.
-  const isZip = need.origins && need.reason !== 'auto-open';
+  const isZip = need.origins && need.reason !== 'auto-open' && need.reason !== 'shared-links';
   chrome.windows.create(
     {
       url: chrome.runtime.getURL('src/permission.html') + '?' + params.toString(),
@@ -1195,15 +1199,86 @@ chrome.windows.onRemoved.addListener((id) => {
   if (id === permWindowId) resolveWaiters();
 });
 
-// The ONE thing a web page can ask: site/read.html (where every "Share this article" link
-// lands) checks whether Open Book is installed, to show either how to get it or how to open
-// the shared article in it. externally_connectable admits only that site, the origin is
-// re-checked here, and the answer is a bare yes — no version, no settings, no state.
+// site/read.html (where every "Share this article" link lands) is the only web page that can
+// talk to Open Book: externally_connectable admits that one site and the origin is re-checked
+// here. It can ask three things, and nothing else:
+// - obr-ping: "installed?", plus whether the friend opted in to opening shared links in read
+//   mode. That opt-in IS the all-sites grant, so it is read from permission state, never
+//   stored: revoking the grant in Options turns it off.
+// - obr-allow-shared-links: show the permission page asking for all sites. No answer is sent
+//   back, because the worker routinely dies while the prompt is up; the page re-pings when its
+//   tab is visible again.
+// - obr-open-shared: the page is about to replace itself with the article; open the reader when
+//   the sender's own tab has loaded it. Only with a grant that already covers the article (this
+//   path never prompts) and only for http(s).
+// Top-level pages only (frameId 0): any site could otherwise embed read.html in a frame and,
+// through this worker, steer the tab around it.
 const SITE_ORIGIN = new URL(OBR.SITE_URL).origin;
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
-  if (!sender || sender.origin !== SITE_ORIGIN || !msg || msg.type !== 'obr-ping') return;
-  sendResponse({ ok: true });
+  if (!sender || sender.frameId !== 0 || sender.origin !== SITE_ORIGIN || !msg) return;
+  if (msg.type === 'obr-ping') {
+    chrome.permissions.contains({ origins: ['<all_urls>'] }, (has) => sendResponse({ ok: true, autoRead: !!has }));
+    return true;
+  }
+  if (msg.type === 'obr-allow-shared-links') {
+    requestPerm({ origins: ['<all_urls>'], reason: 'shared-links' }, () => {});
+    sendResponse({ ok: true });
+    return;
+  }
+  if (msg.type === 'obr-open-shared') {
+    openShared(msg.url, sender.tab, sendResponse);
+    return true;
+  }
 });
+
+// A shared article on its way into the reader. The page navigates itself (location.replace, so
+// Back does not return to it); this only listens for THAT tab's next finished load, from the
+// hand-off to the first such load or SHARED_OPEN_TTL — a permanent tabs.onUpdated would wake this
+// worker on every navigation in every tab (see showFailure). A load still on (or back on) the
+// share site is passed over, never read. If the worker is evicted before a very slow page loads,
+// the friend presses Alt+B. The trigger is 'shared', not 'auto': the page must not show the
+// auto-open chip, whose Stop has no rule to stop here.
+const SHARED_OPEN_TTL = 60000;
+// A listener still armed when Chrome evicts this worker stays registered with Chrome, which
+// would then wake the worker on every navigation in every tab. Adding and removing one at
+// startup clears that registration, at the cost of at most one stray wake.
+{ const noop = () => {}; chrome.tabs.onUpdated.addListener(noop); chrome.tabs.onUpdated.removeListener(noop); }
+// The shared article and the page that loaded: same host (www. aside) and path (a trailing
+// slash aside). The scheme may differ (http upgraded to https) and so may the query.
+function sameArticle(a, b) {
+  const key = (u) => u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/+$/, '');
+  return key(a) === key(b);
+}
+function openShared(url, tab, sendResponse) {
+  let target = null;
+  try { target = new URL(url); } catch (e) { /* not a URL */ }
+  if (!tab || !tab.id || !target || !/^https?:$/.test(target.protocol)) { sendResponse({ armed: false }); return; }
+  chrome.permissions.contains({ origins: [target.protocol + '//' + target.host + '/*'] }, (has) => {
+    if (!has) { sendResponse({ armed: false }); return; }
+    const tabId = tab.id;
+    let timer = 0;
+    const stop = () => { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(onUpdated); };
+    const onUpdated = (id, info, t) => {
+      if (id !== tabId || info.status !== 'complete') return;
+      let loaded = null;
+      try { loaded = new URL((t && t.url) || ''); } catch (e) { /* no URL visible */ }
+      if (loaded && loaded.origin === SITE_ORIGIN) return; // still on the share page
+      // One shot: the first other page this tab finishes is the shared article or nothing —
+      // never a page the friend went to instead (Back, a typed address, a redirect elsewhere).
+      stop();
+      if (!loaded || !sameArticle(loaded, target)) {
+        swLog('shared link: tab', tabId, 'loaded another page — not opening the reader');
+        return;
+      }
+      swLog('shared link loaded — opening the reader in tab', tabId);
+      invokeReader(tabId, (t && t.url) || target.href, 'text',
+        { auto: true, trigger: 'shared', incognito: !!(t && t.incognito) });
+    };
+    timer = setTimeout(stop, SHARED_OPEN_TTL);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    sendResponse({ armed: true });
+  });
+}
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg.type !== 'string') return;

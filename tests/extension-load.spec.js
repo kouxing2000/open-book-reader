@@ -484,6 +484,38 @@ test('a SOFT block (a normal URL that would not inject) offers Report; a real ch
   expect(decodeURIComponent(popups.soft.split('&u=')[1])).toBe('https://news.test/story/7');
 });
 
+// A shared link (handed over by site/read.html) opens the reader under its own trigger, never
+// as the auto-open sentinel's 'auto': the page would show the auto chip, whose "Stop auto-opening
+// on this site" has no rule to stop for a shared link. The dispatch function is captured from
+// the real invokeReader and run against a stand-in OBR, so what is pinned is the call the page
+// actually receives.
+test('a shared-link open dispatches open({ trigger: "shared" }), not the auto-open path', async ({ serviceWorker, page }) => {
+  const calls = await serviceWorker.evaluate(async () => {
+    const real = chrome.scripting.executeScript;
+    const seen = [];
+    chrome.scripting.executeScript = async (inj) => {
+      seen.push({ args: inj.args || null, src: inj.func ? inj.func.toString() : null, files: inj.files || null });
+      if (!inj.args) return [{ result: { engine: true, ctxAlive: true } }]; // the probe: a live engine
+      return [{ result: { did: 'dispatched' } }];
+    };
+    try {
+      await invokeReader(1, 'https://news.test/story/7', 'text', { auto: true, trigger: 'shared' });
+      await invokeReader(1, 'https://news.test/story/7', 'text', { auto: true });
+    } finally { chrome.scripting.executeScript = real; }
+    return seen.filter((c) => c.args); // the two dispatches
+  });
+  expect(calls.map((c) => c.args[4])).toEqual(['shared', null]);
+  const run = (c) => page.evaluate(({ src, args }) => {
+    const opened = [];
+    globalThis.OBR = { open: (o) => opened.push(o), toggle: () => opened.push('toggle') };
+    // eslint-disable-next-line no-new-func
+    new Function('return (' + src + ')')()(...args);
+    return opened;
+  }, c);
+  expect(await run(calls[0])).toEqual([{ trigger: 'shared' }]);
+  expect(await run(calls[1])).toEqual([{ trigger: 'auto' }]); // the sentinel's path is unchanged
+});
+
 test('isHardBlock covers what blocked.html actually claims, not just the URL scheme', async ({ serviceWorker }) => {
   // The popup's bullet list names the Web Store and local files as browser rules. A classifier
   // that reads only the scheme calls both "a normal page" one line below that list and asks for

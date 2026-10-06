@@ -73,10 +73,32 @@
     .dest { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
     footer { text-align: center; margin-top: 22px; color: var(--muted); font-size: 13px; }
     footer a { color: var(--accent); }
+    button.btn { width: 100%; font-family: inherit; cursor: pointer; }
+    .btn[disabled] { background: transparent; color: var(--muted); border-color: var(--line); cursor: not-allowed; opacity: .7; }
+    .flow { list-style: none; margin: 4px 0 14px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    .flow li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
+    .num {
+      width: 24px; height: 24px; margin-top: 10px; border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 13px; font-weight: 700; background: var(--accent); color: #fff;
+    }
+    .num.off { background: var(--line); color: var(--muted); }
+    .sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .countdown { margin: 0 0 6px; text-align: center; font-weight: 600; }
+    [data-for="installed"] .note { text-align: center; }
+    .ask { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+    .ask-title { margin: 0; font-weight: 700; font-size: 16px; }
+    .ask .sub { margin: 4px 0 12px; }
+    .actions.or { margin: 14px 0 10px; }
+    .ask-status { margin: 10px 0 0; text-align: center; font-size: 13px; color: var(--muted); }
+    .ask-status:empty { display: none; }
+    .links { text-align: center; font-size: 14px; margin: 10px 0 14px; }
+    .links a, .linklike { color: var(--accent); }
+    .linklike { border: none; background: none; padding: 0; font: inherit; cursor: pointer; text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
       :root { --paper:#17150f; --ink:#ece4d4; --muted:#9a9081; --accent:#d9a566; --card:#211e16; --line:#34301f; }
       body { background: linear-gradient(160deg, #1b1810 0%, var(--paper) 50%, #14110b 100%); }
       .btn-primary { color: #17150f; }
+      .num { color: #17150f; }
     }
   </style>
 </head>
@@ -90,12 +112,16 @@
       </div>
 
       <div class="state" data-for="missing">
-        <div class="actions">
-          <a class="btn btn-primary" id="store-link" target="_blank" rel="noopener">Read it as a book: add Open Book (free)</a>
-          <a class="btn btn-ghost article-link">Just open the article</a>
-        </div>
+        <ol class="flow">
+          <li><span class="num">1</span>
+            <a class="btn btn-primary" id="store-link" target="_blank" rel="noopener">Add Open Book, free ↗</a></li>
+          <li><span class="num off">2</span>
+            <div><button class="btn" type="button" disabled>Read it as a book</button>
+              <p class="sub">Unlocks once Open Book is added. Come back to this tab.</p></div></li>
+        </ol>
+        <p class="links"><a class="article-link">Just open the article</a></p>
+        <p class="note">Already have Open Book? Open the article and press <kbd>Alt+B</kbd>.</p>
         <p class="note">Open Book turns any web page into a calm two-page book you flip with the arrow keys. It is free, open source, and collects nothing.</p>
-        <p class="note">Added it? Come back to this tab to open the article in it.</p>
       </div>
 
       <div class="state" data-for="unsupported">
@@ -106,14 +132,29 @@
       </div>
 
       <div class="state" data-for="installed">
-        <ol class="steps">
-          <li>Open the article.</li>
-          <li>Press <kbd>Alt+B</kbd> (<kbd>⌥B</kbd> on a Mac), or click the Open Book icon.</li>
-        </ol>
-        <div class="actions">
-          <a class="btn btn-primary article-link">Open the article →</a>
+        <div id="ask-panel" hidden>
+          <div class="ask">
+            <p class="ask-title">Open shared links straight in reading mode</p>
+            <p class="sub">No Alt+B, now or next time. Chrome asks once for permission; everything stays on your device.</p>
+            <button class="btn btn-primary" type="button" id="turn-on">Turn on &amp; read</button>
+            <p class="ask-status" id="ask-status" aria-live="polite"></p>
+          </div>
+          <div class="actions or">
+            <a class="btn btn-ghost article-link" id="once">Just open the article</a>
+          </div>
+          <p class="note">On the article, press <kbd>Alt+B</kbd> (<kbd>⌥B</kbd> on a Mac) or click the Open Book icon to read it as a book.</p>
+          <p class="links"><button class="linklike" type="button" id="not-now">Don’t ask again</button></p>
         </div>
-        <p class="note">Icon not in your toolbar? Pin it from the puzzle-piece menu next to the address bar.</p>
+        <div id="count-panel" hidden>
+          <div class="actions">
+            <a class="btn btn-primary article-link" id="read-now">Read it as a book</a>
+          </div>
+          <p class="countdown" id="countdown" aria-live="polite"></p>
+          <p class="note" id="key-hint">When it opens, press <kbd>Alt+B</kbd> (<kbd>⌥B</kbd> on a Mac) or click the Open Book icon.</p>
+          <p class="note" id="auto-hint" hidden>It opens straight in reading mode.</p>
+          <p class="links"><button class="linklike" type="button" id="cancel">Cancel</button> · <a class="article-link" id="plain">Just open the article</a></p>
+          <p class="note links" id="optin-row"><button class="linklike" type="button" id="optin">Always open shared links in reading mode</button></p>
+        </div>
       </div>
 
       <div class="state" data-for="bad">
@@ -128,7 +169,15 @@
   </div>
   <script>
     (function () {
-      var EXT_ID = 'kmcomogkbbdjhfocbncljmgcnfmaljca';
+      var STORE_ID = 'kmcomogkbbdjhfocbncljmgcnfmaljca';
+      // A developer switch, set once in this page's console: localStorage['obr-ext-id'] = '<id>'.
+      // An unpacked build has its own id, and only an Open Book build answers this page at all
+      // (externally_connectable), so pinging another id can reach nothing else.
+      var EXT_ID = STORE_ID;
+      try {
+        var dev = localStorage.getItem('obr-ext-id');
+        if (/^[a-p]{32}$/.test(dev || '')) EXT_ID = dev;
+      } catch (e) { /* storage blocked: the store id */ }
       var show = function (s) { document.body.setAttribute('data-state', s); };
 
       // The shared article rides after '#' (u = address, t = title), which a browser never
@@ -151,7 +200,7 @@
       var links = document.querySelectorAll('.article-link');
       for (var i = 0; i < links.length; i++) links[i].href = url.href;
       document.getElementById('store-link').href =
-        'https://chromewebstore.google.com/detail/' + EXT_ID + '?utm_source=share&utm_medium=article';
+        'https://chromewebstore.google.com/detail/' + STORE_ID + '?utm_source=share&utm_medium=article';
 
       // Phones, tablets and non-Chromium browsers (no window.chrome: Firefox, Safari) cannot run a
       // Chrome extension, so the store button would be a dead end. An iPad reports itself as a Mac
@@ -163,16 +212,8 @@
         return;
       }
 
-      detect(function (installed) {
-        if (installed) {
-          // Open Book is here: go straight to the article, as a plain link would. replace(), so
-          // Back does not land on this page and forward again. Only an installed Open Book
-          // triggers it, and only to the http(s) address checked above; the guide stays on
-          // screen while the article loads.
-          show('installed');
-          location.replace(url.href);
-          return;
-        }
+      detect(function (res) {
+        if (res) { installed(res.autoRead); return; }
         show('missing');
         // A page loaded before the extension was installed cannot reach it, so coming back
         // from the store tab reloads: the fresh document asks again.
@@ -183,21 +224,138 @@
         });
       });
 
+      // Open Book is here. Opted in (autoRead: Open Book holds the all-sites grant): a countdown
+      // straight into reading mode. Not opted in: ASK FIRST, because the opt-in is what makes every
+      // later link seamless and a countdown hurries people past it; "Not now" is remembered on this
+      // device and from then on the page just counts down to the article with the Alt+B hint.
+      // Every exit from these states is location.replace(), so Back does not land on this page
+      // and count down again.
+      var DECLINED = 'obr-shared-optin-declined';
+      function installed(autoRead) {
+        var COUNT = 3, left = COUNT, tick = 0, gone = false;
+        var cd = document.getElementById('countdown');
+        show('installed');
+        setAutoRead(autoRead);
+        var declined = false;
+        try { declined = localStorage.getItem(DECLINED) === '1'; } catch (e) { /* storage blocked: ask */ }
+        if (autoRead || declined) counting(); else panel('ask');
+
+        document.getElementById('turn-on').addEventListener('click', function () {
+          var status = document.getElementById('ask-status');
+          status.textContent = 'Waiting for your answer in the Open Book window…';
+          optIn(function () { setAutoRead(true); go(); },
+            function () { status.textContent = 'Not turned on. You can still just open the article.'; });
+        });
+        document.getElementById('once').addEventListener('click', function (e) { e.preventDefault(); go(); });
+        document.getElementById('not-now').addEventListener('click', function () {
+          try { localStorage.setItem(DECLINED, '1'); } catch (e) { /* asked again next time */ }
+          counting();
+        });
+        document.getElementById('read-now').addEventListener('click', function (e) { e.preventDefault(); go(); });
+        // "Just open the article" means no reader: no hand-off, and the countdown stops with it.
+        document.getElementById('plain').addEventListener('click', function (e) {
+          e.preventDefault();
+          gone = true;
+          clearInterval(tick);
+          location.replace(url.href);
+        });
+        document.getElementById('cancel').addEventListener('click', function () { stop('Stopped. Open it when you are ready.'); });
+        document.getElementById('optin').addEventListener('click', function () {
+          stop('Waiting for your answer in the Open Book window…');
+          optIn(function () { setAutoRead(true); start(); },
+            function () { stop('Not turned on. Open it when you are ready.'); });
+        });
+
+        function panel(name) {
+          document.getElementById('ask-panel').hidden = name !== 'ask';
+          document.getElementById('count-panel').hidden = name !== 'count';
+        }
+        function counting() { panel('count'); start(); }
+
+        // Show the permission page; the answer arrives as permission state, not a message (the
+        // worker routinely dies while the prompt is up). So ask again every 1.5s for up to two
+        // minutes, and once when this window gets focus back: by then the Open Book window has
+        // been answered or closed, so no grant means no. Each wait is its own: a second click
+        // ends the first, and an answer still in flight for an ended wait is ignored.
+        var endWait = function () {};
+        function optIn(onGranted, onDeclined) {
+          endWait();
+          var over = false, poll = 0;
+          var onFocus = function () { recheck(true); };
+          var end = function () { over = true; clearInterval(poll); window.removeEventListener('focus', onFocus); };
+          endWait = end;
+          send({ type: 'obr-allow-shared-links' }, function () {});
+          var until = Date.now() + 120000;
+          poll = setInterval(function () { recheck(false); }, 1500);
+          window.addEventListener('focus', onFocus);
+          function recheck(back) {
+            if (over) return;
+            if (Date.now() > until) { end(); onDeclined(); return; }
+            detect(function (r) {
+              if (over) return;
+              if (r && r.autoRead) { end(); onGranted(); return; }
+              if (back) { end(); onDeclined(); }
+            });
+          }
+        }
+
+        function setAutoRead(on) {
+          autoRead = !!on;
+          document.getElementById('key-hint').hidden = autoRead;
+          document.getElementById('auto-hint').hidden = !autoRead;
+          document.getElementById('optin-row').hidden = autoRead;
+        }
+        function start() {
+          clearInterval(tick);
+          left = COUNT;
+          cd.textContent = 'Opening in ' + left + '…';
+          tick = setInterval(function () {
+            left -= 1;
+            if (left > 0) { cd.textContent = 'Opening in ' + left + '…'; return; }
+            clearInterval(tick);
+            go();
+          }, 1000);
+        }
+        function stop(text) { clearInterval(tick); cd.textContent = text; }
+        function go() {
+          if (gone) return;
+          gone = true;
+          clearInterval(tick);
+          cd.textContent = 'Opening…';
+          if (!autoRead) { location.replace(url.href); return; }
+          // Tell Open Book first, so it is listening when this tab loads the article; then leave
+          // either way (it may decline: the grant was revoked meanwhile), at the latest after 3s.
+          var leaving = false;
+          var leave = function () { if (!leaving) { leaving = true; location.replace(url.href); } };
+          setTimeout(leave, 3000);
+          send({ type: 'obr-open-shared', url: url.href }, leave);
+        }
+      }
+
+      function send(msg, cb) {
+        try {
+          chrome.runtime.sendMessage(EXT_ID, msg, function (r) { void chrome.runtime.lastError; cb(r); });
+        } catch (e) { cb(null); }
+      }
+
       // Installed = Open Book answers the ping (src/background.js, onMessageExternal). Not
       // installed shows up at once, as no chrome.runtime here or as lastError when another
       // extension exposes it; the timeout only covers a worker that never answers.
       function detect(cb) {
         var done = false;
         var finish = function (v) { if (!done) { done = true; cb(v); } };
+        // Framed by another page, this page never talks to Open Book: the frame's host would be
+        // the one deciding where the tab goes. (The worker refuses frames too.)
+        if (window.top !== window) { finish(null); return; }
         var rt = window.chrome && window.chrome.runtime;
-        if (!rt || typeof rt.sendMessage !== 'function') { finish(false); return; }
-        setTimeout(function () { finish(false); }, 3000);
+        if (!rt || typeof rt.sendMessage !== 'function') { finish(null); return; }
+        setTimeout(function () { finish(null); }, 3000);
         try {
           rt.sendMessage(EXT_ID, { type: 'obr-ping' }, function (res) {
             void rt.lastError;
-            finish(!!(res && res.ok));
+            finish(res && res.ok ? res : null);
           });
-        } catch (e) { finish(false); }
+        } catch (e) { finish(null); }
       }
     })();
   </script>

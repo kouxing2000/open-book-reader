@@ -774,8 +774,9 @@
     // The auto rules are about to vanish, so the site permissions they asked for would outlive
     // the only thing referencing them: an orphaned grant that nothing in the UI explains. Take
     // the origins BEFORE the wipe and hand them back after. Deliberately rule-derived only —
-    // a broad <all_urls> grant belongs to the gallery's ZIP download, not to any rule, so a
-    // settings reset is not the place to revoke it.
+    // a broad <all_urls> grant belongs to the gallery's ZIP download and to the opt-in to open
+    // shared links in reading mode, not to any rule, so a settings reset is not the place to
+    // revoke it.
     const orphaned = OBR.autoRuleOrigins(rules);
     chrome.storage.sync.remove([OBR.PICKS_KEY, OBR.HIDDEN_KEY], () => {
       chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {

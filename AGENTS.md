@@ -39,9 +39,11 @@ reload the unpacked extension. (`package.json`/`scripts/` are release tooling on
 ## Architecture
 
 On-demand injection — nothing runs on a page until the user invokes it (toolbar click / `Alt+B`
-text / `Alt+Shift+B` images). The one deliberate exception: sites where the user explicitly
-enabled per-site **auto-open** (its registered sentinel is the only pre-gesture code;
-see `docs/auto-open-spec.md`).
+text / `Alt+Shift+B` images). Two deliberate exceptions, both opt-in and both riding a host grant:
+sites where the user explicitly enabled per-site **auto-open** (its registered sentinel is the only
+pre-gesture code; see `docs/auto-open-spec.md`), and — for users who turned on opening shared links
+in reading mode (the all-sites grant) — the article a share link hands over (`openShared` in
+`background.js`; see `docs/engagement.md`).
 
 ```
 manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage, contextMenus)
@@ -211,7 +213,8 @@ npx playwright install chromium                # first run only
   becomes store UTM tags on Add to Chrome (and nothing else does), and the link-preview image exists.
   Also `site/read.html`, where every "Share this article" link lands: its states, the crafted-title
   and non-http guards, the 404 page's fallback to the article when the read page is missing, and
-  the real install check end to end (installed → forwarded to the article) — the page is ROUTED to
+  the real install check end to end (ask first; countdown → article; opted in → the page goes there
+  and the worker opens the reader as a `'shared'` open, only on that article) — the page is ROUTED to
   the production origin with the unpacked build's extension id swapped in, since
   `externally_connectable` answers only that origin and only the store id is in the file.
 - **The suite shells out to `unzip`** (`packaging.spec.js` for `dist.zip`, `gallery.spec.js` for
@@ -322,8 +325,10 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
 - **Host grants: everything is per-origin, and NEVER trust `permissions.remove`.** Auto-open
   requests a per-site PAIR (`originsForRule` → `*://host/*` + `*://www.host/*`); a ZIP download
   requests the origins its images actually live on (`permsFor(msg)` off `msg.urls`). `<all_urls>`
-  is reachable ONLY through the popup's explicit "Allow all sites instead" — it used to be what
-  every ZIP silently asked for, which is the bug this design replaced. It still matters because a
+  is reachable ONLY through two explicit asks: the ZIP popup's "Allow all sites instead", and the
+  share landing page's opt-in "Always open shared links in reading mode" (`reason=shared-links`;
+  holding the grant IS the opt-in, so revoking it turns that off) — it used to be what every ZIP
+  silently asked for, which is the bug this design replaced. It still matters because a
   broad grant COVERS every pair: once held, `permissions.contains(anyPair)` is true for every site,
   which is why the options **Site access** card is driven by `permissions.getAll()` (ground truth,
   one honest broad row) rather than by testing each rule (N falsely-granted rows), why per-site rows

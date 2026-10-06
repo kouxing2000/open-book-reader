@@ -53,6 +53,10 @@ test('read page without Open Book: the store button carries share UTM, the other
   expect(await page.locator('[data-for="missing"] .article-link').getAttribute('href')).toBe(ARTICLE);
   expect(await page.locator('[data-for="missing"]').isVisible()).toBe(true);
   expect(await page.locator('[data-for="installed"]').isVisible()).toBe(false);
+  // Step 2 waits for Open Book; whoever already has it is told the one step that works.
+  const step2 = page.locator('[data-for="missing"] button', { hasText: 'Read it as a book' });
+  expect(await step2.isDisabled()).toBe(true);
+  expect(await page.locator('[data-for="missing"]').textContent()).toContain('Already have Open Book? Open the article and press Alt+B.');
 });
 
 test('read page shows a crafted title as text, under the real destination domain', async ({ page }) => {
@@ -127,30 +131,276 @@ test('without Open Book, coming back to the tab asks again in a fresh document',
 });
 
 // The real wiring, end to end: the shipped manifest's externally_connectable, the worker's
-// onMessageExternal and read.html's ping. The page is served AT the production origin (routed
-// to the local file) because that origin is the only one the extension will answer. An
-// unpacked load gets its own id, so the page is served pinging THAT id in place of the store's
-// (the store id itself is pinned by the store-link assertion above).
+// onMessageExternal and read.html. The page is served AT the production origin (routed to the
+// local file) because that origin is the only one the extension will answer, and it reaches the
+// unpacked build through the page's own developer switch (localStorage 'obr-ext-id'), since an
+// unpacked load gets its own id. The store id itself is pinned by the store-link assertion above.
 async function serveReadAt(context, origin, extensionId) {
-  const html = readFileSync(path.join(SITE, 'read.html'), 'utf8');
-  const storeId = STORE.split('/').pop();
-  expect(html).toContain("var EXT_ID = '" + storeId + "'");
-  const body = html.replace("var EXT_ID = '" + storeId + "'", "var EXT_ID = '" + extensionId + "'");
+  const body = readFileSync(path.join(SITE, 'read.html'), 'utf8');
+  await context.addInitScript((id) => { try { localStorage.setItem('obr-ext-id', id); } catch (e) { /* */ } }, extensionId);
   await context.route(origin + '/**', (route) => new URL(route.request().url()).pathname === '/read'
     ? route.fulfill({ body, contentType: 'text/html' })
     : route.fulfill({ status: 404, body: '' }));
-}
-
-test('on the real site origin, an installed Open Book forwards straight to the article', async ({ context, page, extensionId }) => {
-  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
   await context.route('https://example.com/**', (route) =>
     route.fulfill({ body: '<title>The article</title><p>story</p>', contentType: 'text/html' }));
-  await page.goto(readLink('https://openbook.peach-studio.com/read', ARTICLE, 'Story'));
+}
+const LIVE_READ = 'https://openbook.peach-studio.com/read';
+const countdown = (page) => page.locator('#countdown').textContent();
+// Headless, the worker holds no real host grant (only its grant CHECK is stubbed), so Chrome hides
+// tab URLs from it, while with the real all-sites grant it sees them. Stand in for that: the test
+// names each URL it is about to load, and the worker's tabs.onUpdated listeners receive it as
+// tab.url. Without this, the hand-off would rightly refuse a load it cannot identify.
+async function seeTabUrls(serviceWorker) {
+  await serviceWorker.evaluate(() => {
+    const ev = chrome.tabs.onUpdated, wrapped = new Map();
+    const add = ev.addListener.bind(ev), remove = ev.removeListener.bind(ev);
+    ev.addListener = (fn) => {
+      const w = (id, info, t) => fn(id, info, Object.assign({}, t, { url: (t && t.url) || globalThis.__loading }));
+      wrapped.set(fn, w);
+      add(w);
+    };
+    ev.removeListener = (fn) => { remove(wrapped.get(fn) || fn); wrapped.delete(fn); };
+  });
+}
+const loading = (serviceWorker, url) => serviceWorker.evaluate((u) => { globalThis.__loading = u; }, url);
+
+// Not opted in: the page ASKS FIRST, because the opt-in is what makes every later link
+// seamless and a countdown would hurry people past it.
+test('installed, not opted in: the page asks first and waits; Just this once goes to the article', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await page.locator('#ask-panel').isVisible()).toBe(true);
+  expect(await page.locator('#count-panel').isVisible()).toBe(false);
+  expect(await page.locator('#turn-on').textContent()).toBe('Turn on & read');
+  await page.clock.runFor(10000);
+  expect(page.url()).toContain('/read'); // no countdown runs while it asks
+  await page.locator('#once').click();
   await page.waitForURL(ARTICLE);
   expect(await page.title()).toBe('The article');
-  // replace(), not a push: Back must not land on the read page and forward again.
+  await page.goBack(); // replace(), not a push
+  expect(page.url()).not.toContain('/read');
+});
+
+test('Not now is remembered on this device: from then on the page counts down to the article', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  await page.locator('#not-now').click();
+  expect(await page.locator('#count-panel').isVisible()).toBe(true);
+  expect(await countdown(page)).toBe('Opening in 3…');
+  expect(await page.locator('#key-hint').isVisible()).toBe(true);
+  await page.clock.runFor(3000);
+  await page.waitForURL(ARTICLE);
+  // The next shared link skips the question.
+  const next = await context.newPage();
+  await next.clock.install();
+  await next.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(next)).toBe('installed');
+  expect(await next.locator('#ask-panel').isVisible()).toBe(false);
+  expect(await countdown(next)).toBe('Opening in 3…');
+});
+
+test('counting down: Cancel stops it, and Read it as a book goes at once', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await context.addInitScript(() => { try { localStorage.setItem('obr-shared-optin-declined', '1'); } catch (e) { /* */ } });
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  await page.locator('#cancel').click();
+  await page.clock.runFor(10000);
+  expect(page.url()).toContain('/read');
+  expect(await countdown(page)).toContain('Stopped');
+  await page.locator('#read-now').click();
+  await page.waitForURL(ARTICLE);
+});
+
+test('counting down: Just open the article leaves at once, and Back skips the page', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await context.addInitScript(() => { try { localStorage.setItem('obr-shared-optin-declined', '1'); } catch (e) { /* */ } });
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  await page.locator('#plain').click();
+  await page.waitForURL(ARTICLE);
+  await page.goBack(); // a pushed entry would land on the page and count down again
+  expect(page.url()).not.toContain('/read');
+});
+
+// Opted in = Open Book holds the all-sites grant. The native prompt cannot be answered headless,
+// so the worker's grant check is stubbed, and invokeReader is captured: what is under test is
+// the hand-off (the worker arms on THIS tab, the page replaces itself with the article, and the
+// worker opens the reader when it loads, as a 'shared' open, not the sentinel's 'auto').
+test('opted in: the page leaves for the article and the worker opens the reader there', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    chrome.permissions.contains = (_need, cb) => cb(true);
+    globalThis.__invoked = null;
+    invokeReader = (...args) => { globalThis.__invoked = args; };
+  });
+  await seeTabUrls(serviceWorker);
+  await loading(serviceWorker, ARTICLE);
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await page.locator('#ask-panel').isVisible()).toBe(false); // already opted in: no question
+  expect(await page.locator('#auto-hint').isVisible()).toBe(true);
+  expect(await page.locator('#key-hint').isVisible()).toBe(false);
+  expect(await page.locator('#optin').isVisible()).toBe(false);
+  await page.clock.runFor(3000);
+  await page.waitForURL(ARTICLE);
+  await expect.poll(() => serviceWorker.evaluate(() => globalThis.__invoked)).not.toBeNull();
+  const [tabId, url, mode, opts] = await serviceWorker.evaluate(() => globalThis.__invoked);
+  expect({ tabIsNumber: typeof tabId === 'number', url, mode, opts })
+    .toEqual({ tabIsNumber: true, url: ARTICLE, mode: 'text', opts: { auto: true, trigger: 'shared', incognito: false } });
+  // The page replaced itself: Back skips it rather than counting down and handing off again.
+  await serviceWorker.evaluate(() => { globalThis.__invoked = null; });
   await page.goBack();
   expect(page.url()).not.toContain('/read');
+  await page.waitForTimeout(500);
+  expect(await serviceWorker.evaluate(() => globalThis.__invoked)).toBeNull();
+});
+
+// Any site could embed the share page in a frame. Neither the page (it does not talk to Open
+// Book from a frame) nor the worker (it answers top-level pages only) may let that frame steer
+// the tab around it. The second frame skips the page's own check and messages the worker
+// directly, so the worker's guard is tested on its own.
+test('a framed share page cannot steer its host tab, even by messaging the worker directly', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    chrome.permissions.contains = (_need, cb) => cb(true);
+    globalThis.__invoked = null;
+    invokeReader = (...args) => { globalThis.__invoked = args; };
+  });
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await context.route('https://openbook.peach-studio.com/raw-frame', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: `<script>chrome.runtime.sendMessage(${JSON.stringify(extensionId)}, { type: 'obr-open-shared', url: ${JSON.stringify(ARTICLE)} },
+      (r) => { void chrome.runtime.lastError; document.title = 'answered:' + JSON.stringify(r || null); });</script>`,
+  }));
+  const host = 'https://evil.test/host';
+  await context.route(host, (route) => route.fulfill({ contentType: 'text/html', body:
+    `<iframe src="${readLink(LIVE_READ, ARTICLE, 'Story')}"></iframe><iframe id="raw" src="https://openbook.peach-studio.com/raw-frame"></iframe>` }));
+  await serviceWorker.evaluate(() => {
+    globalThis.__framedPings = 0;
+    chrome.runtime.onMessageExternal.addListener((m, sender) => {
+      if (m && m.type === 'obr-ping' && sender.frameId !== 0) globalThis.__framedPings += 1;
+    });
+  });
+  await page.goto(host);
+  await page.waitForTimeout(4500); // past the page's countdown, had it started
+  // The page's own guard: framed, it never even asks (the worker's guard is tested below).
+  expect(await serviceWorker.evaluate(() => globalThis.__framedPings)).toBe(0);
+  expect(page.url()).toBe(host);
+  expect(await serviceWorker.evaluate(() => globalThis.__invoked)).toBeNull();
+  const framed = page.frames().find((f) => f.url().includes('/read'));
+  expect(await framed.evaluate(() => document.body.dataset.state)).toBe('missing');
+  // The worker did not answer the raw frame at all (no handler ran for it).
+  const raw = page.frames().find((f) => f.url().includes('/raw-frame'));
+  expect(await raw.evaluate(() => document.title)).toBe('answered:null');
+});
+
+// The hand-off is one shot and opens the reader ONLY on the shared article: a friend who goes
+// somewhere else first (Back, a typed address, a redirect to another host) must not find the
+// reader opened, unasked, on a page nobody shared. The arm is sent from the top-level share page
+// by hand, so the next load is under the test's control.
+test('the hand-off opens the reader only on the shared article, and any other page disarms it', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    chrome.permissions.contains = (_need, cb) => cb(true);
+    globalThis.__invoked = [];
+    invokeReader = (...args) => { globalThis.__invoked.push(args); };
+  });
+  await seeTabUrls(serviceWorker);
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await context.route('https://other.test/**', (route) => route.fulfill({ body: '<title>Elsewhere</title>', contentType: 'text/html' }));
+  await context.route('https://www.example.com/**', (route) =>
+    route.fulfill({ body: '<title>The article</title><p>story</p>', contentType: 'text/html' }));
+  const arm = () => page.evaluate(({ id, url }) => new Promise((res) =>
+    chrome.runtime.sendMessage(id, { type: 'obr-open-shared', url }, (r) => { void chrome.runtime.lastError; res(r); })),
+  { id: extensionId, url: ARTICLE });
+  await page.clock.install(); // hold every countdown: the loads below are the test's
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await arm()).toEqual({ armed: true });
+  await loading(serviceWorker, 'https://other.test/');
+  await page.goto('https://other.test/'); // went somewhere else first
+  await loading(serviceWorker, ARTICLE);
+  await page.goto(ARTICLE);               // ...then to the article: the arm is already spent
+  await page.waitForTimeout(500);
+  expect(await serviceWorker.evaluate(() => globalThis.__invoked.length)).toBe(0);
+  // Same article on www. and a different query: that IS the shared article.
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await arm()).toEqual({ armed: true });
+  await loading(serviceWorker, 'https://www.example.com/story?id=8');
+  await page.goto('https://www.example.com/story?id=8');
+  await expect.poll(() => serviceWorker.evaluate(() => globalThis.__invoked.length)).toBe(1);
+});
+
+test('without a grant covering the article, the worker declines and the page goes there itself', async ({ context, page, extensionId, serviceWorker }) => {
+  // The ping says opted in, but the arm finds no grant for this article: the worker does not
+  // arm, no reader opens, and the page still reaches the article.
+  await serviceWorker.evaluate(() => {
+    chrome.permissions.contains = (need, cb) => cb(need.origins[0] === '<all_urls>');
+    globalThis.__invoked = null;
+    invokeReader = (...args) => { globalThis.__invoked = args; };
+  });
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  await page.locator('#read-now').click();
+  await page.waitForURL(ARTICLE);
+  await page.waitForTimeout(500);
+  expect(await serviceWorker.evaluate(() => globalThis.__invoked)).toBeNull();
+});
+
+test('Turn on & read opens the permission page for all sites, and waits', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  const popup = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html'));
+  await page.locator('#turn-on').click();
+  const perm = await popup;
+  await perm.waitForLoadState();
+  const q = new URL(perm.url()).searchParams;
+  expect({ origins: q.get('origins'), reason: q.get('reason') }).toEqual({ origins: '<all_urls>', reason: 'shared-links' });
+  expect(await perm.locator('#why').textContent()).toContain('shared');
+  expect(await perm.locator('#origins').isVisible()).toBe(false); // no ZIP-style site list
+  expect(await page.locator('#ask-status').textContent()).toContain('Waiting for your answer');
+  await page.waitForTimeout(3500); // nothing leaves on its own while the answer is pending
+  expect(page.url()).toContain('/read');
+  // The Open Book window closed without a grant; focus comes back here: that is a no.
+  await perm.close();
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect.poll(() => page.locator('#ask-status').textContent()).toContain('Not turned on');
+});
+
+// The native prompt cannot be answered headless, so the grant is flipped in the worker the way
+// Chrome would after "Allow": the page must notice it on its own and go straight on into
+// reading mode, through the worker.
+test('once the grant lands, Turn on & read goes straight into reading mode', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    globalThis.__granted = false;
+    chrome.permissions.contains = (_need, cb) => cb(globalThis.__granted);
+    globalThis.__invoked = null;
+    invokeReader = (...args) => { globalThis.__invoked = args; };
+  });
+  await seeTabUrls(serviceWorker);
+  await loading(serviceWorker, ARTICLE);
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  const popup = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html'));
+  await page.locator('#turn-on').click();
+  await (await popup).close();
+  await serviceWorker.evaluate(() => { globalThis.__granted = true; });
+  await page.clock.runFor(1600); // the page's re-check
+  await page.waitForURL(ARTICLE);
+  await expect.poll(() => serviceWorker.evaluate(() => globalThis.__invoked)).not.toBeNull();
+  const [, url, mode, opts] = await serviceWorker.evaluate(() => globalThis.__invoked);
+  expect({ url, mode, trigger: opts.trigger }).toEqual({ url: ARTICLE, mode: 'text', trigger: 'shared' });
 });
 
 test('the same page on any other origin cannot reach Open Book', async ({ context, page, extensionId }) => {

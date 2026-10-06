@@ -102,13 +102,36 @@ The colophon is a fixed-height page in the column strip, so it carries `overflow
 window) would otherwise spill into a column the spread count never sees and push The End off the top.
 `site/read.html` is the landing page: it shows the title as text under the destination's real domain
 (anyone can craft one of these links, so the page must never vouch for the destination), refuses
-anything but http(s), and asks the extension whether it is installed — `externally_connectable`
-admits only `https://openbook.peach-studio.com/*`, and `onMessageExternal` in `background.js` answers
-only `obr-ping` from that origin with a bare `{ok:true}`. Not installed → Add Open Book (store link
-tagged `utm_medium=article`) or Just open the article; installed → straight on to the article
-(`location.replace`, so Back does not land on the page and forward again), as a plain link would —
-the friend's one remaining step is Alt+B or the icon, or none on a site they enabled auto-open for;
-a phone, tablet or non-Chromium browser (no `window.chrome`) → the article plus "Open
+anything but http(s), and talks to the extension — `externally_connectable` admits only
+`https://openbook.peach-studio.com/*`, and `onMessageExternal` in `background.js` answers three
+messages from that origin: `obr-ping` → `{ok, autoRead}` (autoRead = the all-sites grant is held,
+which IS the opt-in below — read from permission state, never stored), `obr-allow-shared-links` →
+the permission page asks for all sites (`reason=shared-links`; no answer is sent back, the worker
+dies across the prompt, so the page re-pings), and `obr-open-shared` → only with a grant covering the
+article, the worker arms a one-shot listener on the SENDER's tab and the page then replaces itself
+with the article (so Back skips the share page); when that tab finishes a load that is not on the
+share site, the worker opens the reader as a `'shared'` open (not `'auto'`: the auto chip's Stop has
+no rule to stop). All three answer TOP-LEVEL pages only (`sender.frameId === 0`), and read.html does
+not talk to the extension from inside a frame: framed by another site, it could otherwise steer the
+host tab through the worker. The load listener is one shot: the first non-share-site page the tab
+finishes is opened only if it IS the shared article (`sameArticle`: host without `www.`, path without
+a trailing slash), and anything else — Back, a typed address, a redirect to another host — disarms
+it. It lives only from the hand-off to that load or 60s — a permanent `tabs.onUpdated` would wake the
+worker on every navigation in every tab — and because a listener still armed when Chrome evicts the
+worker stays registered with Chrome, the worker adds and removes a no-op one at startup, which clears
+it. A worker evicted before a very slow page loads leaves the friend pressing Alt+B. Not installed → step 1 Add Open Book (new tab,
+store link tagged `utm_medium=article`), step 2 Read it as a book greyed until Open Book is detected,
+Just open the article, and "Already have Open Book? Open the article and press Alt+B" (catches
+versions that predate the check); installed and opted in → a 3-second countdown straight into
+reading mode; installed, not opted in → the page ASKS FIRST (no countdown: it would hurry people past
+the one choice that makes every later link seamless): Turn on & read (opt in, then straight into
+reading mode once the grant shows up) inside the opt-in card; OUTSIDE it, Just open the article (with
+the Alt+B hint — kept out of the card so it cannot read as "reading mode, just this once"), and
+Don't ask again, remembered in this origin's localStorage (`obr-shared-optin-declined`), after which the page just
+counts down to the article with the Alt+B hint and a small opt-in link. Every exit is
+`location.replace`, so Back does not land on the page again. The page reaches an unpacked build through
+a developer switch, `localStorage['obr-ext-id']` (only an Open Book build answers this origin, so it
+can reach nothing else); a phone, tablet or non-Chromium browser (no `window.chrome`) → the article plus "Open
 Book runs in Chrome on a computer", since a store button there is a dead end. The page declares NO
 `og:url`: Facebook and LinkedIn point a post at og:url, which would drop the `#…` and with it the
 article (pinned in `landing.spec.js`). `site/404.html` is the fallback when the read page itself is
