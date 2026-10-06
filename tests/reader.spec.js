@@ -3264,10 +3264,10 @@ test.describe('back-cover colophon', () => {
     })).toBe(true);
   });
 
-  // "Share this article" hands its link to the system share sheet when there is one, else to
-  // the clipboard. What each was HANDED is the outcome under test, so both are stubbed; a sheet
-  // `outcome` of 'none' is a Chrome without one (Linux), any other non-'ok' value is the error
-  // name the sheet rejects with.
+  // "Share this article" opens a menu: the system share sheet (only where Chrome has one), Copy
+  // link, Email, and one link per network. What the sheet or the clipboard was HANDED is the
+  // outcome under test, so both are stubbed; a sheet `outcome` of 'none' is a Chrome without one
+  // (Linux), any other non-'ok' value is the error name the sheet rejects with.
   function stubShareSheet(page, outcome) {
     return page.evaluate((outcome) => {
       Object.defineProperty(navigator, 'share', { configurable: true, value: outcome === 'none'
@@ -3284,12 +3284,32 @@ test.describe('back-cover colophon', () => {
   });
   const clickShareArticle = (page) => page.evaluate(() =>
     document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-share-article').click());
+  // The open menu, as the user sees it: null while closed.
+  const shareMenu = (page) => page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const m = root.querySelector('.obr-share-menu');
+    if (!m || m.hidden) return null;
+    return {
+      actions: [...m.querySelectorAll('.obr-share-row > button, .obr-share-row > a')].map((el) => el.textContent),
+      targets: [...m.querySelectorAll('.obr-share-icons a')].map((a) => ({
+        id: a.dataset.target, href: a.href, target: a.target, rel: a.rel, label: a.getAttribute('aria-label'),
+        hasIcon: !!a.querySelector('svg path[d]') })),
+      mail: m.querySelector('.obr-share-row a[href^="mailto:"]')?.getAttribute('href') || null,
+      mailTarget: m.querySelector('.obr-share-row a[href^="mailto:"]')?.target || null,
+      expanded: root.querySelector('.obr-colo-share-article').getAttribute('aria-expanded'),
+    };
+  });
+  const clickMenuAction = (page, label) => page.evaluate((label) => {
+    const m = document.getElementById('obr-host').shadowRoot.querySelector('.obr-share-menu');
+    [...m.querySelectorAll('.obr-share-row > button')].find((b) => b.textContent === label).click();
+  }, label);
   // The read link's parts, decoded the way site/read.html decodes them.
   const readLinkParts = (link) => {
     const u = new URL(link);
     const p = new URLSearchParams(u.hash.slice(1));
     return { page: u.origin + u.pathname + u.search, u: p.get('u'), t: p.get('t') };
   };
+  const READ_PAGE = 'https://openbook.peach-studio.com/read';
 
   test('Share this article stays on the back cover after the ask retired', async ({ page }) => {
     await resetEngagement(page);
@@ -3301,60 +3321,163 @@ test.describe('back-cover colophon', () => {
     expect(await shareArticleBtn(page)).toBe('Share this article');
   });
 
-  test('Share this article hands the share sheet a read link to this article, and retires nothing', async ({ page }) => {
+  test('Share this article opens a menu: the sheet only where Chrome has one, then copy, email and six networks', async ({ page }) => {
     await resetEngagement(page);
-    await stubShareSheet(page, 'ok');
+    await stubShareSheet(page, 'none');
     await openReader(page);
-    const title = (await readState(page)).title;
     await page.keyboard.press('End');
+    expect(await shareMenu(page)).toBeNull();
     await clickShareArticle(page);
-    await expect.poll(() => page.evaluate(() => !!window.__shared)).toBe(true);
-    const shared = await page.evaluate(() => window.__shared);
-    expect(readLinkParts(shared.url)).toEqual({
-      page: 'https://openbook.peach-studio.com/read', u: page.url().split('#')[0], t: title,
-    });
-    expect(shared.title).toBe(title);
+    const m = await shareMenu(page);
+    expect(m.actions).toEqual(['Copy link', 'Email']);
+    expect(m.targets.map((t) => t.id)).toEqual(['x', 'facebook', 'linkedin', 'reddit', 'whatsapp', 'telegram']);
+    expect(m.targets.every((t) => t.hasIcon && t.label && t.target === '_blank' && t.rel === 'noopener noreferrer')).toBe(true);
+    expect(m.expanded).toBe('true');
+    await clickShareArticle(page); // the button toggles it shut
+    expect(await shareMenu(page)).toBeNull();
+    // With a system share sheet, it leads the menu.
+    await stubShareSheet(page, 'ok');
+    await clickShareArticle(page);
+    expect((await shareMenu(page)).actions).toEqual(['Share via…', 'Copy link', 'Email']);
     // A tool, not an ask: the ask line is still up and nothing was retired.
     expect(await engageDone(page)).toBe(false);
     expect(await page.evaluate(() =>
       document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-ask').hidden)).toBe(false);
   });
 
-  test('closing the share sheet copies nothing; without a sheet the link is copied', async ({ page }) => {
+  test('every share link carries the read link to this article, plus the title where the platform takes one', async ({ page }) => {
+    await resetEngagement(page);
+    await stubShareSheet(page, 'none');
+    await openReader(page);
+    const title = (await readState(page)).title;
+    await page.keyboard.press('End');
+    await clickShareArticle(page);
+    const m = await shareMenu(page);
+    const read = (link) => readLinkParts(link);
+    const want = { page: READ_PAGE, u: page.url().split('#')[0], t: title };
+    const q = Object.fromEntries(m.targets.map((t) => [t.id, new URL(t.href).searchParams]));
+    expect(read(q.x.get('url'))).toEqual(want);
+    expect(q.x.get('text')).toBe(title);
+    expect(read(q.facebook.get('u'))).toEqual(want);
+    expect(read(q.linkedin.get('url'))).toEqual(want);
+    expect(read(q.reddit.get('url'))).toEqual(want);
+    expect(q.reddit.get('title')).toBe(title);
+    const [waTitle, waLink] = q.whatsapp.get('text').split('\n');
+    expect({ waTitle, link: read(waLink) }).toEqual({ waTitle: title, link: want });
+    expect(read(q.telegram.get('url'))).toEqual(want);
+    expect(q.telegram.get('text')).toBe(title);
+    expect(m.mailTarget).toBe('_blank'); // a web mail handler must not navigate the article away
+    const mail = new URLSearchParams(m.mail.slice('mailto:?'.length));
+    expect(mail.get('subject')).toBe(title);
+    expect(read(mail.get('body').split('\n')[1])).toEqual(want);
+  });
+
+  test('regional networks follow the UI language', async ({ page }) => {
+    const ids = await page.evaluate(() => Object.fromEntries(
+      ['en-US', 'ja', 'JA-JP', 'zh-CN', 'zh-TW', 'zh-HK', 'ru-RU', 'ko', ''].map((l) =>
+        [l, OBR.shareTargetsFor(l).map((t) => t.id).filter((id) => ['line', 'weibo', 'vk'].includes(id))])));
+    expect(ids).toEqual({
+      'en-US': [], ja: ['line'], 'JA-JP': ['line'], 'zh-CN': ['weibo'], 'zh-TW': ['line'],
+      'zh-HK': [], 'ru-RU': ['vk'], ko: [], '': [],
+    });
+  });
+
+  test('Escape closes the share menu, not the reader; turning away from the back cover closes it too', async ({ page }) => {
+    await resetEngagement(page);
+    await stubShareSheet(page, 'none');
+    await openReader(page);
+    await page.keyboard.press('End');
+    await clickShareArticle(page);
+    await page.keyboard.press('Escape');
+    expect(await shareMenu(page)).toBeNull();
+    expect((await readState(page)).hostDisplay).not.toBe('none');
+    await clickShareArticle(page);
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('End');
+    expect(await shareMenu(page)).toBeNull();
+    // ...so the next Escape is the reader's again.
+    await page.keyboard.press('Escape');
+    expect((await readState(page)).hostDisplay).toBe('none');
+  });
+
+  // The back cover is one fixed-height page inside the column strip. Content taller than that
+  // page (the open menu on a narrow, short window under a lifetime line) must not spill into a
+  // column the spread count never sees, nor push The End above the page top. Real overflow
+  // needs a contrived window, so a tall block in the open menu stands in for it.
+  test('content overflowing the back cover adds no page and keeps The End on the page', async ({ page }) => {
+    await resetEngagement(page);
+    await stubShareSheet(page, 'none');
+    await openReader(page);
+    await page.keyboard.press('End');
+    const measure = () => page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const colo = root.querySelector('.obr-colophon').getBoundingClientRect();
+      return { width: root.querySelector('.obr-pages').scrollWidth, pageHeight: colo.height,
+        finOnPage: root.querySelector('.obr-colo-fin').getBoundingClientRect().top >= colo.top - 1 };
+    });
+    const before = await measure();
+    await clickShareArticle(page);
+    await page.evaluate(() => {
+      const filler = document.createElement('div');
+      filler.style.height = '2000px';
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-share-menu').append(filler);
+    });
+    const after = await measure();
+    expect(after.pageHeight).toBeLessThan(2000); // the stand-in really is taller than the page
+    expect({ width: after.width, finOnPage: after.finOnPage }).toEqual({ width: before.width, finOnPage: true });
+  });
+
+  test('Share via… hands the sheet the read link; closing the sheet copies nothing, failing copies', async ({ page }) => {
     await resetEngagement(page);
     await stubShareSheet(page, 'AbortError');
     await stubClipboard(page, true);
     await openReader(page);
+    const title = (await readState(page)).title;
     await page.keyboard.press('End');
     await clickShareArticle(page);
+    await clickMenuAction(page, 'Share via…');
     await expect.poll(() => page.evaluate(() => !!window.__shared)).toBe(true);
+    const shared = await page.evaluate(() => window.__shared);
+    expect(readLinkParts(shared.url)).toEqual({ page: READ_PAGE, u: page.url().split('#')[0], t: title });
+    expect(shared.title).toBe(title);
+    expect(await shareMenu(page)).toBeNull(); // choosing closes the menu
     await page.waitForTimeout(200); // the rejection has settled; a fallback copy would have run
     expect(await page.evaluate(() => window.__copied || null)).toBeNull();
     expect(await shareArticleBtn(page)).toBe('Share this article');
 
-    // A sheet that fails for any other reason (a site's permissions policy) falls back to copying.
+    // A sheet that fails for any other reason (a site's permissions policy) falls back to
+    // copying, confirmed on the back-cover button since the menu has closed.
     await stubShareSheet(page, 'NotAllowedError');
     await clickShareArticle(page);
+    await clickMenuAction(page, 'Share via…');
     await expect.poll(() => page.evaluate(() => window.__copied || '')).toMatch(/^https:\/\/openbook\.peach-studio\.com\/read#u=/);
-
-    await page.evaluate(() => { window.__copied = null; });
-    await stubShareSheet(page, 'none');
-    await clickShareArticle(page);
-    await expect.poll(() => page.evaluate(() => window.__copied || '')).toMatch(/^https:\/\/openbook\.peach-studio\.com\/read#u=/);
-    expect(readLinkParts(await page.evaluate(() => window.__copied)).u).toBe(page.url().split('#')[0]);
     expect(await shareArticleBtn(page)).toContain('Link copied');
   });
 
-  test('Share this article hands over the link, selected, when the page refuses the clipboard', async ({ page }) => {
+  test('Copy link copies the read link and confirms in place', async ({ page }) => {
+    await resetEngagement(page);
+    await stubShareSheet(page, 'none');
+    await stubClipboard(page, true);
+    await openReader(page);
+    await page.keyboard.press('End');
+    await clickShareArticle(page);
+    await clickMenuAction(page, 'Copy link');
+    await expect.poll(() => page.evaluate(() => window.__copied || '')).toMatch(/^https:\/\/openbook\.peach-studio\.com\/read#u=/);
+    expect(readLinkParts(await page.evaluate(() => window.__copied)).u).toBe(page.url().split('#')[0]);
+    expect((await shareMenu(page)).actions).toContain('✓ Link copied — paste it to a friend');
+  });
+
+  test('Copy link hands over the link, selected, when the page refuses the clipboard', async ({ page }) => {
     await resetEngagement(page);
     await stubShareSheet(page, 'none');
     await stubClipboard(page, false);
     await openReader(page);
     await page.keyboard.press('End');
     await clickShareArticle(page);
+    await clickMenuAction(page, 'Copy link');
     await expect.poll(() => page.evaluate(() => {
       const root = document.getElementById('obr-host').shadowRoot;
-      const f = root.querySelector('.obr-colophon > .obr-share-fallback .obr-share-field');
+      const f = root.querySelector('.obr-share-menu .obr-share-fallback .obr-share-field');
       if (!f) return null;
       return { link: f.value.startsWith('https://openbook.peach-studio.com/read#u='), focused: root.activeElement === f,
         selected: f.selectionStart === 0 && f.selectionEnd === f.value.length };

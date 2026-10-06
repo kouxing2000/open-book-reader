@@ -81,9 +81,22 @@ it survives the ask's retirement and retires nothing) shares THE ARTICLE, throug
 `openbook.peach-studio.com/read#u=<address>&t=<title>`: tracking tags (`utm_*`, `fbclid`, `gclid`…)
 and the page's own fragment are dropped, the title is capped at 200 characters, and both ride after
 `#`, which a browser never sends to a server — the site host learns nothing of what is shared. The
-button hands the link to `navigator.share` (the OS share sheet: Windows, ChromeOS, macOS from Chrome
-128), else copies it, else shows it in the selected fallback field. Closing the sheet rejects with
-`AbortError`, which is an answer, not a failure: it must NOT fall through to copying.
+button opens a menu — a disclosure IN the colophon's flow, not a positioned popover, so it covers
+nothing; it is rebuilt on each open and closed by its button, any choice, Escape (before the
+reader's own Escape), turning away from the colophon spread, and every re-render. Its rows:
+**Share via…** (`navigator.share`, the OS sheet: Windows, ChromeOS, macOS from Chrome 128 — shown
+only where it exists), **Copy link** (else the selected fallback field), **Email** (a `mailto:`),
+then one link per `OBR.SHARE_TARGETS` network (`settings.js`): each platform's own public share URL,
+taking only the fields that platform honours (Facebook and LinkedIn take the URL alone), the title
+wherever one is accepted because every read link unfurls as the same generic card. Regional networks
+join by UI language through `OBR.shareTargetsFor` (LINE for ja / zh-TW, Weibo for zh-CN, VK for ru).
+Icons are Simple Icons paths (CC0), drawn in `currentColor`. No share-button library: they all look
+for their buttons in the main document, which cannot see into the reader's shadow root, and editing
+one would break the vendored-code rule; the URL table is the part worth having. Closing the sheet
+rejects with `AbortError`, which is an answer, not a failure: it must NOT fall through to copying.
+The colophon is a fixed-height page in the column strip, so it carries `overflow: clip` and
+`justify-content: safe center`: content taller than the page (the open menu on a narrow, short
+window) would otherwise spill into a column the spread count never sees and push The End off the top.
 `site/read.html` is the landing page: it shows the title as text under the destination's real domain
 (anyone can craft one of these links, so the page must never vouch for the destination), refuses
 anything but http(s), and asks the extension whether it is installed — `externally_connectable`

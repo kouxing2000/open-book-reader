@@ -1688,7 +1688,11 @@
     const shareArt = document.createElement('button');
     shareArt.className = 'obr-colo-share-article';
     shareArt.textContent = OBR.t('shareArticle');
-    shareArt.addEventListener('click', () => shareArticle(shareArt));
+    shareArt.setAttribute('aria-expanded', 'false');
+    shareArt.addEventListener('click', toggleShareMenu);
+    const shareMenu = document.createElement('div');
+    shareMenu.className = 'obr-share-menu';
+    shareMenu.hidden = true;
     const ask = document.createElement('div');
     ask.className = 'obr-colo-ask';
     ask.hidden = true;
@@ -1737,21 +1741,83 @@
     x.title = OBR.t('colophonAskDismiss');
     x.addEventListener('click', recordAskDone);
     ask.append(q, rate, document.createTextNode('·'), share, document.createTextNode('·'), fb, x);
-    el.append(fin, stats, life, shareArt, ask);
+    el.append(fin, stats, life, shareArt, shareMenu, ask);
     colophonEl = el;
     return el;
   }
 
-  // The system share sheet where Chrome has one (Windows, ChromeOS, macOS 128+), else the
-  // clipboard, else the link in a selected field in place of the button. Closing the sheet
-  // is an answer (AbortError), not a failure, so it falls through to nothing; any other
-  // rejection — a site's permissions policy, a share already open — falls back to copying.
-  function shareArticle(btn) {
+  // The share menu: a disclosure in the colophon's flow under its button, so there is nothing to
+  // position and nothing it covers. Rebuilt on every open so the link is current. Closed by its
+  // button, any choice, Escape, turning away from the colophon spread (syncColophonView), and
+  // every content render, which rebuilds the colophon.
+  function closeShareMenu() {
+    const menu = colophonEl && colophonEl.querySelector('.obr-share-menu');
+    if (!menu || menu.hidden) return false;
+    menu.hidden = true;
+    const btn = colophonEl.querySelector('.obr-colo-share-article');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    return true;
+  }
+
+  function toggleShareMenu() {
+    if (closeShareMenu() || !colophonEl) return;
+    const menu = colophonEl.querySelector('.obr-share-menu');
     const link = OBR.sharedArticleLink(OBR.shareableArticleUrl(location.href), articleTitle);
-    const copy = () => OBR.copyText(link).then((ok) => {
+    const row = document.createElement('div');
+    row.className = 'obr-share-row';
+    if (typeof navigator.share === 'function') {
+      const sheet = document.createElement('button');
+      sheet.textContent = OBR.t('shareVia');
+      sheet.addEventListener('click', () => { closeShareMenu(); shareViaSheet(link); });
+      row.append(sheet);
+    }
+    const copy = document.createElement('button');
+    copy.textContent = OBR.t('shareCopyLink');
+    copy.addEventListener('click', () => copyLink(link, copy, 'shareCopyLink'));
+    const mail = document.createElement('a');
+    mail.href = 'mailto:?subject=' + encodeURIComponent(articleTitle)
+      + '&body=' + encodeURIComponent(articleTitle ? articleTitle + '\n' + link : link);
+    mail.textContent = OBR.t('shareEmail');
+    // A new tab: with a web mail handler (Gmail), a mailto in this tab would navigate the
+    // article away under the reader.
+    mail.target = '_blank';
+    mail.rel = 'noopener noreferrer';
+    mail.addEventListener('click', closeShareMenu);
+    row.append(copy, mail);
+    const icons = document.createElement('div');
+    icons.className = 'obr-share-icons';
+    let lang = '';
+    try { lang = chrome.i18n.getUILanguage(); } catch (e) { /* the base set */ }
+    for (const tg of OBR.shareTargetsFor(lang)) {
+      const a = document.createElement('a');
+      a.href = tg.href(link, articleTitle);
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.title = tg.label;
+      a.setAttribute('aria-label', tg.label);
+      a.dataset.target = tg.id;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', tg.path);
+      svg.append(path);
+      a.append(svg);
+      a.addEventListener('click', closeShareMenu);
+      icons.append(a);
+    }
+    menu.replaceChildren(row, icons);
+    menu.hidden = false;
+    colophonEl.querySelector('.obr-colo-share-article').setAttribute('aria-expanded', 'true');
+  }
+
+  // The clipboard, else the link in a selected field in place of `btn`. `label` is the key
+  // the button goes back to after its 3s confirmation.
+  function copyLink(link, btn, label) {
+    OBR.copyText(link).then((ok) => {
       if (ok) {
         btn.textContent = OBR.t('shareArticleCopied');
-        setTimeout(() => { btn.textContent = OBR.t('shareArticle'); }, 3000);
+        setTimeout(() => { btn.textContent = OBR.t(label); }, 3000);
         return;
       }
       const box = OBR._shareFallback(link);
@@ -1759,9 +1825,18 @@
       // preventScroll: the pages strip is transformed, and a focus scroll would shear it.
       box.querySelector('.obr-share-field').focus({ preventScroll: true });
     });
-    if (typeof navigator.share !== 'function') { copy(); return; }
-    navigator.share({ title: articleTitle, text: articleTitle, url: link })
-      .catch((e) => { if (!e || e.name !== 'AbortError') copy(); });
+  }
+
+  // The system share sheet (Windows, ChromeOS, macOS 128+). Closing it is an answer
+  // (AbortError), not a failure, so nothing follows; any other rejection — a site's
+  // permissions policy, a share already open — falls back to copying, confirmed on the
+  // colophon's button since the menu has closed.
+  function shareViaSheet(link) {
+    navigator.share({ title: articleTitle, text: articleTitle, url: link }).catch((e) => {
+      if (e && e.name === 'AbortError') return;
+      const btn = colophonEl && colophonEl.querySelector('.obr-colo-share-article');
+      if (btn) copyLink(link, btn, 'shareArticle');
+    });
   }
 
   function updateColophonContent() {
@@ -1815,7 +1890,7 @@
   // when the ask line actually rendered — a stats-only page is not an ask).
   function syncColophonView() {
     if (!colophonEl || !colophonEl.isConnected) return;
-    if (currentSpread !== totalSpreads - 1) return; // the colophon column is always last
+    if (currentSpread !== totalSpreads - 1) { closeShareMenu(); return; } // the colophon column is always last
     updateColophonContent();
     if (flipSnapping) {
       // Arriving via an animated page turn: the turn overlay's clones render fully opaque,
@@ -3528,7 +3603,7 @@
         e.preventDefault(); e.stopPropagation(); flip(-1); break;
       case 'Home': e.preventDefault(); jumpTo(0); break;
       case 'End': e.preventDefault(); jumpTo(totalSpreads - 1); break;
-      case 'Escape': e.preventDefault(); e.stopPropagation(); if (openPop) closePop(); else close(); break;
+      case 'Escape': e.preventDefault(); e.stopPropagation(); if (openPop) closePop(); else if (!closeShareMenu()) close(); break;
       case '+': case '=': if (mod) break; e.preventDefault(); changeFont(1); break;
       case '-': case '_': if (mod) break; e.preventDefault(); changeFont(-1); break;
       case 't': case 'T': if (mod) break; e.preventDefault(); cycleTheme(); break;
