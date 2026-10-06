@@ -68,12 +68,36 @@ options footers) copies ONE ready-to-paste invite, built by `OBR.shareInvite(sur
 unfurls as a 1200x630 picture in chat apps (`site/index.html` Open Graph tags, `site/img/og.jpg`)
 and its Add to Chrome button turns the `ref` into `utm_source=share&utm_medium=<surface>` —
 readable in the Web Store dashboard (Analytics > Impressions), the ONLY place a share is counted.
-The extension sends nothing; the link carries only which button made it, never the page being
-read. The in-page surfaces confirm in place for 3s; when the page refuses the async clipboard
+The extension sends nothing; the invite carries only which button made it, never the page being
+read (that is what "Share this article" below is for). The in-page surfaces confirm in place for 3s; when the page refuses the async clipboard
 (plain http, a site's permissions policy) they show the invite in a selected read-only field
 (`OBR._shareFallback`) instead — `clipboardWrite` is deliberately not requested, as a new
 permission would hit the Web Store's permission gate for a corner case. The extension pages
 always have the clipboard (`OBR.bindShareLink`, `prompt()` as the fallback).
+
+**Share this article** (a permanent button on the colophon, under the stats — a tool, not an ask:
+it survives the ask's retirement and retires nothing) shares THE ARTICLE, through our site.
+`OBR.sharedArticleLink(OBR.shareableArticleUrl(location.href), title)` builds
+`openbook.peach-studio.com/read#u=<address>&t=<title>`: tracking tags (`utm_*`, `fbclid`, `gclid`…)
+and the page's own fragment are dropped, the title is capped at 200 characters, and both ride after
+`#`, which a browser never sends to a server — the site host learns nothing of what is shared. The
+button hands the link to `navigator.share` (the OS share sheet: Windows, ChromeOS, macOS from Chrome
+128), else copies it, else shows it in the selected fallback field. Closing the sheet rejects with
+`AbortError`, which is an answer, not a failure: it must NOT fall through to copying.
+`site/read.html` is the landing page: it shows the title as text under the destination's real domain
+(anyone can craft one of these links, so the page must never vouch for the destination), refuses
+anything but http(s), and asks the extension whether it is installed — `externally_connectable`
+admits only `https://openbook.peach-studio.com/*`, and `onMessageExternal` in `background.js` answers
+only `obr-ping` from that origin with a bare `{ok:true}`. Not installed → Add Open Book (store link
+tagged `utm_medium=article`) or Just open the article; installed → "open it, then press Alt+B" and
+one button; a phone, tablet or non-Chromium browser (no `window.chrome`) → the article plus "Open
+Book runs in Chrome on a computer", since a store button there is a dead end. The page declares NO
+`og:url`: Facebook and LinkedIn point a post at og:url, which would drop the `#…` and with it the
+article (pinned in `landing.spec.js`). There is deliberately no
+auto-open of the reader: Chrome grants a page to an extension only on the user's own gesture
+(icon, shortcut, context menu, omnibox), and a message from a website is not one. A page loaded
+before the install cannot reach the new extension, so after "not installed" the page reloads when the
+tab becomes visible again — the way back from the store tab is what turns it into the guide.
 
 ## Feedback pipeline
 

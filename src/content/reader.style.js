@@ -382,6 +382,15 @@
       font: inherit; font-size: .9em; opacity: .7; text-decoration: underline;
       text-underline-offset: 2px; padding: 0 2px; }
     .obr-colo-hide:hover { opacity: 1; }
+    /* Share this article: text-styled like the hide link, one step louder than the ask. */
+    .obr-colo-share-article { margin-top: .9em; border: none; background: transparent;
+      cursor: pointer; color: inherit; font-family: ${FONT_STACKS.sans}; font-size: 13px;
+      opacity: .72; text-decoration: underline; text-underline-offset: 3px; padding: 2px 4px; }
+    .obr-colo-share-article:hover { opacity: 1; }
+    .obr-colophon > .obr-share-fallback { margin-top: .9em; width: 86%; display: flex;
+      flex-direction: column; gap: 4px; font-family: ${FONT_STACKS.sans}; font-size: 12px; }
+    .obr-colophon > .obr-share-fallback .obr-share-field { font: inherit; color: inherit;
+      background: transparent; border: 1px solid currentColor; border-radius: 4px; padding: 3px 6px; }
     /* The ask is the QUIETEST thing on the page — a footer line, not a banner. */
     .obr-colo-ask { position: absolute; left: 0; right: 0; bottom: 14px; padding: 0 12px;
       display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 7px;

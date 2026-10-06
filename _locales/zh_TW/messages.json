@@ -159,6 +159,8 @@
   "shareInvite": { "message": "我最近用 Open Book Reader 看文章，它能把任何網頁變成一本安靜的雙頁書。Chrome 免費擴充功能：$URL$", "placeholders": { "url": { "content": "$1" } } },
   "shareCopied": { "message": "✓ 邀請已複製，貼上傳給朋友吧" },
   "shareCopyManual": { "message": "按 Ctrl+C（Mac 為 ⌘C）複製，再傳給朋友" },
+  "shareArticle": { "message": "分享這篇文章" },
+  "shareArticleCopied": { "message": "✓ 連結已複製，貼上傳給朋友吧" },
   "statMinutes": { "message": "$M$ 分鐘", "placeholders": { "m": { "content": "$1" } } },
   "statHours": { "message": "$H$ 小時", "placeholders": { "h": { "content": "$1" } } },
   "optColophon": { "message": "文末封底頁" },

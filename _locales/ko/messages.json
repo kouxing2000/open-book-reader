@@ -159,6 +159,8 @@
   "shareInvite": { "message": "요즘 Open Book Reader로 기사를 읽어요. 어떤 웹페이지든 차분한 두 페이지 책으로 바꿔 줘요. Chrome용 무료: $URL$", "placeholders": { "url": { "content": "$1" } } },
   "shareCopied": { "message": "✓ 초대 문구를 복사했어요. 친구에게 붙여넣어 보내세요" },
   "shareCopyManual": { "message": "Ctrl+C(Mac은 ⌘C)로 복사한 뒤 친구에게 보내세요" },
+  "shareArticle": { "message": "이 글 공유하기" },
+  "shareArticleCopied": { "message": "✓ 링크를 복사했어요. 친구에게 붙여넣어 보내세요" },
   "statMinutes": { "message": "$M$분", "placeholders": { "m": { "content": "$1" } } },
   "statHours": { "message": "$H$시간", "placeholders": { "h": { "content": "$1" } } },
   "optColophon": { "message": "기사 끝 페이지" },

@@ -159,6 +159,8 @@
   "shareInvite": { "message": "我最近用 Open Book Reader 看文章，它能把任何网页变成一本安静的双页书。Chrome 免费扩展：$URL$", "placeholders": { "url": { "content": "$1" } } },
   "shareCopied": { "message": "✓ 邀请已复制，粘贴发给朋友吧" },
   "shareCopyManual": { "message": "按 Ctrl+C（Mac 上为 ⌘C）复制，再发给朋友" },
+  "shareArticle": { "message": "分享这篇文章" },
+  "shareArticleCopied": { "message": "✓ 链接已复制，粘贴发给朋友吧" },
   "statMinutes": { "message": "$M$ 分钟", "placeholders": { "m": { "content": "$1" } } },
   "statHours": { "message": "$H$ 小时", "placeholders": { "h": { "content": "$1" } } },
   "optColophon": { "message": "文末封底页" },

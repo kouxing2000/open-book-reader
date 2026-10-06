@@ -38,6 +38,10 @@ test('Chrome loads the shipped manifest (name + minimal install permissions)', a
   // downloads + <all_urls> are OPTIONAL, requested on first image download.
   expect(manifest.optional_permissions).toEqual(['downloads']);
   expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
+  // The only web page that can message the extension is the share landing page (site/read.html
+  // asks "installed?"). Not a permission, so no install warning — but every origin added here
+  // can talk to the worker, so it stays exactly this one.
+  expect(manifest.externally_connectable).toEqual({ matches: ['https://openbook.peach-studio.com/*'] });
   // Auto-open ships with ZERO manifest delta: per-site origin requests ride the
   // optional <all_urls> above, registerContentScripts + persistAcrossSessions are
   // Chrome 96+ — a bump past 102 (once proposed off a wrong claim; 105 is Firefox's

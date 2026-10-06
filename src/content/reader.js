@@ -107,7 +107,7 @@
   let readMs = 0, lastTick = 0;
   let priorMs = 0, priorFin = false;
   let engageState = null, lifetimeStats = null;
-  let colophonEl = null, articleWords = 0, contentColumns = 1;
+  let colophonEl = null, articleWords = 0, articleTitle = '', contentColumns = 1;
   let finishedThisOpen = false, colSeenThisOpen = false;
   let openedByAuto = false;   // this session was sentinel-opened (tempers the ask moment)
   let flipSnapping = false;   // inside beginFlip's synchronous snap (see syncColophonView)
@@ -1595,6 +1595,7 @@
     // colophon element died with pagesEl.innerHTML above; per-article time/finish state
     // belongs to the previous content (open() re-fills it from the saved entry).
     articleWords = article ? countWords(article.textContent) : 0;
+    articleTitle = title;
     colophonEl = null;
     finishedThisOpen = false;
     priorMs = 0;
@@ -1683,6 +1684,11 @@
       life.hidden = true;
     });
     life.append(lifeText, document.createTextNode(' '), lifeHide);
+    // A tool, not an ask: it stays when the ask line retires, and using it retires nothing.
+    const shareArt = document.createElement('button');
+    shareArt.className = 'obr-colo-share-article';
+    shareArt.textContent = OBR.t('shareArticle');
+    shareArt.addEventListener('click', () => shareArticle(shareArt));
     const ask = document.createElement('div');
     ask.className = 'obr-colo-ask';
     ask.hidden = true;
@@ -1718,7 +1724,7 @@
           ask.append(done);
           setTimeout(() => { ask.hidden = true; }, 3000);
         } else {
-          const box = OBR._shareFallback('end');
+          const box = OBR._shareFallback(OBR.shareInvite('end'));
           ask.append(box);
           // preventScroll: the pages strip is transformed, and a focus scroll would shear it.
           box.querySelector('.obr-share-field').focus({ preventScroll: true });
@@ -1731,9 +1737,31 @@
     x.title = OBR.t('colophonAskDismiss');
     x.addEventListener('click', recordAskDone);
     ask.append(q, rate, document.createTextNode('·'), share, document.createTextNode('·'), fb, x);
-    el.append(fin, stats, life, ask);
+    el.append(fin, stats, life, shareArt, ask);
     colophonEl = el;
     return el;
+  }
+
+  // The system share sheet where Chrome has one (Windows, ChromeOS, macOS 128+), else the
+  // clipboard, else the link in a selected field in place of the button. Closing the sheet
+  // is an answer (AbortError), not a failure, so it falls through to nothing; any other
+  // rejection — a site's permissions policy, a share already open — falls back to copying.
+  function shareArticle(btn) {
+    const link = OBR.sharedArticleLink(OBR.shareableArticleUrl(location.href), articleTitle);
+    const copy = () => OBR.copyText(link).then((ok) => {
+      if (ok) {
+        btn.textContent = OBR.t('shareArticleCopied');
+        setTimeout(() => { btn.textContent = OBR.t('shareArticle'); }, 3000);
+        return;
+      }
+      const box = OBR._shareFallback(link);
+      btn.replaceWith(box);
+      // preventScroll: the pages strip is transformed, and a focus scroll would shear it.
+      box.querySelector('.obr-share-field').focus({ preventScroll: true });
+    });
+    if (typeof navigator.share !== 'function') { copy(); return; }
+    navigator.share({ title: articleTitle, text: articleTitle, url: link })
+      .catch((e) => { if (!e || e.name !== 'AbortError') copy(); });
   }
 
   function updateColophonContent() {

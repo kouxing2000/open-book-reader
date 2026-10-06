@@ -161,6 +161,8 @@
   "shareInvite": { "message": "I’ve been reading articles with Open Book Reader — it turns any web page into a calm two-page book. Free for Chrome: $URL$", "placeholders": { "url": { "content": "$1" } } },
   "shareCopied": { "message": "✓ Invite copied — paste it to a friend" },
   "shareCopyManual": { "message": "Press Ctrl+C (⌘C on Mac) to copy, then paste it to a friend" },
+  "shareArticle": { "message": "Share this article" },
+  "shareArticleCopied": { "message": "✓ Link copied — paste it to a friend" },
   "statMinutes": { "message": "$M$ min", "placeholders": { "m": { "content": "$1" } } },
   "statHours": { "message": "$H$ h", "placeholders": { "h": { "content": "$1" } } },
   "optColophon": { "message": "End-of-article page" },

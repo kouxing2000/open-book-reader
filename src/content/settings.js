@@ -97,25 +97,46 @@
   OBR.SITE_URL = 'https://openbook.peach-studio.com/';
   OBR.shareInvite = (surface) => OBR.t('shareInvite', [OBR.SITE_URL + '?ref=share-' + surface]);
 
-  // Resolves true once the invite is on the clipboard, false when the page refused it
+  // Resolves true once the text is on the clipboard, false when the page refused it
   // (a plain-http page has no async clipboard; a site's permissions policy can block it).
   // writeText runs synchronously inside the caller's click, where the user activation is.
-  OBR.copyInvite = function (surface) {
+  OBR.copyText = function (text) {
     try {
-      return navigator.clipboard.writeText(OBR.shareInvite(surface)).then(() => true, () => false);
+      return navigator.clipboard.writeText(text).then(() => true, () => false);
     } catch (e) { return Promise.resolve(false); }
   };
+  OBR.copyInvite = (surface) => OBR.copyText(OBR.shareInvite(surface));
 
-  // The in-page fallback when copyInvite resolves false: the invite in a read-only field over
-  // a visible "press Ctrl+C" line. Callers insert it, then focus `.obr-share-field`, which
-  // selects the whole invite. Asking for the clipboardWrite permission instead would trip the
+  /* "Share this article" (the colophon's permanent button) — unlike the invite, this link
+   * DOES carry the page being read, because sending it is the whole point. It opens
+   * site/read.html, which shows a friend without Open Book how to get it and a friend with it
+   * how to open the article in it. The address and title ride after '#', which a browser
+   * never sends to a server, so the site learns nothing of what is shared. Tracking tags and
+   * the page's own #fragment are dropped: they are the sharer's click trail, not the article. */
+  OBR.READ_URL = OBR.SITE_URL + 'read';
+  const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|igshid|_ga|_gl)$/i;
+  OBR.shareableArticleUrl = function (href) {
+    const u = new URL(href);
+    u.hash = '';
+    const drop = [...u.searchParams.keys()].filter((k) => TRACKING_PARAM.test(k));
+    drop.forEach((k) => u.searchParams.delete(k)); // re-serializes the query only when needed
+    return u.href;
+  };
+  OBR.sharedArticleLink = function (url, title) {
+    const t = String(title || '').trim().slice(0, 200);
+    return OBR.READ_URL + '#u=' + encodeURIComponent(url) + (t ? '&t=' + encodeURIComponent(t) : '');
+  };
+
+  // The in-page fallback when a copy resolves false: the text in a read-only field over a
+  // visible "press Ctrl+C" line. Callers insert it, then focus `.obr-share-field`, which
+  // selects all of it. Asking for the clipboardWrite permission instead would trip the
   // Web Store's permission gate for a corner case.
-  OBR._shareFallback = function (surface) {
+  OBR._shareFallback = function (text) {
     const box = document.createElement('span');
     box.className = 'obr-share-fallback';
     const f = document.createElement('input');
     f.readOnly = true;
-    f.value = OBR.shareInvite(surface);
+    f.value = text;
     f.className = 'obr-share-field';
     f.setAttribute('aria-label', OBR.t('shareCopyManual'));
     f.addEventListener('focus', () => f.select());
@@ -1485,7 +1506,7 @@
             chip.append(msg);
             engageChipTimer = setTimeout(gone, 3000);
           } else {
-            const box = OBR._shareFallback('chip');
+            const box = OBR._shareFallback(OBR.shareInvite('chip'));
             chip.append(box, x);
             box.querySelector('.obr-share-field').focus();
             engageChipTimer = setTimeout(gone, 30000);

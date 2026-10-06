@@ -1195,6 +1195,16 @@ chrome.windows.onRemoved.addListener((id) => {
   if (id === permWindowId) resolveWaiters();
 });
 
+// The ONE thing a web page can ask: site/read.html (where every "Share this article" link
+// lands) checks whether Open Book is installed, to show either how to get it or how to open
+// the shared article in it. externally_connectable admits only that site, the origin is
+// re-checked here, and the answer is a bare yes — no version, no settings, no state.
+const SITE_ORIGIN = new URL(OBR.SITE_URL).origin;
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  if (!sender || sender.origin !== SITE_ORIGIN || !msg || msg.type !== 'obr-ping') return;
+  sendResponse({ ok: true });
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg.type !== 'string') return;
 

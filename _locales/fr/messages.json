@@ -159,6 +159,8 @@
   "shareInvite": { "message": "Je lis mes articles avec Open Book Reader : il transforme n’importe quelle page web en un livre apaisé sur deux pages. Gratuit pour Chrome : $URL$", "placeholders": { "url": { "content": "$1" } } },
   "shareCopied": { "message": "✓ Invitation copiée — envoyez-la à un ami" },
   "shareCopyManual": { "message": "Appuyez sur Ctrl+C (⌘C sur Mac) pour copier l’invitation, puis envoyez-la à un ami" },
+  "shareArticle": { "message": "Partager cet article" },
+  "shareArticleCopied": { "message": "✓ Lien copié — envoyez-le à un ami" },
   "statMinutes": { "message": "$M$ min", "placeholders": { "m": { "content": "$1" } } },
   "statHours": { "message": "$H$ h", "placeholders": { "h": { "content": "$1" } } },
   "optColophon": { "message": "Page de fin d’article" },

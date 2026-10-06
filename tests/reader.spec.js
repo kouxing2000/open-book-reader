@@ -3264,6 +3264,127 @@ test.describe('back-cover colophon', () => {
     })).toBe(true);
   });
 
+  // "Share this article" hands its link to the system share sheet when there is one, else to
+  // the clipboard. What each was HANDED is the outcome under test, so both are stubbed; a sheet
+  // `outcome` of 'none' is a Chrome without one (Linux), any other non-'ok' value is the error
+  // name the sheet rejects with.
+  function stubShareSheet(page, outcome) {
+    return page.evaluate((outcome) => {
+      Object.defineProperty(navigator, 'share', { configurable: true, value: outcome === 'none'
+        ? undefined
+        : (data) => {
+          window.__shared = data;
+          return outcome === 'ok' ? Promise.resolve() : Promise.reject(new DOMException('stub', outcome));
+        } });
+    }, outcome);
+  }
+  const shareArticleBtn = (page) => page.evaluate(() => {
+    const b = document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-share-article');
+    return b ? b.textContent : null;
+  });
+  const clickShareArticle = (page) => page.evaluate(() =>
+    document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-share-article').click());
+  // The read link's parts, decoded the way site/read.html decodes them.
+  const readLinkParts = (link) => {
+    const u = new URL(link);
+    const p = new URLSearchParams(u.hash.slice(1));
+    return { page: u.origin + u.pathname + u.search, u: p.get('u'), t: p.get('t') };
+  };
+
+  test('Share this article stays on the back cover after the ask retired', async ({ page }) => {
+    await resetEngagement(page);
+    await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({ obr_engage: { done: true } }, res)));
+    await openReader(page);
+    await page.keyboard.press('End');
+    expect(await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-ask').hidden)).toBe(true);
+    expect(await shareArticleBtn(page)).toBe('Share this article');
+  });
+
+  test('Share this article hands the share sheet a read link to this article, and retires nothing', async ({ page }) => {
+    await resetEngagement(page);
+    await stubShareSheet(page, 'ok');
+    await openReader(page);
+    const title = (await readState(page)).title;
+    await page.keyboard.press('End');
+    await clickShareArticle(page);
+    await expect.poll(() => page.evaluate(() => !!window.__shared)).toBe(true);
+    const shared = await page.evaluate(() => window.__shared);
+    expect(readLinkParts(shared.url)).toEqual({
+      page: 'https://openbook.peach-studio.com/read', u: page.url().split('#')[0], t: title,
+    });
+    expect(shared.title).toBe(title);
+    // A tool, not an ask: the ask line is still up and nothing was retired.
+    expect(await engageDone(page)).toBe(false);
+    expect(await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-ask').hidden)).toBe(false);
+  });
+
+  test('closing the share sheet copies nothing; without a sheet the link is copied', async ({ page }) => {
+    await resetEngagement(page);
+    await stubShareSheet(page, 'AbortError');
+    await stubClipboard(page, true);
+    await openReader(page);
+    await page.keyboard.press('End');
+    await clickShareArticle(page);
+    await expect.poll(() => page.evaluate(() => !!window.__shared)).toBe(true);
+    await page.waitForTimeout(200); // the rejection has settled; a fallback copy would have run
+    expect(await page.evaluate(() => window.__copied || null)).toBeNull();
+    expect(await shareArticleBtn(page)).toBe('Share this article');
+
+    // A sheet that fails for any other reason (a site's permissions policy) falls back to copying.
+    await stubShareSheet(page, 'NotAllowedError');
+    await clickShareArticle(page);
+    await expect.poll(() => page.evaluate(() => window.__copied || '')).toMatch(/^https:\/\/openbook\.peach-studio\.com\/read#u=/);
+
+    await page.evaluate(() => { window.__copied = null; });
+    await stubShareSheet(page, 'none');
+    await clickShareArticle(page);
+    await expect.poll(() => page.evaluate(() => window.__copied || '')).toMatch(/^https:\/\/openbook\.peach-studio\.com\/read#u=/);
+    expect(readLinkParts(await page.evaluate(() => window.__copied)).u).toBe(page.url().split('#')[0]);
+    expect(await shareArticleBtn(page)).toContain('Link copied');
+  });
+
+  test('Share this article hands over the link, selected, when the page refuses the clipboard', async ({ page }) => {
+    await resetEngagement(page);
+    await stubShareSheet(page, 'none');
+    await stubClipboard(page, false);
+    await openReader(page);
+    await page.keyboard.press('End');
+    await clickShareArticle(page);
+    await expect.poll(() => page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const f = root.querySelector('.obr-colophon > .obr-share-fallback .obr-share-field');
+      if (!f) return null;
+      return { link: f.value.startsWith('https://openbook.peach-studio.com/read#u='), focused: root.activeElement === f,
+        selected: f.selectionStart === 0 && f.selectionEnd === f.value.length };
+    })).toEqual({ link: true, focused: true, selected: true });
+  });
+
+  test('the shared address drops tracking tags and the fragment; the read link round-trips', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      const clean = OBR.shareableArticleUrl;
+      const long = 'x'.repeat(300);
+      const link = OBR.sharedArticleLink('https://a.test/p?q=1&r=a%26b#sec', 'Rock & Roll #1: 长 = 100%');
+      const p = new URLSearchParams(new URL(link).hash.slice(1));
+      return {
+        tracking: clean('https://a.test/story?id=7&utm_source=x&UTM_Medium=y&fbclid=f&gclid=g#frag'),
+        untouched: clean('https://a.test/story?b=2&a=1'),
+        onlyTracking: clean('https://a.test/story?utm_campaign=z'),
+        u: p.get('u'), t: p.get('t'),
+        capped: new URLSearchParams(new URL(OBR.sharedArticleLink('https://a.test/', long)).hash.slice(1)).get('t').length,
+        noTitle: OBR.sharedArticleLink('https://a.test/', '  '),
+      };
+    });
+    expect(r.tracking).toBe('https://a.test/story?id=7');
+    expect(r.untouched).toBe('https://a.test/story?b=2&a=1');
+    expect(r.onlyTracking).toBe('https://a.test/story');
+    expect(r.u).toBe('https://a.test/p?q=1&r=a%26b#sec');
+    expect(r.t).toBe('Rock & Roll #1: 长 = 100%');
+    expect(r.capped).toBe(200);
+    expect(r.noTitle).toBe('https://openbook.peach-studio.com/read#u=' + encodeURIComponent('https://a.test/'));
+  });
+
   test('colophon setting off = the article just ends', async ({ page }) => {
     await resetEngagement(page);
     await page.evaluate(() => OBR.saveSettings({ colophon: false }));

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>A shared article — Open Book Reader</title>
+  <meta name="robots" content="noindex" />
+  <!-- The article site learns nothing about where its visitor came from. -->
+  <meta name="referrer" content="no-referrer" />
+  <link rel="icon" href="img/icon.png" />
+  <!-- Every "Share this article" link lands here, so this is the preview a chat app shows.
+       It is the same for every article: the article rides after '#', which unfurlers never fetch.
+       No og:url: Facebook and LinkedIn point a post at og:url, which would drop the '#…' and with
+       it the article. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Open Book Reader" />
+  <meta property="og:title" content="A friend shared an article with you" />
+  <meta property="og:description" content="Open it, or read it as a calm two-page book with Open Book Reader, free for Chrome." />
+  <meta property="og:image" content="https://openbook.peach-studio.com/img/og.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="A cluttered news article beside the same article as a clean two-page book" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    :root {
+      --paper: #faf8f3; --ink: #2b2722; --muted: #6b6358;
+      --accent: #8a5a2b; --card: #fffdf8; --line: #e7ded0;
+      --shadow: 0 10px 30px rgba(60, 45, 25, .12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: system-ui, sans-serif; color: var(--ink); line-height: 1.55;
+      background:
+        radial-gradient(1200px 500px at 50% -200px, #fff 0%, transparent 70%),
+        linear-gradient(160deg, #f3ead9 0%, var(--paper) 45%, #efe6d6 100%);
+      background-attachment: fixed; min-height: 100vh;
+    }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 56px 16px 40px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+      padding: 30px 28px; box-shadow: var(--shadow);
+    }
+    .kicker { margin: 0; font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    h1 {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-size: clamp(24px, 5vw, 30px); line-height: 1.25; margin: 10px 0 6px;
+      overflow-wrap: anywhere;
+    }
+    .from { margin: 0 0 22px; color: var(--muted); font-size: 15px; }
+    .from b { color: var(--ink); }
+    .state { display: none; }
+    body[data-state="missing"] .state[data-for="missing"],
+    body[data-state="unsupported"] .state[data-for="unsupported"],
+    body[data-state="installed"] .state[data-for="installed"],
+    body[data-state="bad"] .state[data-for="bad"] { display: block; }
+    body[data-state="bad"] .shared { display: none; }
+    .actions { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 16px; }
+    .btn {
+      display: block; text-align: center; font-size: 15px; font-weight: 600;
+      text-decoration: none; padding: 12px 18px; border-radius: 10px; border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost { background: var(--card); color: var(--ink); border-color: var(--line); }
+    .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .steps { margin: 0 0 16px; padding-left: 22px; font-size: 16px; }
+    .steps li { margin-bottom: 6px; }
+    kbd {
+      font-family: inherit; font-size: .92em; padding: 1px 6px; border-radius: 5px;
+      border: 1px solid var(--line); background: var(--paper);
+    }
+    .note { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+    .dest { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+    footer { text-align: center; margin-top: 22px; color: var(--muted); font-size: 13px; }
+    footer a { color: var(--accent); }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper:#17150f; --ink:#ece4d4; --muted:#9a9081; --accent:#d9a566; --card:#211e16; --line:#34301f; }
+      body { background: linear-gradient(160deg, #1b1810 0%, var(--paper) 50%, #14110b 100%); }
+      .btn-primary { color: #17150f; }
+    }
+  </style>
+</head>
+<body data-state="checking">
+  <div class="wrap">
+    <main class="card">
+      <div class="shared">
+        <p class="kicker">A friend shared an article</p>
+        <h1 id="title"></h1>
+        <p class="from">from <b id="domain"></b></p>
+      </div>
+
+      <div class="state" data-for="missing">
+        <div class="actions">
+          <a class="btn btn-primary" id="store-link" target="_blank" rel="noopener">Read it as a book: add Open Book (free)</a>
+          <a class="btn btn-ghost article-link">Just open the article</a>
+        </div>
+        <p class="note">Open Book turns any web page into a calm two-page book you flip with the arrow keys. It is free, open source, and collects nothing.</p>
+        <p class="note">Added it? Come back to this tab to open the article in it.</p>
+      </div>
+
+      <div class="state" data-for="unsupported">
+        <div class="actions">
+          <a class="btn btn-primary article-link">Open the article</a>
+        </div>
+        <p class="note">Open Book is a Chrome extension for computers. To read this as a calm two-page book, open this link in Chrome on a computer.</p>
+      </div>
+
+      <div class="state" data-for="installed">
+        <ol class="steps">
+          <li>Open the article.</li>
+          <li>Press <kbd>Alt+B</kbd> (<kbd>⌥B</kbd> on a Mac), or click the Open Book icon.</li>
+        </ol>
+        <div class="actions">
+          <a class="btn btn-primary article-link">Open the article →</a>
+        </div>
+        <p class="note">Icon not in your toolbar? Pin it from the puzzle-piece menu next to the address bar.</p>
+      </div>
+
+      <div class="state" data-for="bad">
+        <p>This share link is incomplete, so there is no article to open.</p>
+        <div class="actions"><a class="btn btn-ghost" href="/">About Open Book Reader</a></div>
+      </div>
+
+      <p class="dest shared">Link goes to: <span id="dest"></span></p>
+      <noscript><p class="note">This page needs JavaScript to read the shared link.</p></noscript>
+    </main>
+    <footer><a href="/">Open Book Reader</a> · <a href="privacy.html">Privacy</a></footer>
+  </div>
+  <script>
+    (function () {
+      var EXT_ID = 'kmcomogkbbdjhfocbncljmgcnfmaljca';
+      var show = function (s) { document.body.setAttribute('data-state', s); };
+
+      // The shared article rides after '#' (u = address, t = title), which a browser never
+      // sends to a server: this script is the only thing that reads it, and it stays in the tab.
+      var p = new URLSearchParams(location.hash.slice(1));
+      var url = null;
+      try {
+        url = new URL(p.get('u') || '');
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') url = null;
+      } catch (e) { url = null; }
+      if (!url) { show('bad'); return; }
+
+      // Anyone can write a title and an address into one of these links, so the title is
+      // plain text and the destination's real domain sits under it: this page must never
+      // vouch for where a link goes.
+      var host = url.hostname.replace(/^www\./, '');
+      document.getElementById('title').textContent = (p.get('t') || '').trim().slice(0, 200) || host;
+      document.getElementById('domain').textContent = host;
+      document.getElementById('dest').textContent = url.href;
+      var links = document.querySelectorAll('.article-link');
+      for (var i = 0; i < links.length; i++) links[i].href = url.href;
+      document.getElementById('store-link').href =
+        'https://chromewebstore.google.com/detail/' + EXT_ID + '?utm_source=share&utm_medium=article';
+
+      // Phones, tablets and non-Chromium browsers (no window.chrome: Firefox, Safari) cannot run a
+      // Chrome extension, so the store button would be a dead end. An iPad reports itself as a Mac
+      // with touch.
+      var uaData = navigator.userAgentData;
+      if (!window.chrome || (uaData && uaData.mobile) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+          (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)) {
+        show('unsupported');
+        return;
+      }
+
+      detect(function (installed) {
+        show(installed ? 'installed' : 'missing');
+        if (installed) return;
+        // A page loaded before the extension was installed cannot reach it, so coming back
+        // from the store tab reloads: the fresh document asks again.
+        var wasHidden = false;
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'hidden') wasHidden = true;
+          else if (wasHidden) location.reload();
+        });
+      });
+
+      // Installed = Open Book answers the ping (src/background.js, onMessageExternal). Not
+      // installed shows up at once, as no chrome.runtime here or as lastError when another
+      // extension exposes it; the timeout only covers a worker that never answers.
+      function detect(cb) {
+        var done = false;
+        var finish = function (v) { if (!done) { done = true; cb(v); } };
+        var rt = window.chrome && window.chrome.runtime;
+        if (!rt || typeof rt.sendMessage !== 'function') { finish(false); return; }
+        setTimeout(function () { finish(false); }, 3000);
+        try {
+          rt.sendMessage(EXT_ID, { type: 'obr-ping' }, function (res) {
+            void rt.lastError;
+            finish(!!(res && res.ok));
+          });
+        } catch (e) { finish(false); }
+      }
+    })();
+  </script>
+</body>
+</html>

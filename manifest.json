@@ -16,6 +16,9 @@
   "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
   "optional_permissions": ["downloads"],
   "optional_host_permissions": ["<all_urls>"],
+  "externally_connectable": {
+    "matches": ["https://openbook.peach-studio.com/*"]
+  },
   "background": {
     "service_worker": "src/background.js"
   },

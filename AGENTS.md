@@ -45,6 +45,7 @@ see `docs/auto-open-spec.md`).
 
 ```
 manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage, contextMenus)
+                     + externally_connectable for ONE origin (site/read.html's "installed?" ping)
                      `name` is the ASO-tuned store title (long, keyword-bearing); `short_name`
                      ("Open Book", ≤12 chars) is what Chrome shows where space is tight —
                      toolbar, chrome://extensions. Keep it, or the store title leaks into the UI.
@@ -72,7 +73,8 @@ src/blocked.html     "not available on this page" (paired blocked.js) — armed 
 src/permission.html  optional-permission request page (paired permission.js) — SW opens it on first
                      download so the user's click can call chrome.permissions.request
 icons/               16/32/48/128
-site/                landing + privacy + uninstall survey (GitHub Pages; NOT shipped in the extension)
+site/                landing + privacy + uninstall survey + read.html, where every "Share this article"
+                     link lands (GitHub Pages; NOT shipped in the extension)
 tools/feedback-form/ Google Apps Script backend: the shared feedback collector form + bridge (NOT shipped)
 ```
 
@@ -207,6 +209,10 @@ npx playwright install chromium                # first run only
   (`#url=`) is sent only for a site reason and only with "Report the problem site" checked.
 - `landing.spec.js` — `site/index.html`, where every Share invite points: `?ref=share-<surface>`
   becomes store UTM tags on Add to Chrome (and nothing else does), and the link-preview image exists.
+  Also `site/read.html`, where every "Share this article" link lands: its states, the crafted-title
+  and non-http guards, and the real install check end to end — the page is ROUTED to the production
+  origin with the unpacked build's extension id swapped in, since `externally_connectable` answers
+  only that origin and only the store id is in the file.
 - **The suite shells out to `unzip`** (`packaging.spec.js` for `dist.zip`, `gallery.spec.js` for
   `OBR._buildZip`'s bytes). **Extracting and listing are different oracles — the ZIP test needs
   both.** A STORE entry extracts from its LOCAL header, so `unzip -t`/`-p`/`-x` are clean on an

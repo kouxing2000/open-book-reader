@@ -159,6 +159,8 @@
   "shareInvite": { "message": "Читаю статьи в Open Book Reader — он превращает любую веб-страницу в спокойную двухстраничную книгу. Бесплатно для Chrome: $URL$", "placeholders": { "url": { "content": "$1" } } },
   "shareCopied": { "message": "✓ Приглашение скопировано — вставьте его в чат с другом" },
   "shareCopyManual": { "message": "Нажмите Ctrl+C (⌘C на Mac), чтобы скопировать, и отправьте другу" },
+  "shareArticle": { "message": "Поделиться статьёй" },
+  "shareArticleCopied": { "message": "✓ Ссылка скопирована — вставьте её в чат с другом" },
   "statMinutes": { "message": "$M$ мин", "placeholders": { "m": { "content": "$1" } } },
   "statHours": { "message": "$H$ ч", "placeholders": { "h": { "content": "$1" } } },
   "optColophon": { "message": "Страница в конце статьи" },

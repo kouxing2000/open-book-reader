@@ -50,7 +50,7 @@
     <div class="top"><a href="index.html">← Open Book Reader</a></div>
     <div class="card">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 2026-09-24</p>
+      <p class="updated">Last updated: 2026-10-05</p>
 
       <p class="lead">Open Book Reader is designed to be completely private.</p>
 
@@ -69,6 +69,9 @@
       </ul>
       <p>Either way, the message includes the address of the page you were on (path only — any <code>?query</code> string is stripped), the mode you were using, and the extension version, so the bug can be reproduced. Your email address is included only if you choose to add it for a reply. <strong>The extension never transmits anything on its own</strong> — nothing leaves your device until you submit.</p>
 
+      <h2 id="sharing">Sharing an article</h2>
+      <p>The back-cover page at the end of an article has a <strong>Share this article</strong> button. It hands your system's share sheet (or, where there is none, your clipboard) a link to <code>openbook.peach-studio.com/read</code> carrying the article's address and title. Tracking tags such as <code>utm_</code> parameters are removed first. Nothing is sent anywhere until <em>you</em> send that link to someone.</p>
+      <p>The address and title sit after a <code>#</code> in the link, the part a browser never sends to a server, so opening the link does not tell the developer or the site's host what was shared. The page then asks the Open Book extension in your friend's browser, if they have it, whether it is installed, so it can show either how to get it or how to open the article in it. Only that site can ask, the extension answers only "yes", and the answer stays in their browser.</p>
       <h2 id="uninstall">Uninstall survey</h2>
       <p>When you remove the extension, your browser may open a short one-question page asking why you left. Answering is optional and works exactly like reporting a problem (a Google Form, or your own email — only what you choose to send). You <strong>may</strong> add your email if you'd like us to let you know when we fix what made you leave, but it is <strong>never required</strong> — leave it blank and the feedback stays anonymous.</p>
       <p>So that "it didn't work on this site" can be fixed, the survey link your browser holds carries the address of the <strong>last page you opened (or tried to open) the reader on</strong> (path only — any <code>?query</code> string is stripped; never a page from an incognito window). It sits after a <code>#</code> in the link, the part a browser never sends to a server, so opening the survey does not send that address to any server. If you say the extension didn't work on a site or grabbed the wrong text, the survey shows that address in a <strong>Report the problem site</strong> box, checked and editable. It is sent only if you submit the form with the box checked — uncheck it, or clear it, and it is left out. Like any page you open, the survey tab's address — that page address included — is recorded in your browser history.</p>
