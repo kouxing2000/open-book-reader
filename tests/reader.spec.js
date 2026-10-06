@@ -672,6 +672,21 @@ test('the Aa theme segments set light and dark, and the choice persists', async 
   expect(stored.theme).toBe('dark');
 });
 
+test('the topbar theme button cycles paper → light → dark → paper in one tap each', async ({ page }) => {
+  await openReader(page);
+  const storedTheme = () => page.evaluate(
+    () => new Promise((r) => chrome.storage.sync.get('obr_settings', (d) => r((d.obr_settings || {}).theme)))
+  );
+  const seen = [(await readState(page)).theme];
+  for (let i = 0; i < 3; i++) {
+    await clickInReader(page, '.obr-controls [data-act="theme"]');
+    const shown = (await readState(page)).theme;
+    expect(await storedTheme()).toBe(shown); // each tap persists, not just repaints
+    seen.push(shown);
+  }
+  expect(seen).toEqual(['paper', 'light', 'dark', 'paper']);
+});
+
 test('the Auto theme follows the OS color scheme and flips live', async ({ page }) => {
   // Select Auto with the OS in dark mode, then open: 'auto' resolves to the concrete
   // 'dark' overlay class (we never persist the concrete theme — only resolve at render).
@@ -1739,7 +1754,8 @@ test.describe('width-aware toolbar (Aa + ⋯)', () => {
       where[act] = at.join('+') || 'none';
     }
     const close = sr.querySelector('[data-act="close"]').getBoundingClientRect();
-    return { where, overflow: bar.scrollWidth > bar.clientWidth + 1,
+    return { where, theme: shown(sr.querySelector('.obr-controls [data-act="theme"]')),
+      overflow: bar.scrollWidth > bar.clientWidth + 1,
       barH: bar.getBoundingClientRect().height, closeRight: close.right, vw: innerWidth };
   });
   const popOpen = (page, name) => page.evaluate((n) =>
@@ -1768,6 +1784,7 @@ test.describe('width-aware toolbar (Aa + ⋯)', () => {
       for (const [act, at] of Object.entries(p.where)) expect(at, `${act} at ${width}px`).toMatch(/^(inline|menu)$/);
       expect(p.where.settings).toBe('menu');
       expect(p.where.report).toBe('menu');
+      expect(p.theme, `theme button shown at ${width}px`).toBe(true); // never folded away
       // The inline actions are a priority PREFIX: never Print inline while Pick is in the menu.
       const inline = FLEX.map((a) => p.where[a] === 'inline');
       expect(inline.indexOf(false) < 0 || inline.slice(inline.indexOf(false)).every((x) => !x), `prefix at ${width}px`).toBe(true);

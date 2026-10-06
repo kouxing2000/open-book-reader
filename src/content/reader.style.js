@@ -66,6 +66,8 @@
       font-size: 13px; background: rgba(0,0,0,.10); color: inherit; font-family: inherit;
       white-space: nowrap; flex: none;
     }
+    .obr-icon-btn { display: inline-flex; align-items: center; justify-content: center; padding: 6px 9px; }
+    .obr-icon-btn svg { width: 15px; height: 15px; }
     .obr-btn:hover { background: rgba(0,0,0,.22); }
     .obr-overlay.dark .obr-btn { background: rgba(255,255,255,.12); }
     .obr-overlay.dark .obr-btn:hover { background: rgba(255,255,255,.24); }

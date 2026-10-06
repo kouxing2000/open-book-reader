@@ -20,6 +20,7 @@
   "readerBtnMarkdownTitle": { "message": "Markdown(.md) 파일로 저장" },
   "readerBtnMarkdownLabel": { "message": "⤓ Markdown" },
   "readerBtnTypeTitle": { "message": "글자 크기, 테마, 단 (+ − T)" },
+  "readerBtnThemeTitle": { "message": "테마 전환 (T)" },
   "readerBtnMoreTitle": { "message": "더 보기" },
   "readerBtnReportTitle": { "message": "이 페이지의 문제 신고 (메일이 열립니다)" },
   "readerBtnReportLabel": { "message": "⚠ 신고" },

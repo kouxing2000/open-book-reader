@@ -59,10 +59,11 @@ keeps the label.
 
 ## The toolbar — Aa, ⋯, and a width fit instead of breakpoints
 
-The topbar is the mode switch, the title, and then **Aa · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
-is a popover with text size, theme and columns (the `+` `−` `T` keys reach the same settings); ⋯ is a
-menu with everything else. Both are hand-rolled (`togglePop` / `closePop`) because the `popover`
-attribute needs Chrome 114 and the manifest's floor is 102. They live inside `.obr-topbar`, so the
+The topbar is the mode switch, the title, and then **Aa · ◐ · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
+is a popover with text size, theme and columns (the `+` `−` `T` keys reach the same settings); ◐
+cycles the theme in one tap, as `T` does; ⋯ is a menu with everything else. The Aa and ⋯ popovers
+are hand-rolled (`togglePop` / `closePop`) because the `popover` attribute needs Chrome 114 and the
+manifest's floor is 102. They live inside `.obr-topbar`, so the
 page-flip click handler already ignores clicks in them; a click anywhere else while one is open only
 closes it (no page turn), Escape closes it before it closes the reader, and `scheduleHideChrome`
 never hides the bar while one is open.
@@ -72,9 +73,11 @@ each has a twin menu item, and exactly one of the pair is shown. `fitControls` d
 not by breakpoints, because labels differ by locale (a fixed width either strands room in English or
 overflows in Russian). It shows everything, then drops the least-needed piece until the one row fits:
 the inline actions from the right, then the reading-time meta, then the mode switch's text labels
-(`.obr-compact`). Stopping at the first fit keeps the inline set a priority prefix. It runs when the
-host is first shown, after every render (title and meta change width), on resize, and when the picker
-ends — a resize during a pick is skipped while the host is hidden, and a cancelled pick re-renders
+(`.obr-compact`). Stopping at the first fit keeps the inline set a priority prefix. ◐ is never a
+step: it always shows, because on a phone (no `T` key) it is the only one-tap theme switch. The
+price is the title on the narrowest bars, which can fall below `TITLE_MIN` — about 60px at 360px
+wide, less when the images badge shows. `fitControls` runs when the host is first shown, after
+every render (title and meta change width), on resize, and when the picker ends — a resize during a pick is skipped while the host is hidden, and a cancelled pick re-renders
 nothing, so without that call a narrowed window leaves ✕ off-screen. **The bar is
 never allowed to wrap**: a second row sits in the bar's transparent gradient tail with the article
 showing through the buttons. `syncTypePop` keeps the Aa readout and marked segments true on every path

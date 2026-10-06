@@ -20,6 +20,7 @@
   "readerBtnMarkdownTitle": { "message": "Markdown (.md) dosyası olarak kaydet" },
   "readerBtnMarkdownLabel": { "message": "⤓ Markdown" },
   "readerBtnTypeTitle": { "message": "Metin boyutu, tema ve sütunlar (+ − T)" },
+  "readerBtnThemeTitle": { "message": "Temayı değiştir (T)" },
   "readerBtnMoreTitle": { "message": "Diğer işlemler" },
   "readerBtnReportTitle": { "message": "Bu sayfadaki bir sorunu bildir (e-posta açar)" },
   "readerBtnReportLabel": { "message": "⚠ Bildir" },

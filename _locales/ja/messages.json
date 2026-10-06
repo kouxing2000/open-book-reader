@@ -20,6 +20,7 @@
   "readerBtnMarkdownTitle": { "message": "Markdown（.md）ファイルとして保存" },
   "readerBtnMarkdownLabel": { "message": "⤓ Markdown" },
   "readerBtnTypeTitle": { "message": "文字サイズ・テーマ・段組み（+ − T）" },
+  "readerBtnThemeTitle": { "message": "テーマを切り替え（T）" },
   "readerBtnMoreTitle": { "message": "その他の操作" },
   "readerBtnReportTitle": { "message": "このページの問題を報告 (メールが開きます)" },
   "readerBtnReportLabel": { "message": "⚠ 報告" },

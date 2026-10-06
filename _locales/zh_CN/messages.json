@@ -20,6 +20,7 @@
   "readerBtnMarkdownTitle": { "message": "保存为 Markdown（.md）文件" },
   "readerBtnMarkdownLabel": { "message": "⤓ Markdown" },
   "readerBtnTypeTitle": { "message": "字号、主题和分栏（+ − T）" },
+  "readerBtnThemeTitle": { "message": "切换主题（T）" },
   "readerBtnMoreTitle": { "message": "更多操作" },
   "readerBtnReportTitle": { "message": "报告本页面的问题(会打开邮件)" },
   "readerBtnReportLabel": { "message": "⚠ 反馈" },

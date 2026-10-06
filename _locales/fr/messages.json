@@ -20,6 +20,7 @@
   "readerBtnMarkdownTitle": { "message": "Enregistrer en fichier Markdown (.md)" },
   "readerBtnMarkdownLabel": { "message": "⤓ Markdown" },
   "readerBtnTypeTitle": { "message": "Taille du texte, thème et colonnes (+ − T)" },
+  "readerBtnThemeTitle": { "message": "Changer de thème (T)" },
   "readerBtnMoreTitle": { "message": "Plus d’actions" },
   "readerBtnReportTitle": { "message": "Signaler un problème sur cette page (ouvre un e-mail)" },
   "readerBtnReportLabel": { "message": "⚠ Signaler" },

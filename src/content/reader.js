@@ -29,6 +29,10 @@
   const ICON_BOOK = OBR.ICONS.book;
   const ICON_IMAGES = OBR.ICONS.images;
 
+  // The topbar's one-tap theme cycle (a half-filled circle); reader-only.
+  const ICON_THEME =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>';
+
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, pickHintEl, hintEl;
   // Element-picker mode (the ⌖ Pick override): a separate Shadow host so its highlight
@@ -183,10 +187,11 @@
         <span class="obr-topdiv"></span>
         <span class="obr-doc-title"></span>
         <span class="obr-doc-meta"></span>
-        <!-- Aa, ⋯ and ✕ always show. The .obr-flex actions sit inline while the bar has room
-             and move into ⋯ as it narrows (fitControls); each has a twin menu item there. -->
+        <!-- Aa, the theme cycle, ⋯ and ✕ always show. The .obr-flex actions sit inline while the
+             bar has room and move into ⋯ as it narrows (fitControls); each has a twin menu item there. -->
         <span class="obr-controls">
           <button class="obr-btn" data-pop="type" aria-haspopup="true" aria-expanded="false" title="${OBR.t('readerBtnTypeTitle')}">Aa</button>
+          <button class="obr-btn obr-icon-btn" data-act="theme" title="${OBR.t('readerBtnThemeTitle')}" aria-label="${OBR.t('readerBtnThemeTitle')}">${ICON_THEME}</button>
           ${FLEX_ACTS.map((a) => `<button class="obr-btn obr-flex" data-act="${a.act}" title="${OBR.t(a.title)}">${OBR.t(a.label)}</button>`).join('')}
           <button class="obr-btn" data-pop="more" aria-haspopup="menu" aria-expanded="false" title="${OBR.t('readerBtnMoreTitle')}">⋯</button>
           <button class="obr-btn" data-act="close" title="${OBR.t('readerBtnCloseTitle')}" aria-label="${OBR.t('readerBtnCloseTitle')}">✕</button>

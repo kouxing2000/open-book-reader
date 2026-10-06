@@ -20,6 +20,7 @@
   "readerBtnMarkdownTitle": { "message": "Сохранить как файл Markdown (.md)" },
   "readerBtnMarkdownLabel": { "message": "⤓ Markdown" },
   "readerBtnTypeTitle": { "message": "Размер текста, тема и колонки (+ − T)" },
+  "readerBtnThemeTitle": { "message": "Сменить тему (T)" },
   "readerBtnMoreTitle": { "message": "Другие действия" },
   "readerBtnReportTitle": { "message": "Сообщить о проблеме на этой странице (откроется письмо)" },
   "readerBtnReportLabel": { "message": "⚠ Сообщить" },

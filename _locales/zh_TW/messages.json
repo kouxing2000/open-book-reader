@@ -20,6 +20,7 @@
   "readerBtnMarkdownTitle": { "message": "儲存為 Markdown（.md）檔案" },
   "readerBtnMarkdownLabel": { "message": "⤓ Markdown" },
   "readerBtnTypeTitle": { "message": "字級、主題與分欄（+ − T）" },
+  "readerBtnThemeTitle": { "message": "切換主題（T）" },
   "readerBtnMoreTitle": { "message": "更多動作" },
   "readerBtnReportTitle": { "message": "回報這個頁面的問題（會開啟電子郵件）" },
   "readerBtnReportLabel": { "message": "⚠ 回報" },
