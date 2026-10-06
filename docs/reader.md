@@ -462,6 +462,39 @@ CLONE of `el`, so baseURI/relative-URL resolution survives and the live page is 
 `tests/fixtures/wrong-content.html` (a genuine `#real-article` vs a larger `#decoy`) drives the
 selection / picker / saved-pick specs in `reader.spec.js`.
 
+**Lazy pictures** (`hydrateLazyImages`, on every clone before Readability parses). A picture the
+page has not loaded yet carries a placeholder src (`DECOY_URL`: any `data:` URI, spacer/blank/1x1
+names) and its real URL elsewhere; the pass takes, in order, the picture's srcset, a `<picture>`
+source, any attribute whose value ends in an image file extension, then the `LAZY_ATTRS` /
+`LAZY_SRCSET_ATTRS` names whatever their URL looks like — a CDN URL such as `/img/123?w=800` has no
+extension. A placeholder candidate never counts as a rescue (it would stop the later steps), and a
+srcset of placeholders alone does not save a picture from the render drop, which removes any
+picture nothing rescued. The other half guards Readability's own lazy pass, which rewrites the src
+of any picture whose class contains `lazy` from its other image-URL attributes, last one winning: a
+picture already LOADED — its src is a `LAZY_ATTRS` value or a lazy srcset candidate, what a loader
+copies in — has its lazy class tokens removed on the clone so it keeps the src the page shows (and
+gets the lazy srcset that pass would have copied). Any other `data-*` match proves nothing: a
+picture not yet loaded often mirrors its low-quality src in `data-lowsrc`, and it must keep the
+tokens so Readability still upgrades it from `data-src`. Pinned by "hydrates a lazy picture whose
+real URL has no file extension…" and "a loaded lazy picture keeps the URL the page shows…" in
+`reader.spec.js`.
+
+**Why a picked picture is missing** — debug mode (`OBR.debugTiming(true)`) logs one line per pick,
+selection or saved pick: `pick images: kept K/N via <path>` (`readability`, or which raw-block
+fallback fired). `K` is every picture the reader shows, each output picture claimed once, so two
+pictures sharing a URL stay two. Every picture in the block lands in one bucket: kept as-is,
+`swapped=` (kept but showing another URL, normally Readability upgrading a not-yet-loaded lazy
+picture, naming the attribute it came from), `lost=[{src, size, why}]`, or `notCollected=` (a CSS
+or `data-bg` background, or an iframe — the reader collects `<img>` only). On a raw-block path
+Readability never ran, so a loss there is put down to the sanitizer only. Readability removes nodes without a trace, so
+`logPickImages` re-derives each `why` from the rules it applies, read off the vendored prototype
+(`REGEXPS`, `UNLIKELY_ROLES`, `_isProbablyVisible`) on the picture's ancestors up to the picked
+block: hidden, page-chrome class or role, byline, share block, `<aside>`/`<footer>`/`<form>`/`<iframe>`,
+a placeholder src, or else "scoring or cleanup" with the nearest classed ancestor. A rule match is
+the probable cause, not a trace — Readability re-parses without its class-name strip when the first
+pass comes out short. The render pass that drops placeholder-src pictures logs its own
+`render dropped N image(s)` line, for every content path.
+
 ## Split article bodies — one story in several same-class containers
 
 Some layouts cut one article into several containers that share a class list: Ars Technica sets

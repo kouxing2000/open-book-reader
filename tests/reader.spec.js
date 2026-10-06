@@ -120,6 +120,62 @@ test('recovers an image-dominant forum post Readability would otherwise drop', a
   expect(r.hasReplyText).toBe(true);                // replies kept too, not lost
 });
 
+// Lazy pictures the page has not loaded yet (below the fold): a placeholder src, the real URL in
+// a lazy attribute. Rendered through the real open, because a placeholder that survives
+// extraction is dropped only at render — the loss the user sees.
+const PROSE = '<p>' + 'Real paragraph text that is long enough to score as content in Readability. '.repeat(6) + '</p>';
+const SVG_PH = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600'%3E%3C/svg%3E";
+const renderedSrcs = (page) => page.evaluate(() =>
+  [...document.getElementById('obr-host').shadowRoot.querySelectorAll('.obr-content img')].map((i) => i.getAttribute('src') || ''));
+
+test('hydrates a lazy picture whose real URL has no file extension, or sits in data-srcset', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await injectReader(page);
+  await page.evaluate(([prose, ph]) => {
+    document.body.innerHTML = '<article>' + prose
+      + `<img class="lazy" src="${ph}" data-src="/img/12345?w=800">`
+      + '<img class="lazy" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-lazy-src="/cdn/photo/987">'
+      + `<img class="lazyload" src="${ph}" data-srcset="/pic.png?w=300 300w, /pic-700.png?w=700 700w">`
+      // A placeholder in srcset too: it must not count as the rescue and block data-src.
+      + '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="/cdn/photo/555">'
+      + prose + '</article>';
+  }, [PROSE, SVG_PH]);
+  await openReader(page);
+  const srcs = await renderedSrcs(page);
+  expect(srcs).toHaveLength(4);
+  expect(srcs[0]).toMatch(/\/img\/12345\?w=800$/);
+  expect(srcs[1]).toMatch(/\/cdn\/photo\/987$/);
+  expect(srcs[2]).toMatch(/\/pic-700\.png\?w=700$/); // the widest candidate
+  expect(srcs[3]).toMatch(/\/cdn\/photo\/555$/);
+});
+
+test('a loaded lazy picture keeps the URL the page shows; an unloaded one still upgrades', async ({ page }) => {
+  // Readability's lazy pass rewrites the src of any class="lazy" picture from its other
+  // image-URL attributes, last one winning. Loaded (src === data-src) it must keep the src and
+  // the data-srcset that pass would have copied; not yet loaded (a real low-quality src, the full
+  // one in data-src) the upgrade must survive — also when the low src is mirrored in data-lowsrc.
+  await gotoFixture(page, 'article.html');
+  await injectReader(page);
+  await page.evaluate((prose) => {
+    document.body.innerHTML = '<article>' + prose
+      + '<img class="lazy loaded" src="/pic-700.png?live" data-src="/pic-700.png?live" data-thumb="/pic.png?thumb">'
+      + '<img class="lazy" src="/pic.png?lqip" data-src="/pic-700.png?full">'
+      + '<img class="lazyload" src="/pic.png?low" data-lowsrc="/pic.png?low" data-src="/pic-700.png?full2">'
+      + '<img class="lazy loaded" src="/pic-700.png?live2" data-src="/pic-700.png?live2" data-srcset="/pic.png?s 300w, /pic-700.png?live2 700w">'
+      + prose + '</article>';
+  }, PROSE);
+  await openReader(page);
+  const srcs = await renderedSrcs(page);
+  expect(srcs).toHaveLength(4);
+  expect(srcs[0]).toMatch(/\/pic-700\.png\?live$/);
+  expect(srcs[1]).toMatch(/\/pic-700\.png\?full$/);
+  expect(srcs[2]).toMatch(/\/pic-700\.png\?full2$/);
+  expect(srcs[3]).toMatch(/\/pic-700\.png\?live2$/);
+  const srcset = await page.evaluate(() =>
+    document.getElementById('obr-host').shadowRoot.querySelectorAll('.obr-content img')[3].getAttribute('srcset') || '');
+  expect(srcset).toContain('700w');
+});
+
 test('reads an article split across two same-class containers whole, in page order', async ({ page }) => {
   // Ars Technica's layout: one story in two div.post-content blocks under separate wrappers.
   // Readability keeps only the larger block, so without the merge the reader silently starts
@@ -2183,6 +2239,49 @@ test.describe('content override', () => {
     });
     expect(r.text).toContain('REAL-MARKER');
     expect(r.text).not.toContain('DECOY-MARKER');
+  });
+
+  test('debug mode logs why a picked block lost its pictures, and stays silent otherwise', async ({ page }) => {
+    // Two pictures inside a header-classed box: Readability strips the box as page chrome, and
+    // two is under the four-picture bar of the raw-block fallback, so the loss is real.
+    const lines = [];
+    page.on('console', (m) => { if (m.text().includes('[OBR reader] pick images')) lines.push(m.text()); });
+    const pick = (n) => page.evaluate((count) => {
+      const prose = '<p>' + 'Real paragraph text that is long enough to score as content in Readability. '.repeat(6) + '</p>';
+      const el = document.createElement('div');
+      el.innerHTML = prose + '<div class="post-header">'
+        + Array.from({ length: count }, (_, i) => `<img src="/pic-700.png?h${count}-${i}">`).join('') + '</div>' + prose;
+      document.body.appendChild(el);
+      OBR._extractFromNode(el);
+      el.remove();
+    }, n);
+
+    await pick(2);
+    expect(lines).toHaveLength(0); // debug off: nothing on the page's console
+
+    await page.evaluate(() => OBR.debugTiming(true));
+    await pick(2);
+    await pick(5);
+    // A class="lazy" picture not loaded yet: Readability's lazy pass upgrades its low-quality src
+    // from data-src, so it survives extraction pointing elsewhere. And a CSS background, which
+    // the reader never collects. Neither may be absent from the line.
+    await page.evaluate(() => {
+      const prose = '<p>' + 'Real paragraph text that is long enough to score as content in Readability. '.repeat(6) + '</p>';
+      const el = document.createElement('div');
+      el.innerHTML = prose + '<img class="lazy" src="/pic.png?lqip" data-src="/pic-700.png?full">'
+        + '<div class="hero" style="width:300px;height:200px;background-image:url(/pic-700.png?bg)"></div>' + prose;
+      document.body.appendChild(el);
+      OBR._extractFromNode(el);
+      el.remove();
+    });
+    await page.evaluate(() => OBR.debugTiming(false));
+    await expect.poll(() => lines.length).toBe(3);
+    expect(lines[0]).toContain('kept 0/2 via readability');
+    expect(lines[0]).toContain('removed as page chrome: div.post-header matches \\"header\\"');
+    expect(lines[1]).toContain('kept 5/5 via raw block (the parse kept none of 5 images)');
+    expect(lines[2]).toContain('kept 1/1 via readability'); // swapped still shows; swapped= says so
+    expect(lines[2]).toMatch(/swapped=.*"from":"data-src"/);
+    expect(lines[2]).toMatch(/notCollected=.*"what":"background-image","at":"div.hero","box":"300x200"/);
   });
 
   test('_cssPathFor builds a selector that round-trips to the element', async ({ page }) => {

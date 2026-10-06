@@ -723,16 +723,47 @@
   // a sibling <source> the <img>'s own attributes never hold.
   const bestSrcsetUrl = OBR.bestFromSrcset;
 
+  // The lazy-loading conventions: an attribute under one of these names holds the real URL
+  // whatever it looks like, so a CDN URL with no file extension (/img/123?w=800) still counts.
+  const LAZY_ATTRS = ['data-src', 'data-lazy-src', 'data-original'];
+  const LAZY_SRCSET_ATTRS = ['data-srcset', 'data-lazy-srcset'];
+  const absUrl = (u) => { try { return new URL(u, document.baseURI).href; } catch (e) { return u; } };
+
+  // A srcset's widest candidate, or null when that candidate is a placeholder.
+  const realSrcset = (v) => { const u = bestSrcsetUrl(v); return u && !DECOY_URL.test(u) ? u : null; };
+
   function hydrateLazyImages(doc) {
     doc.querySelectorAll('img').forEach((img) => {
       const cur = (img.getAttribute('src') || '').trim();
-      if (cur && !DECOY_URL.test(cur)) return; // already has a usable, real src
+      if (cur && !DECOY_URL.test(cur)) {
+        // Already showing a real picture. When the lazy library has loaded it (src is what it
+        // copies in: a LAZY_ATTRS value or a lazy srcset candidate), drop the class's lazy tokens:
+        // Readability's lazy pass would otherwise rewrite the src of any class="lazy" picture from
+        // its other image-URL attributes, last one winning, and show a thumbnail or a placeholder.
+        // Any OTHER data-* holding the same URL proves nothing — a not-yet-loaded picture often
+        // mirrors its low-quality src in data-lowsrc — so it keeps the tokens and the upgrade.
+        if (/lazy/i.test(img.className)) {
+          const here = absUrl(cur);
+          const loaded = LAZY_ATTRS.some((n) => { const v = (img.getAttribute(n) || '').trim(); return v && absUrl(v) === here; })
+            || LAZY_SRCSET_ATTRS.some((n) => OBR.srcsetUrls(img.getAttribute(n) || '').some((u) => absUrl(u) === here));
+          if (loaded) {
+            img.className = img.className.split(/\s+/).filter((c) => !/lazy/i.test(c)).join(' ');
+            // The lazy pass would also have copied a lazy srcset in; keep that half of it.
+            if (!img.getAttribute('srcset')) {
+              const lazySet = LAZY_SRCSET_ATTRS.map((n) => img.getAttribute(n)).find((v) => realSrcset(v));
+              if (lazySet) img.setAttribute('srcset', lazySet);
+            }
+          }
+        }
+        return;
+      }
       // 1) the image's own srcset, then a sibling <source srcset> in an enclosing <picture>.
-      let rescued = bestSrcsetUrl(img.getAttribute('srcset'));
+      //    A placeholder candidate is no rescue: it would stop every later step from running.
+      let rescued = realSrcset(img.getAttribute('srcset'));
       if (!rescued) {
         const pic = img.closest('picture');
         if (pic) for (const s of pic.querySelectorAll('source[srcset]')) {
-          rescued = bestSrcsetUrl(s.getAttribute('srcset'));
+          rescued = realSrcset(s.getAttribute('srcset'));
           if (rescued) break;
         }
       }
@@ -742,8 +773,25 @@
         const v = (at.value || '').trim();
         if (IMG_URL.test(v) && !DECOY_URL.test(v)) { rescued = v; break; }
       }
-      if (rescued && !DECOY_URL.test(rescued)) img.setAttribute('src', rescued);
+      // 3) a lazy-convention attribute, whatever its URL looks like.
+      if (!rescued) for (const name of LAZY_ATTRS) {
+        const v = (img.getAttribute(name) || '').trim();
+        if (/^\S+$/.test(v) && /[/.]/.test(v) && !DECOY_URL.test(v)) { rescued = v; break; }
+      }
+      if (!rescued) for (const name of LAZY_SRCSET_ATTRS) {
+        rescued = realSrcset(img.getAttribute(name));
+        if (rescued) break;
+      }
+      if (rescued) img.setAttribute('src', rescued);
     });
+  }
+
+  // An extracted picture with only a placeholder/empty src and no way to render (no srcset with a
+  // real candidate, not inside a <picture>): the render pass drops it, and the pick log counts it
+  // as lost, not kept. A srcset of placeholders alone would render as a blank box.
+  function placeholderOnly(img) {
+    const s = (img.getAttribute('src') || '').trim();
+    return !((s && !DECOY_URL.test(s)) || realSrcset(img.getAttribute('srcset')) || img.closest('picture'));
   }
 
   // Headings carry page chrome that is not part of their text: a permalink glyph or icon link
@@ -1083,6 +1131,12 @@
   // when Readability bails. Returns the article object or null.
   function extractFromNode(el) {
     if (!el) return null;
+    // Debug mode only: one line per pick naming the path taken and why each missing picture
+    // went missing. Diagnostics must never break a pick, so a throw inside is swallowed.
+    const report = (article, path) => {
+      if (OBR._debug) try { logPickImages(el, article, path); } catch (e) { /* */ }
+      return article;
+    };
     try {
       const article = parseBaseDoc(scopedBaseDoc(el));
       if (article && article.content) {
@@ -1100,16 +1154,142 @@
         // exactly the JS-lazy galleries this fallback exists for.
         const probe = el.cloneNode(true);
         hydrateLazyImages(probe);
-        if (imageUrlSet(probe).size >= 4 && imageUrlSetFromHtml(article.content).size === 0) {
-          return rawFallback(el);
+        const found = imageUrlSet(probe).size;
+        if (found >= 4 && imageUrlSetFromHtml(article.content).size === 0) {
+          return report(rawFallback(el), 'raw block (the parse kept none of ' + found + ' images)');
         }
-        return article;
+        return report(article, 'readability');
       }
-      return rawFallback(el);
+      return report(rawFallback(el), 'raw block (the parse returned nothing)');
     } catch (e) {
       console.warn('[OpenBookReader] scoped extraction failed:', e);
-      try { return rawFallback(el); } catch (_) { return null; }
+      try { return report(rawFallback(el), 'raw block (the parse threw)'); } catch (_) { return null; }
     }
+  }
+
+  // Readability removes nodes without a trace, so the reason a picked picture is missing is
+  // re-derived from the rules it applies, read off the vendored prototype (never copied, so a
+  // refreshed library keeps this honest), on the picture's ancestors up to and including the
+  // picked block. A rule match says what probably removed it: Readability re-parses without its
+  // class-name strip when the first pass comes out too short. A loss no rule explains is its
+  // scoring or conditional cleanup, named as such with the nearest classed ancestor for context.
+  // Every picture the user can see in the block lands in exactly one bucket — kept as-is,
+  // `swapped` (kept, but pointing at another URL), `lost`, or `notCollected` (not an <img>) —
+  // so one missing from the reader is never also missing from this line.
+  function logPickImages(el, article, path) {
+    const base = document.baseURI;
+    const abs = (u) => { try { return new URL(u, base).href; } catch (e) { return u; } };
+    // URL -> how many output pictures still carry it, each claimed once: two pictures sharing a
+    // src are two pictures, and only as many as the output holds may count as kept.
+    const kept = new Map();
+    if (article && article.content) {
+      new DOMParser().parseFromString(article.content, 'text/html').querySelectorAll('img').forEach((i) => {
+        const s = i.getAttribute('src');
+        if (s && !placeholderOnly(i)) { const u = abs(s.trim()); kept.set(u, (kept.get(u) || 0) + 1); }
+      });
+    }
+    const claim = (u) => { const n = kept.get(abs(u.trim())); if (!n) return false; kept.set(abs(u.trim()), n - 1); return true; };
+    // Same structure as `el`, so the live picture at each index supplies the decoded size.
+    const probe = el.cloneNode(true);
+    hydrateLazyImages(probe);
+    const live = el.querySelectorAll('img');
+    const imgs = Array.from(probe.querySelectorAll('img'));
+    const srcOf = (img) => (img.getAttribute('src') || '').trim();
+    const sizeOf = (i) => { const l = live[i]; return l && l.naturalWidth ? l.naturalWidth + 'x' + l.naturalHeight : 'unknown'; };
+    // Claim in passes, exact src first, so a picture that came out under ANOTHER URL can never
+    // take the output slot of a later picture that came out under its own.
+    const left = imgs.filter((img) => !(srcOf(img) && claim(srcOf(img))));
+    const left2 = left.filter((img) => !OBR.srcsetUrls(img.getAttribute('srcset') || '').some(claim)); // same picture, another width
+    const lost = [], swapped = [];
+    left2.forEach((img) => {
+      const src = srcOf(img), i = imgs.indexOf(img);
+      // Readability's lazy-image pass rewrites the src of any picture whose class contains "lazy"
+      // from whichever other attribute holds an image URL, last one winning — so a kept picture
+      // can come out pointing somewhere other than what the page shows.
+      const from = Array.from(img.attributes).find((at) => at.name !== 'src' && at.value.trim() && claim(at.value));
+      if (from) {
+        swapped.push({ src: src.slice(0, 160), shown: abs(from.value.trim()).slice(0, 160), from: from.name, size: sizeOf(i),
+          why: /lazy/i.test(img.className) ? 'Readability rewrites the src of a class="lazy" picture from its other image-URL attributes' : 'src replaced from another attribute' });
+        return;
+      }
+      lost.push({ src: src.slice(0, 160), size: sizeOf(i), why: whyPickImageLost(img, probe, src, /^raw/.test(path)) });
+    });
+    // Pictures the reader never collects: it reads <img> only. A selection's wrapper is detached,
+    // where computed styles are empty, so only an inline background is visible there.
+    const notCollected = [];
+    el.querySelectorAll('*').forEach((n) => {
+      if (n.tagName === 'IFRAME') { notCollected.push({ what: 'iframe (embeds are stripped)', at: descEl(n), url: (n.getAttribute('src') || '').slice(0, 160) }); return; }
+      const bg = n.isConnected ? getComputedStyle(n).backgroundImage : (n.style && n.style.backgroundImage);
+      const m = bg && /url\((['"]?)(.*?)\1\)/.exec(bg);
+      const lazyBg = n.getAttribute('data-bg') || n.getAttribute('data-background') || n.getAttribute('data-bg-image');
+      if (!(m && m[2] && !/^data:/i.test(m[2])) && !lazyBg) return;
+      const r = n.getBoundingClientRect();
+      notCollected.push({ what: m && m[2] && !/^data:/i.test(m[2]) ? 'background-image' : 'lazy background, not loaded yet',
+        at: descEl(n), box: Math.round(r.width) + 'x' + Math.round(r.height), url: ((m && m[2]) || lazyBg).slice(0, 160) });
+    });
+    // `kept` counts every picture the reader shows, swapped ones included; swapped= says which.
+    console.log('[OBR reader] pick images: kept ' + (imgs.length - lost.length) + '/' + imgs.length + ' via ' + path +
+      (swapped.length ? ' swapped=' + JSON.stringify(swapped) : '') +
+      (lost.length ? ' lost=' + JSON.stringify(lost) : '') +
+      (notCollected.length ? ' notCollected=' + JSON.stringify(notCollected) : ''));
+  }
+
+  function descEl(n) {
+    return n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') +
+      (typeof n.className === 'string' && n.className.trim() ? '.' + n.className.trim().split(/\s+/).join('.') : '');
+  }
+
+  function whyPickImageLost(img, root, src, raw) {
+    const desc = descEl;
+    if (!src || DECOY_URL.test(src)) {
+      // A URL in an attribute the hydration pass skipped: it takes any attribute's value only when
+      // it ends in an image file extension, and the LAZY_ATTRS names whatever they hold — unless
+      // that value is itself placeholder-shaped.
+      const hidden = Array.from(img.attributes).find((a) => /^data-/.test(a.name) && /^(https?:)?\/\/|^\//.test(a.value.trim()));
+      if (hidden && (LAZY_ATTRS.includes(hidden.name) || LAZY_SRCSET_ATTRS.includes(hidden.name))) {
+        return 'placeholder src; ' + hidden.name + ' holds a URL that looks like a placeholder too (spacer/blank/default/loading-style name)';
+      }
+      if (hidden && /srcset/i.test(hidden.name)) return 'placeholder src; the real URLs are in ' + hidden.name + ', which is not a recognized lazy srcset attribute';
+      if (hidden) return 'placeholder src; the real URL looks to be in ' + hidden.name + ', which is not a recognized lazy attribute and has no image file extension';
+      if (/^data:/i.test(src)) return 'only a data: src (' + src.length + ' chars) and no other URL: the reader treats every data: src as a placeholder, so a real inline picture is dropped too';
+      return 'no src, and no real URL in srcset, <picture> or a lazy attribute';
+    }
+    // The raw block skips Readability; only the sanitizer removes anything there.
+    if (raw) {
+      for (let n = img; n; n = n === root ? null : n.parentElement) {
+        if (['FORM', 'IFRAME', 'NOSCRIPT'].includes(n.tagName)) return 'inside <' + n.tagName.toLowerCase() + '>, which the sanitizer strips';
+      }
+      return 'missing from the raw block';
+    }
+    const R = Readability.prototype;
+    const RX = R.REGEXPS;
+    let context = '';
+    for (let n = img; n; n = n === root ? null : n.parentElement) {
+      const match = (typeof n.className === 'string' ? n.className : '') + ' ' + (n.id || '');
+      const token = (re) => { const m = match.match(re); return m ? m[0] : ''; };
+      if (!R._isProbablyVisible(n)) {
+        const how = n.style && n.style.display === 'none' ? 'display:none'
+          : n.style && n.style.visibility === 'hidden' ? 'visibility:hidden'
+          : n.hasAttribute('hidden') ? 'the hidden attribute' : 'aria-hidden="true"';
+        return 'hidden: ' + desc(n) + ' has ' + how;
+      }
+      if (n.getAttribute('aria-modal') === 'true' && n.getAttribute('role') === 'dialog') return 'inside a modal dialog: ' + desc(n);
+      if (RX.unlikelyCandidates.test(match) && !RX.okMaybeItsACandidate.test(match) && n.tagName !== 'A' &&
+          !R._hasAncestorTag(n, 'table') && !R._hasAncestorTag(n, 'code')) {
+        return 'removed as page chrome: ' + desc(n) + ' matches "' + token(RX.unlikelyCandidates) + '"';
+      }
+      if (R.UNLIKELY_ROLES.includes(n.getAttribute('role'))) return 'removed as page chrome: ' + desc(n) + ' has role=' + n.getAttribute('role');
+      const itemprop = n.getAttribute('itemprop') || '';
+      if ((RX.byline.test(match) || n.getAttribute('rel') === 'author' || itemprop.includes('author')) && R._isValidByline(n.textContent)) {
+        return 'inside a byline block: ' + desc(n);
+      }
+      if (RX.shareElements.test(match) && n.textContent.length < R.DEFAULT_CHAR_THRESHOLD) {
+        return 'inside a share block: ' + desc(n) + ' matches "' + token(RX.shareElements) + '"';
+      }
+      if (['ASIDE', 'FOOTER', 'FORM', 'IFRAME'].includes(n.tagName)) return 'inside <' + n.tagName.toLowerCase() + '>, which the extraction drops';
+      if (!context && n !== img && match.trim()) context = desc(n);
+    }
+    return 'dropped by Readability scoring or cleanup (a low-text block, or outside the part it chose)' + (context ? ' in ' + context : '');
   }
 
   // Extract from the user's current text selection — honoring the EXACT selected
@@ -1569,13 +1749,17 @@
     // Drop any image that survived extraction with only a placeholder/empty src and no way
     // to render (no srcset, not inside a <picture>) — otherwise it shows as a blank box.
     // Runs AFTER extraction (Readability's own lazy/noscript passes already had their turn).
+    const placeholders = [];
     pagesEl.querySelectorAll('img').forEach((img) => {
-      const s = (img.getAttribute('src') || '').trim();
-      if ((s && !DECOY_URL.test(s)) || img.getAttribute('srcset') || img.closest('picture')) return;
+      if (!placeholderOnly(img)) return;
       const fig = img.closest('figure');
       img.remove();
+      placeholders.push((img.getAttribute('src') || '').trim().slice(0, 160));
       if (fig && !fig.querySelector('img, picture, video, svg, iframe') && !fig.textContent.trim()) fig.remove();
     });
+    if (OBR._debug && placeholders.length) {
+      try { console.log('[OBR reader] render dropped ' + placeholders.length + ' image(s) whose src is a placeholder: ' + JSON.stringify(placeholders)); } catch (e) { /* */ }
+    }
     // A <p>/<div> holding a picture and NO WORDS is a container, not a paragraph, but it still
     // carries a paragraph's bottom margin — which between two of them is a gap with nothing in
     // it. The stylesheet drops it only BETWEEN such wrappers: where a picture meets real prose
