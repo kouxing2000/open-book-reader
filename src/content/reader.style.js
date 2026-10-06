@@ -391,9 +391,9 @@
       cursor: pointer; color: inherit; font-family: ${FONT_STACKS.sans}; font-size: 13px;
       opacity: .72; text-decoration: underline; text-underline-offset: 3px; padding: 2px 4px; }
     .obr-colo-share-article:hover { opacity: 1; }
-    .obr-colophon .obr-share-fallback { margin-top: .9em; width: 86%; display: flex;
+    .obr-colophon .obr-share-fallback, .obr-pop .obr-share-fallback { margin-top: .9em; width: 86%; display: flex;
       flex-direction: column; gap: 4px; font-family: ${FONT_STACKS.sans}; font-size: 12px; }
-    .obr-colophon .obr-share-fallback .obr-share-field { font: inherit; color: inherit;
+    .obr-colophon .obr-share-fallback .obr-share-field, .obr-pop .obr-share-fallback .obr-share-field { font: inherit; color: inherit;
       background: transparent; border: 1px solid currentColor; border-radius: 4px; padding: 3px 6px; }
     /* The share menu: text-styled actions over a row of monochrome brand marks, in the same
        muted ink as the rest of the page. */

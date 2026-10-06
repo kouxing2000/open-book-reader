@@ -76,7 +76,10 @@ permission would hit the Web Store's permission gate for a corner case. The exte
 always have the clipboard (`OBR.bindShareLink`, `prompt()` as the fallback).
 
 **Share this article** (a permanent button on the colophon, under the stats — a tool, not an ask:
-it survives the ask's retirement and retires nothing) shares THE ARTICLE, through our site.
+it survives the ask's retirement and retires nothing — and the same item in the toolbar's ⋯ menu,
+whose options unfold inside the popover, because the colophon is skipped whenever an article fills
+its last spread exactly) shares THE ARTICLE, through our site. Both fill their menu from ONE
+builder (`fillShareMenu(menu, done)`), so the two can never offer different options.
 `OBR.sharedArticleLink(OBR.shareableArticleUrl(location.href), title)` builds
 `openbook.peach-studio.com/read#u=<address>&t=<title>`: tracking tags (`utm_*`, `fbclid`, `gclid`…)
 and the page's own fragment are dropped, the title is capped at 200 characters, and both ride after
@@ -102,11 +105,16 @@ window) would otherwise spill into a column the spread count never sees and push
 anything but http(s), and asks the extension whether it is installed — `externally_connectable`
 admits only `https://openbook.peach-studio.com/*`, and `onMessageExternal` in `background.js` answers
 only `obr-ping` from that origin with a bare `{ok:true}`. Not installed → Add Open Book (store link
-tagged `utm_medium=article`) or Just open the article; installed → "open it, then press Alt+B" and
-one button; a phone, tablet or non-Chromium browser (no `window.chrome`) → the article plus "Open
+tagged `utm_medium=article`) or Just open the article; installed → straight on to the article
+(`location.replace`, so Back does not land on the page and forward again), as a plain link would —
+the friend's one remaining step is Alt+B or the icon, or none on a site they enabled auto-open for;
+a phone, tablet or non-Chromium browser (no `window.chrome`) → the article plus "Open
 Book runs in Chrome on a computer", since a store button there is a dead end. The page declares NO
 `og:url`: Facebook and LinkedIn point a post at og:url, which would drop the `#…` and with it the
-article (pinned in `landing.spec.js`). There is deliberately no
+article (pinned in `landing.spec.js`). `site/404.html` is the fallback when the read page itself is
+missing (undeployed, renamed): GitHub Pages serves it for `/read` with the fragment intact, and it
+goes straight on to the article — only on that path and only to http(s), so every other missing
+path stays a 404 and the site never forwards wherever a link says. There is deliberately no
 auto-open of the reader: Chrome grants a page to an extension only on the user's own gesture
 (icon, shortcut, context menu, omnibox), and a message from a website is not one. A page loaded
 before the install cannot reach the new extension, so after "not installed" the page reloads when the

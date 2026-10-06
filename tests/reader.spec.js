@@ -3386,7 +3386,7 @@ test.describe('back-cover colophon', () => {
   // The open menu, as the user sees it: null while closed.
   const shareMenu = (page) => page.evaluate(() => {
     const root = document.getElementById('obr-host').shadowRoot;
-    const m = root.querySelector('.obr-share-menu');
+    const m = root.querySelector('.obr-colophon .obr-share-menu');
     if (!m || m.hidden) return null;
     return {
       actions: [...m.querySelectorAll('.obr-share-row > button, .obr-share-row > a')].map((el) => el.textContent),
@@ -3399,7 +3399,7 @@ test.describe('back-cover colophon', () => {
     };
   });
   const clickMenuAction = (page, label) => page.evaluate((label) => {
-    const m = document.getElementById('obr-host').shadowRoot.querySelector('.obr-share-menu');
+    const m = document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon .obr-share-menu');
     [...m.querySelectorAll('.obr-share-row > button')].find((b) => b.textContent === label).click();
   }, label);
   // The read link's parts, decoded the way site/read.html decodes them.
@@ -3519,7 +3519,7 @@ test.describe('back-cover colophon', () => {
     await page.evaluate(() => {
       const filler = document.createElement('div');
       filler.style.height = '2000px';
-      document.getElementById('obr-host').shadowRoot.querySelector('.obr-share-menu').append(filler);
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon .obr-share-menu').append(filler);
     });
     const after = await measure();
     expect(after.pageHeight).toBeLessThan(2000); // the stand-in really is taller than the page
@@ -3545,12 +3545,46 @@ test.describe('back-cover colophon', () => {
     expect(await shareArticleBtn(page)).toBe('Share this article');
 
     // A sheet that fails for any other reason (a site's permissions policy) falls back to
-    // copying, confirmed on the back-cover button since the menu has closed.
+    // copying, and the menu stays open to confirm it on the button that was clicked.
     await stubShareSheet(page, 'NotAllowedError');
     await clickShareArticle(page);
     await clickMenuAction(page, 'Share via…');
     await expect.poll(() => page.evaluate(() => window.__copied || '')).toMatch(/^https:\/\/openbook\.peach-studio\.com\/read#u=/);
-    expect(await shareArticleBtn(page)).toContain('Link copied');
+    expect((await shareMenu(page)).actions).toContain('✓ Link copied — paste it to a friend');
+  });
+
+  // The back cover is skipped whenever an article fills its last spread exactly, so the ⋯ menu
+  // carries the same options: here on an article with no back cover at all.
+  test('the ⋯ menu shares any article, unfolding the same options inside it', async ({ page }) => {
+    await resetEngagement(page);
+    await page.evaluate(() => OBR.saveSettings({ colophon: false }));
+    await stubShareSheet(page, 'none');
+    await stubClipboard(page, true);
+    await openReader(page);
+    expect(await page.evaluate(() =>
+      !!document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon'))).toBe(false);
+    await clickReaderAction(page, 'share');
+    const inPop = () => page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const pop = root.querySelector('.obr-pop[data-for="more"]');
+      const m = pop.querySelector('.obr-share-menu');
+      return { popOpen: !pop.hidden, menuOpen: !m.hidden,
+        actions: [...m.querySelectorAll('.obr-share-row > button, .obr-share-row > a')].map((el) => el.textContent),
+        targets: [...m.querySelectorAll('.obr-share-icons a')].map((a) => a.dataset.target) };
+    });
+    expect(await inPop(page)).toEqual({ popOpen: true, menuOpen: true, actions: ['Copy link', 'Email'],
+      targets: ['x', 'facebook', 'linkedin', 'reddit', 'whatsapp', 'telegram'] });
+    await page.evaluate(() => [...document.getElementById('obr-host').shadowRoot
+      .querySelectorAll('.obr-pop[data-for="more"] .obr-share-row > button')].find((b) => b.textContent === 'Copy link').click());
+    await expect.poll(() => page.evaluate(() => window.__copied || '')).toMatch(/^https:\/\/openbook\.peach-studio\.com\/read#u=/);
+    expect(readLinkParts(await page.evaluate(() => window.__copied)).u).toBe(page.url().split('#')[0]);
+    // Escape folds it all away, and the next ⋯ starts with the share options closed.
+    await page.keyboard.press('Escape');
+    expect((await inPop(page)).popOpen).toBe(false);
+    expect((await readState(page)).hostDisplay).not.toBe('none');
+    await clickInReader(page, '[data-pop="more"]');
+    expect((await inPop(page)).menuOpen).toBe(false);
+    await page.evaluate(() => OBR.saveSettings({ colophon: true })); // restore for later tests
   });
 
   test('Copy link copies the read link and confirms in place', async ({ page }) => {
@@ -3576,7 +3610,7 @@ test.describe('back-cover colophon', () => {
     await clickMenuAction(page, 'Copy link');
     await expect.poll(() => page.evaluate(() => {
       const root = document.getElementById('obr-host').shadowRoot;
-      const f = root.querySelector('.obr-share-menu .obr-share-fallback .obr-share-field');
+      const f = root.querySelector('.obr-colophon .obr-share-menu .obr-share-fallback .obr-share-field');
       if (!f) return null;
       return { link: f.value.startsWith('https://openbook.peach-studio.com/read#u='), focused: root.activeElement === f,
         selected: f.selectionStart === 0 && f.selectionEnd === f.value.length };

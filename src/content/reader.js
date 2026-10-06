@@ -205,6 +205,8 @@
         </div>
         <div class="obr-pop" data-for="more" role="menu" hidden>
           ${FLEX_ACTS.map((a) => `<button class="obr-menuitem" role="menuitem" data-act="${a.act}" title="${OBR.t(a.title)}">${OBR.t(a.label)}</button>`).join('')}
+          <button class="obr-menuitem" role="menuitem" data-act="share">${OBR.t('shareArticle')}</button>
+          <div class="obr-share-menu" hidden></div>
           <hr>
           <button class="obr-menuitem" role="menuitem" data-act="settings" title="${OBR.t('readerBtnSettingsTitle')}">${OBR.t('readerBtnSettingsLabel')}</button>
           <button class="obr-menuitem" role="menuitem" data-act="report" title="${OBR.t('readerBtnReportTitle')}">${OBR.t('readerBtnReportLabel')}</button>
@@ -338,6 +340,7 @@
   function closePop() {
     if (!openPop || !overlay) return;
     overlay.querySelectorAll('.obr-pop').forEach((p) => { p.hidden = true; });
+    overlay.querySelectorAll('.obr-pop .obr-share-menu').forEach((m) => { m.hidden = true; });
     overlay.querySelectorAll('[data-pop]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
     openPop = null;
     scheduleHideChrome();
@@ -406,6 +409,8 @@
   function handleAction(act, val, el) {
     // Anything but the Aa controls dismisses an open popover; those stay open so the reader can
     // step the size or try a theme and watch the page change underneath.
+    // Share keeps the ⋯ popover open: its options unfold inside it.
+    if (act === 'share') return openShareInPop();
     if (!(el && el.closest('.obr-pop[data-for="type"]'))) closePop();
     if (act === 'close') return close();
     if (act === 'report') return OBR.reportBroken && OBR.reportBroken({
@@ -1946,13 +1951,41 @@
   function toggleShareMenu() {
     if (closeShareMenu() || !colophonEl) return;
     const menu = colophonEl.querySelector('.obr-share-menu');
+    fillShareMenu(menu, closeShareMenu);
+    menu.hidden = false;
+    colophonEl.querySelector('.obr-colo-share-article').setAttribute('aria-expanded', 'true');
+  }
+
+  // The ⋯ popover's "Share this article": the same options, unfolded inside the popover, so
+  // every article can be shared — the back cover is skipped whenever an article fills its last
+  // spread exactly.
+  function openShareInPop() {
+    const menu = overlay && overlay.querySelector('.obr-pop[data-for="more"] .obr-share-menu');
+    if (!menu) return;
+    fillShareMenu(menu, closePop);
+    menu.hidden = false;
+  }
+
+  // Fills `menu` with the share options for this article, rebuilt on every open so the link is
+  // current. `done` closes whatever holds the menu, after a choice that finished sharing: the
+  // sheet answered, or an email or network link opened. Copy link stays open to confirm in
+  // place, and so does a sheet that failed, which falls back to copying.
+  function fillShareMenu(menu, done) {
     const link = OBR.sharedArticleLink(OBR.shareableArticleUrl(location.href), articleTitle);
     const row = document.createElement('div');
     row.className = 'obr-share-row';
     if (typeof navigator.share === 'function') {
+      // The system share sheet (Windows, ChromeOS, macOS 128+). Closing it is an answer
+      // (AbortError), not a failure; any other rejection — a site's permissions policy, a
+      // share already open — falls back to copying.
       const sheet = document.createElement('button');
       sheet.textContent = OBR.t('shareVia');
-      sheet.addEventListener('click', () => { closeShareMenu(); shareViaSheet(link); });
+      sheet.addEventListener('click', () => {
+        navigator.share({ title: articleTitle, text: articleTitle, url: link }).then(done, (e) => {
+          if (e && e.name === 'AbortError') done();
+          else copyLink(link, sheet, 'shareVia');
+        });
+      });
       row.append(sheet);
     }
     const copy = document.createElement('button');
@@ -1966,7 +1999,7 @@
     // article away under the reader.
     mail.target = '_blank';
     mail.rel = 'noopener noreferrer';
-    mail.addEventListener('click', closeShareMenu);
+    mail.addEventListener('click', done);
     row.append(copy, mail);
     const icons = document.createElement('div');
     icons.className = 'obr-share-icons';
@@ -1987,12 +2020,10 @@
       path.setAttribute('d', tg.path);
       svg.append(path);
       a.append(svg);
-      a.addEventListener('click', closeShareMenu);
+      a.addEventListener('click', done);
       icons.append(a);
     }
     menu.replaceChildren(row, icons);
-    menu.hidden = false;
-    colophonEl.querySelector('.obr-colo-share-article').setAttribute('aria-expanded', 'true');
   }
 
   // The clipboard, else the link in a selected field in place of `btn`. `label` is the key
@@ -2008,18 +2039,6 @@
       btn.replaceWith(box);
       // preventScroll: the pages strip is transformed, and a focus scroll would shear it.
       box.querySelector('.obr-share-field').focus({ preventScroll: true });
-    });
-  }
-
-  // The system share sheet (Windows, ChromeOS, macOS 128+). Closing it is an answer
-  // (AbortError), not a failure, so nothing follows; any other rejection — a site's
-  // permissions policy, a share already open — falls back to copying, confirmed on the
-  // colophon's button since the menu has closed.
-  function shareViaSheet(link) {
-    navigator.share({ title: articleTitle, text: articleTitle, url: link }).catch((e) => {
-      if (e && e.name === 'AbortError') return;
-      const btn = colophonEl && colophonEl.querySelector('.obr-colo-share-article');
-      if (btn) copyLink(link, btn, 'shareArticle');
     });
   }
 

@@ -2,8 +2,9 @@
  * depends on fail silently, so they are pinned here: the ?ref=share-<surface> hand-off onto
  * the store button as UTM tags, and a link-preview image that actually exists.
  * site/read.html is where every "Share this article" link lands: it reads the article out of
- * the #fragment and, by asking the extension, shows a friend either how to get Open Book or
- * how to open the article in it. */
+ * the #fragment and, by asking the extension, either shows a friend how to get Open Book or,
+ * when it is installed, goes straight on to the article. site/404.html stands in for it if it
+ * is ever missing. */
 
 import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
@@ -140,15 +141,60 @@ async function serveReadAt(context, origin, extensionId) {
     : route.fulfill({ status: 404, body: '' }));
 }
 
-test('on the real site origin, an installed Open Book is detected', async ({ context, page, extensionId }) => {
+test('on the real site origin, an installed Open Book forwards straight to the article', async ({ context, page, extensionId }) => {
   await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await context.route('https://example.com/**', (route) =>
+    route.fulfill({ body: '<title>The article</title><p>story</p>', contentType: 'text/html' }));
   await page.goto(readLink('https://openbook.peach-studio.com/read', ARTICLE, 'Story'));
-  await expect.poll(() => readState(page)).toBe('installed');
-  expect(await page.locator('[data-for="installed"] .article-link').getAttribute('href')).toBe(ARTICLE);
+  await page.waitForURL(ARTICLE);
+  expect(await page.title()).toBe('The article');
+  // replace(), not a push: Back must not land on the read page and forward again.
+  await page.goBack();
+  expect(page.url()).not.toContain('/read');
 });
 
 test('the same page on any other origin cannot reach Open Book', async ({ context, page, extensionId }) => {
   await serveReadAt(context, 'https://openbook.evil.test', extensionId);
   await page.goto(readLink('https://openbook.evil.test/read', ARTICLE, 'Story'));
   await expect.poll(() => readState(page)).toBe('missing');
+});
+
+// If the read page itself is ever missing (undeployed, renamed), GitHub Pages serves 404.html
+// for /read, with the fragment intact: a share link must still reach its article, while every
+// other missing path stays a plain 404, so the site never forwards wherever a link says.
+async function serve404At(context, origin) {
+  const body = readFileSync(path.join(SITE, '404.html'), 'utf8');
+  await context.route(origin + '/**', (route) => route.fulfill({ status: 404, body, contentType: 'text/html' }));
+  await context.route('https://example.com/**', (route) =>
+    route.fulfill({ body: '<title>The article</title><p>story</p>', contentType: 'text/html' }));
+}
+
+test('a share link whose read page is missing still goes straight to the article', async ({ context, page }) => {
+  await serve404At(context, 'https://openbook.peach-studio.com');
+  await page.goto(readLink('https://openbook.peach-studio.com/read', ARTICLE, 'Story'));
+  await page.waitForURL(ARTICLE);
+  expect(await page.title()).toBe('The article');
+});
+
+// GitHub Pages 404s /read/ and /read.html/ even while the read page exists, so a fallback on
+// those paths would forward any visitor anywhere, permanently.
+test('the 404 page forwards nothing else: another path, a trailing slash, or a non-http address', async ({ context, page }) => {
+  await serve404At(context, 'https://openbook.peach-studio.com');
+  const dialogs = [];
+  page.on('dialog', (d) => { dialogs.push(d.message()); d.dismiss().catch(() => {}); });
+  for (const url of [
+    readLink('https://openbook.peach-studio.com/elsewhere', ARTICLE, 'Story'),
+    readLink('https://openbook.peach-studio.com/read/', ARTICLE, 'Story'),
+    readLink('https://openbook.peach-studio.com/read.html/', ARTICLE, 'Story'),
+    // A javascript: address would run in this page without changing its URL: the dialog is
+    // the only trace it leaves.
+    readLink('https://openbook.peach-studio.com/read', 'javascript:alert(1)', 'x'),
+  ]) {
+    await page.goto('about:blank');
+    await page.goto(url);
+    await page.waitForTimeout(300);
+    expect({ url, landed: page.url() }).toEqual({ url, landed: url });
+    expect(await page.locator('h1').textContent()).toBe('404');
+  }
+  expect(dialogs).toEqual([]);
 });

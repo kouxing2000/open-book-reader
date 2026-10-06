@@ -210,9 +210,10 @@ npx playwright install chromium                # first run only
 - `landing.spec.js` — `site/index.html`, where every Share invite points: `?ref=share-<surface>`
   becomes store UTM tags on Add to Chrome (and nothing else does), and the link-preview image exists.
   Also `site/read.html`, where every "Share this article" link lands: its states, the crafted-title
-  and non-http guards, and the real install check end to end — the page is ROUTED to the production
-  origin with the unpacked build's extension id swapped in, since `externally_connectable` answers
-  only that origin and only the store id is in the file.
+  and non-http guards, the 404 page's fallback to the article when the read page is missing, and
+  the real install check end to end (installed → forwarded to the article) — the page is ROUTED to
+  the production origin with the unpacked build's extension id swapped in, since
+  `externally_connectable` answers only that origin and only the store id is in the file.
 - **The suite shells out to `unzip`** (`packaging.spec.js` for `dist.zip`, `gallery.spec.js` for
   `OBR._buildZip`'s bytes). **Extracting and listing are different oracles — the ZIP test needs
   both.** A STORE entry extracts from its LOCAL header, so `unzip -t`/`-p`/`-x` are clean on an

@@ -8,6 +8,23 @@
        path would resolve against the missing page's directory. The custom domain serves this
        repo at the domain ROOT, so "/" is the site root. -->
   <link rel="icon" href="/img/icon.png" />
+  <!-- Like read.html: the article site learns nothing about where its visitor came from. -->
+  <meta name="referrer" content="no-referrer" />
+  <script>
+    // A share link (/read#u=<article>, see read.html) landing here means the read page itself is
+    // missing: undeployed or renamed. Rather than strand the friend, go straight on to the
+    // article, as a plain link would. Only on the read page's own path and only to an http(s)
+    // address: every other path stays a 404, so this site never forwards wherever a link says.
+    // Exact path, no trailing slash: GitHub Pages 404s /read/ and /read.html/ even when the read
+    // page exists, so allowing them would make the fallback a permanent open redirect.
+    (function () {
+      if (!/^\/read(\.html)?$/.test(location.pathname)) return;
+      try {
+        var u = new URL(new URLSearchParams(location.hash.slice(1)).get('u') || '');
+        if (u.protocol === 'https:' || u.protocol === 'http:') location.replace(u.href);
+      } catch (e) { /* not a share link: show the 404 */ }
+    })();
+  </script>
   <style>
     html, body { height: 100%; margin: 0; }
     body {

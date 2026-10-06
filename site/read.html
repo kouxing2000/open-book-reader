@@ -164,8 +164,16 @@
       }
 
       detect(function (installed) {
-        show(installed ? 'installed' : 'missing');
-        if (installed) return;
+        if (installed) {
+          // Open Book is here: go straight to the article, as a plain link would. replace(), so
+          // Back does not land on this page and forward again. Only an installed Open Book
+          // triggers it, and only to the http(s) address checked above; the guide stays on
+          // screen while the article loads.
+          show('installed');
+          location.replace(url.href);
+          return;
+        }
+        show('missing');
         // A page loaded before the extension was installed cannot reach it, so coming back
         // from the store tab reloads: the fresh document asks again.
         var wasHidden = false;

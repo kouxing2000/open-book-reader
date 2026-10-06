@@ -202,7 +202,7 @@ test('the phone toolbar is one row with every action reachable, and the footer s
     expect(s.barH).toBeLessThan(70);
     expect(s.overflow).toBe(false);
     expect(s.closeRight).toBeLessThanOrEqual(s.vw);
-    expect(s.inMenu.sort()).toEqual(['pick', 'print', 'report', 'settings']); // Markdown is Beta, off by default
+    expect(s.inMenu.sort()).toEqual(['pick', 'print', 'report', 'settings', 'share']); // Markdown is Beta, off by default
     expect(s.justify).toBe('space-between');
     expect(s.hintOrder).toBe('-1');   // hint left, page count right
   });
