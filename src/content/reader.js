@@ -271,8 +271,10 @@
       if (pic) { e.preventDefault(); openZoom(pic); return; }
       // The viewer stands in for a picture's link to its own file, so a tap that did not open
       // it (a touch edge band) turns the page rather than leaving the reader for the bare file.
+      // A modified click is the browser's (Cmd/Ctrl+click opens the link in a new tab).
       const linked = pictureAt(e.target);
-      if (linked && linkedImage(linked.at)) e.preventDefault();
+      const modified = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
+      if (linked && linkedImage(linked.at) && !modified) e.preventDefault();
       else if (e.target.closest('a, button, input, label, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
       // The content is in an open shadow root; window.getSelection() can't see selections inside
       // it, so use shadowRoot.getSelection() (Chrome) and fall back to the document selection.
@@ -346,13 +348,23 @@
   function pictureAt(target) {
     const at = target.closest && target.closest('.obr-content img, .obr-content .obr-strips');
     if (!at) return null;
-    return { img: at.tagName === 'IMG' ? at : stripSource.get(at).img, at };
+    // A .obr-strips box this reader did not cut (a picked subtree keeps the page's classes) has
+    // no source: not a picture.
+    const src = at.tagName === 'IMG' ? null : stripSource.get(at);
+    if (at.tagName !== 'IMG' && !src) return null;
+    return { img: at.tagName === 'IMG' ? at : src.img, at };
   }
 
   /** The full-size file a picture links to — WordPress and most CMSs link the original. */
+  // A link to the picture's own file: an image URL whose last path segment is a file name. A
+  // namespaced segment — MediaWiki's File:X.jpg, Datei:, Fichier: on every Wikipedia picture —
+  // is a description PAGE that only ends like an image, so the picture keeps that link.
   function linkedImage(at) {
     const a = at.closest('a[href]');
-    return a && IMG_URL.test(a.href) ? a.href : null;
+    if (!a || !IMG_URL.test(a.href)) return null;
+    let last = '';
+    try { last = decodeURIComponent(new URL(a.href).pathname.split('/').pop()); } catch (e) { return null; }
+    return last.includes(':') ? null : a.href;
   }
 
   function canZoom({ img, at }) {
@@ -377,8 +389,11 @@
     // A modified click keeps the browser's meaning (Cmd/Ctrl+click opens a link in a new tab).
     if (!pic || !canZoom(pic) || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
     // On touch the edge bands stay page turns: a picture can cover a phone's whole page, and a
-    // tap there that zoomed would leave no way to turn it.
+    // tap there that zoomed would leave no way to turn it. And while the toolbar is hidden, a tap
+    // brings it back first — the middle band is the only touch route to it, and on a page a
+    // picture fills (a strip of a long picture, a plated photo) nothing else is left to tap.
     if (touchMode) {
+      if (overlay.classList.contains('obr-chrome-hidden')) return null;
       const w = window.innerWidth;
       if (e.clientX < w * EDGE_FRAC || e.clientX > w * (1 - EDGE_FRAC)) return null;
     }
@@ -2400,7 +2415,10 @@
   function cutLongPictures(colW, colH) {
     const contentRoot = pagesEl.querySelector('.obr-content');
     if (!contentRoot) return;
-    contentRoot.querySelectorAll('.obr-strips').forEach((box) => box.replaceWith(stripSource.get(box).node));
+    contentRoot.querySelectorAll('.obr-strips').forEach((box) => {
+      const src = stripSource.get(box);
+      if (src) box.replaceWith(src.node); // a box the page brought (a pick keeps its classes) stays
+    });
     if (settings.splitLongPictures === false) return; // after the put-back, so turning it off restores every picture
     // Every width is read before anything is cut: a cut invalidates layout, and a read after
     // it would force a fresh layout per picture.

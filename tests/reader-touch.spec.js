@@ -225,6 +225,12 @@ test('a tap on a picture opens the viewer from the middle band, and an edge tap 
 
   await page.keyboard.press('ArrowLeft');
   r = await turnToPicture(page, 'Linked photo');
+  // While the toolbar is hidden, the first tap brings it back (the middle band is the only touch
+  // route to it, and a picture can fill the page); a tap while it shows opens the viewer.
+  await waitForChromeHidden(page);
+  await page.touchscreen.tap(CENTRE_X, Math.round((r.top + r.bottom) / 2));
+  expect((await diag(page)).chromeHidden).toBe(false);
+  expect((await zoomViewer(page)).open).toBe(false);
   await page.touchscreen.tap(CENTRE_X, Math.round((r.top + r.bottom) / 2));
   await expect.poll(() => zoomViewer(page).then((v) => v.open && v.loaded)).toBe(true);
 });

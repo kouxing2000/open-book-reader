@@ -3843,7 +3843,7 @@ test.describe('engagement ask policy', () => {
 test.describe('picture viewer', () => {
   const EDGE_FRAC = 0.28; // reader.js: the outer bands of the window that turn pages
   const inBand = (x, vw) => x < vw * EDGE_FRAC || x > vw * (1 - EDGE_FRAC);
-  /** A point on the picture inside a page-turn band — where a click used to turn the page. */
+  /** A point on the picture inside a page-turn band — where a click would otherwise turn the page. */
   const bandPoint = (r, vw) => ({ x: (r.left + r.right) / 2 < vw / 2 ? r.left + 3 : r.right - 3, y: (r.top + r.bottom) / 2 });
 
   test.beforeEach(async ({ page }) => {
@@ -3919,6 +3919,15 @@ test.describe('picture viewer', () => {
     ]);
   });
 
+  // A modified click is the browser's: Cmd/Ctrl+click opens the link in a new tab, as anywhere.
+  test('a Cmd/Ctrl-click on a picture linked to its own file opens a new tab, not the viewer', async ({ page, context }) => {
+    await turnToPicture(page, 'Linked photo');
+    const tab = context.waitForEvent('page');
+    await page.locator('#obr-host').locator('img[alt="Linked photo"]').click({ modifiers: ['ControlOrMeta'] });
+    expect((await tab).url()).toMatch(/\/photo-400\.png\?full$/);
+    expect((await zoomViewer(page)).open).toBe(false);
+  });
+
   test('a picture linked to its own file opens that file in the viewer instead of leaving the reader', async ({ page }) => {
     const r = await turnToPicture(page, 'Linked photo');
     const url = page.url();
@@ -3929,6 +3938,24 @@ test.describe('picture viewer', () => {
     expect(v.long).toBe(false);
     expect(v.width).toBe(400);
     expect(page.url()).toBe(url);
+  });
+});
+
+// MediaWiki links every picture to its file's DESCRIPTION PAGE (/wiki/File:X.jpg), a URL that
+// only ends like an image. Taken for the picture's own file, it made every Wikipedia picture
+// "zoomable" whatever its size, opened a viewer with nothing larger to show, and fetched an HTML
+// page as an image.
+test.describe('picture viewer on a wiki', () => {
+  test('a picture linked to a MediaWiki file page keeps its link and is not zoomable', async ({ page }) => {
+    await gotoFixture(page, 'wiki-picture.html');
+    await injectReader(page);
+    await openReader(page);
+    const r = await turnToPicture(page, 'Wiki-linked photo');
+    expect(r.zoomable).toBe(false);
+    await Promise.all([
+      page.waitForURL('**/wiki/File:Wiki_photo.jpg'),
+      page.mouse.click((r.left + r.right) / 2, (r.top + r.bottom) / 2),
+    ]);
   });
 });
 

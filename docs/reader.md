@@ -61,8 +61,11 @@ same spread. The rules, each pinned in `reader.spec.js` / `reader-touch.spec.js`
   relayout, late image and figure fit. A picture already at its own size gains nothing in the
   viewer (`ZOOM_MIN_GAIN`), so a click on it still turns the page; so does one on an icon or a
   picture of unknown size (`isContent`).
-- **Touch: the middle band only.** A picture can cover a phone's whole page, and if edge taps
-  zoomed there would be no way to turn it. Known gap: on a two-page touch layout a narrow picture
+- **Touch: the middle band only, and only while the toolbar shows.** A picture can cover a
+  phone's whole page, and if edge taps zoomed there would be no way to turn it. While the toolbar
+  is hidden, a tap on a picture brings it back instead: the middle band is the only touch route to
+  it, and on a page a picture fills (a strip of a long picture, a plated photo) nothing else is
+  left to tap. The next tap, with the toolbar showing, opens the viewer. Known gap: on a two-page touch layout a narrow picture
   centred in the left page sits inside the left band, so a tap turns instead of zooming.
 - **A long picture cut into strips is always zoomable**: the viewer shows it whole, without its
   cuts (see the strips gotcha below).
@@ -71,7 +74,8 @@ same spread. The rules, each pinned in `reader.spec.js` / `reader-touch.spec.js`
   edge tap on it turns the page rather than leaving the reader for the bare file. A picture
   linked to a web page keeps its link.
 - **The viewer is the overlay's sibling, never its child.** Inside the overlay, a backdrop click
-  bubbled into the page-turn handler: in an edge band it closed the viewer AND turned the page.
+  would bubble into the page-turn handler: in an edge band it would close the viewer AND turn the
+  page.
   Being outside also keeps its mousemove from waking the chrome. While open it holds focus, so
   the document keydown handler only takes Esc and leaves every other key to the viewer's native
   scrolling.
@@ -785,13 +789,13 @@ those synthetic pages.
     `stripSource`). Every pass that sizes pictures selects `img` — plates, `fitTallFigures`,
     the flip snapshot's pins, `watchMedia` — so none of them sees a strip or a hidden duplicate.
     The cost is that the detached `<img>` stops counting as a picture, and three things that
-    asked "which pictures are here" went wrong on it, each now pinned by a test:
-    - a neighbour in a run lost its plate, so `isPictureContainer` counts `.obr-strips`;
-    - a `<figure>` holding a cut picture and a photo looked like a one-picture box and became a
-      one-page plate box with pages of strips inside, so `holdsOnePicture` refuses a box with
+    ask "which pictures are here" must account for it, each pinned by a test:
+    - a neighbour in a run would lose its plate, so `isPictureContainer` counts `.obr-strips`;
+    - a `<figure>` holding a cut picture and a photo would look like a one-picture box and become
+      a one-page plate box with pages of strips inside, so `holdsOnePicture` refuses a box with
       strips in it;
-    - a picture plated at one window and cut at another left its wrapper's plate classes behind,
-      because `classifyPlates` toggled only what was still in the tree. It now clears every plate
+    - a picture plated at one window and cut at another would leave its wrapper's plate classes
+      behind if `classifyPlates` toggled only what is still in the tree, so it clears every plate
       class first. Real pages hit this whenever a picture is plated on its attributes and cut
       when the file arrives.
   - **A strip is sized in px, so it is told the width of the block it stands in** (`roomFor`):
