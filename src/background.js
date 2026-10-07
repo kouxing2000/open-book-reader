@@ -700,36 +700,28 @@ async function injectSentinelNow(tabId) {
   }
 }
 
-// The context-menu "Auto-open on this site" flow: ensure the origin permission (via the
-// permission popup when not yet granted — its click is the genuine gesture
-// permissions.request needs), flag the rule, sync registration, arm the current tab.
-function enableAutoOpen(host, tab) {
+// "Auto-open on this site", from the context menu or the share page: ensure the origin permission
+// (via the permission popup when not yet granted — its click is the genuine gesture
+// permissions.request needs), flag the rule, sync registration, arm the current tab (if any).
+// The permission page writes the rule too, on its own Allow (OBR.storeAutoRule), since this
+// worker may not outlive the prompt. Returns false when the host cannot form a match pattern.
+function enableAutoOpen(host, tab, ask = requestPerm) {
   const origins = OBR.originsForRule(host);
-  if (!origins.length) return; // host can't form a match pattern — options page explains this case
-  const finish = () => {
-    chrome.storage.sync.get('obr_settings', (data) => {
-      void chrome.runtime.lastError;
-      const raw = (data && data.obr_settings) || {};
-      OBR.migrateSiteRules(raw);
-      const prev = raw.siteRules.find((r) => r && r.match === host);
-      const mode = (prev && prev.mode) || 'auto'; // keep an existing mode choice; else decide per page
-      OBR.upsertSiteRule(raw, host, mode, { auto: true });
-      chrome.storage.sync.set({ obr_settings: raw }, async () => {
-        void chrome.runtime.lastError;
-        await syncSentinelRegistration(); // storage.onChanged also fires, but be explicit + ordered
-        injectSentinelNow(tab && tab.id);
-      });
-    });
-  };
+  if (!origins.length) return false; // host can't form a match pattern — options page explains this case
+  const finish = () => OBR.storeAutoRule(host, async () => {
+    await syncSentinelRegistration(); // storage.onChanged also fires, but be explicit + ordered
+    injectSentinelNow(tab && tab.id);
+  });
   try {
     chrome.permissions.contains({ origins }, (has) => {
       void chrome.runtime.lastError;
       if (has) return finish();
-      requestPerm({ origins, reason: 'auto-open', host }, (granted) => { if (granted) finish(); });
+      ask({ origins, reason: 'auto-open', host }, (granted) => { if (granted) finish(); });
     });
   } catch (e) {
     console.warn('[OpenBookReader] auto-open enable failed:', e && e.message ? e.message : e);
   }
+  return true;
 }
 
 // Keep the registration honest across every input that feeds it: settings writes that
@@ -1177,6 +1169,27 @@ function requestPerm(need, cb) {
   if (wasIdle) openPermPopup(need); // one popup at a time; later requests queue
 }
 
+// The share page's asks replace each other instead of queuing: a friend who clicks one choice
+// and then the other has changed their mind, and the window must ask what the page now says it
+// asks. Only a window that holds share-page asks alone is closed; anything else queues as usual.
+// This worker knows only a window it opened itself (permWindowId): after a restart, or before
+// the first window's create callback, the new ask opens beside the old window instead.
+function requestSharePerm(need, cb) {
+  need.share = true;
+  const stale = permWindowId;
+  if (stale === null || !permWaiters.length || !permWaiters.every((w) => w.need.share)) return requestPerm(need, cb);
+  // Take the replaced asks off the queue now, so an ask arriving while the window closes (a ZIP
+  // from another tab) opens its own window instead of being settled with them.
+  const replaced = permWaiters.splice(0);
+  permWindowId = null;
+  chrome.windows.remove(stale, () => {
+    void chrome.runtime.lastError;
+    // Each replaced ask ends as whatever Chrome holds now (no grant: a no).
+    replaced.forEach((w) => chrome.permissions.contains(permsOnly(w.need), (has) => w.cb(!!has)));
+    requestPerm(need, cb);
+  });
+}
+
 // Resolve every waiter against the real post-prompt permission state. Safe to call
 // more than once (the result message and the window-close event can both arrive):
 // the first call drains the queue, later calls find it empty and no-op. We re-check
@@ -1201,13 +1214,19 @@ chrome.windows.onRemoved.addListener((id) => {
 
 // site/read.html (where every "Share this article" link lands) is the only web page that can
 // talk to Open Book: externally_connectable admits that one site and the origin is re-checked
-// here. It can ask three things, and nothing else:
-// - obr-ping: "installed?", plus whether the friend opted in to opening shared links in read
-//   mode. That opt-in IS the all-sites grant, so it is read from permission state, never
-//   stored: revoking the grant in Options turns it off.
-// - obr-allow-shared-links: show the permission page asking for all sites. No answer is sent
-//   back, because the worker routinely dies while the prompt is up; the page re-pings when its
-//   tab is visible again.
+// here. It can ask four things, and nothing else:
+// - obr-ping: "installed?", plus whether a grant already covers the shared article (autoRead):
+//   the all-sites grant (the "every shared link" opt-in) or any grant for that site (auto-open
+//   there, or one given for a ZIP download). It is read from permission state, never stored:
+//   revoking the grant in Options turns it off.
+// - obr-allow-shared-links: show the permission page asking for all sites.
+// - obr-auto-open-site: turn on auto-open for the shared article's site, the same flow as the
+//   context menu's (the permission page asks for that site only). Refused ({ok:false}) when a
+//   grant already covers the article: the page never offers the choice then, and the rule must
+//   never be written without Chrome's prompt.
+//   Neither reply says whether access was granted, because the worker routinely dies while the
+//   prompt is up; the page re-pings until the grant shows. A second ask while the first one's
+//   window is up replaces that window when this worker opened it (requestSharePerm).
 // - obr-open-shared: the page is about to replace itself with the article; open the reader when
 //   the sender's own tab has loaded it. Only with a grant that already covers the article (this
 //   path never prompts) and only for http(s).
@@ -1217,13 +1236,25 @@ const SITE_ORIGIN = new URL(OBR.SITE_URL).origin;
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   if (!sender || sender.frameId !== 0 || sender.origin !== SITE_ORIGIN || !msg) return;
   if (msg.type === 'obr-ping') {
-    chrome.permissions.contains({ origins: ['<all_urls>'] }, (has) => sendResponse({ ok: true, autoRead: !!has }));
+    const target = sharedTarget(msg.url);
+    chrome.permissions.contains({ origins: [target ? articleOrigin(target) : '<all_urls>'] },
+      (has) => { void chrome.runtime.lastError; sendResponse({ ok: true, autoRead: !!has }); });
     return true;
   }
   if (msg.type === 'obr-allow-shared-links') {
-    requestPerm({ origins: ['<all_urls>'], reason: 'shared-links' }, () => {});
+    requestSharePerm({ origins: ['<all_urls>'], reason: 'shared-links' }, () => {});
     sendResponse({ ok: true });
     return;
+  }
+  if (msg.type === 'obr-auto-open-site') {
+    const target = sharedTarget(msg.url);
+    if (!target) { sendResponse({ ok: false }); return; }
+    chrome.permissions.contains({ origins: [articleOrigin(target)] }, (covered) => {
+      void chrome.runtime.lastError;
+      // No tab: the share page gets no sentinel.
+      sendResponse({ ok: !covered && enableAutoOpen(OBR.normalizeHost(target.href), null, requestSharePerm) });
+    });
+    return true;
   }
   if (msg.type === 'obr-open-shared') {
     openShared(msg.url, sender.tab, sendResponse);
@@ -1249,11 +1280,21 @@ function sameArticle(a, b) {
   const key = (u) => u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/+$/, '');
   return key(a) === key(b);
 }
-function openShared(url, tab, sendResponse) {
+// The article a share link names, or null: an http(s) URL only. The page is ours, but anyone can
+// write a share link, so its address is checked here like any other input.
+function sharedTarget(url) {
   let target = null;
-  try { target = new URL(url); } catch (e) { /* not a URL */ }
-  if (!tab || !tab.id || !target || !/^https?:$/.test(target.protocol)) { sendResponse({ armed: false }); return; }
-  chrome.permissions.contains({ origins: [target.protocol + '//' + target.host + '/*'] }, (has) => {
+  try { target = new URL(url); } catch (e) { return null; }
+  return /^https?:$/.test(target.protocol) ? target : null;
+}
+// The one origin the ping and the hand-off both test, so the page's "a grant covers this article"
+// and the worker's arm cannot disagree.
+function articleOrigin(target) { return target.protocol + '//' + target.host + '/*'; }
+
+function openShared(url, tab, sendResponse) {
+  const target = sharedTarget(url);
+  if (!tab || !tab.id || !target) { sendResponse({ armed: false }); return; }
+  chrome.permissions.contains({ origins: [articleOrigin(target)] }, (has) => {
     if (!has) { sendResponse({ armed: false }); return; }
     const tabId = tab.id;
     let timer = 0;

@@ -339,16 +339,20 @@ test('the hand-off opens the reader only on the shared article, and any other pa
 });
 
 test('without a grant covering the article, the worker declines and the page goes there itself', async ({ context, page, extensionId, serviceWorker }) => {
-  // The ping says opted in, but the arm finds no grant for this article: the worker does not
-  // arm, no reader opens, and the page still reaches the article.
+  // The ping says covered, but the grant is gone by the arm (revoked in between): the worker
+  // does not arm, no reader opens, and the page still reaches the article.
   await serviceWorker.evaluate(() => {
-    chrome.permissions.contains = (need, cb) => cb(need.origins[0] === '<all_urls>');
+    globalThis.__granted = true;
+    chrome.permissions.contains = (_need, cb) => cb(globalThis.__granted);
     globalThis.__invoked = null;
     invokeReader = (...args) => { globalThis.__invoked = args; };
   });
   await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
   await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
   await expect.poll(() => readState(page)).toBe('installed');
+  expect(await page.locator('#auto-hint').isVisible()).toBe(true); // the ping saw the grant
+  await serviceWorker.evaluate(() => { globalThis.__granted = false; });
   await page.locator('#read-now').click();
   await page.waitForURL(ARTICLE);
   await page.waitForTimeout(500);
@@ -401,6 +405,184 @@ test('once the grant lands, Turn on & read goes straight into reading mode', asy
   await expect.poll(() => serviceWorker.evaluate(() => globalThis.__invoked)).not.toBeNull();
   const [, url, mode, opts] = await serviceWorker.evaluate(() => globalThis.__invoked);
   expect({ url, mode, trigger: opts.trigger }).toEqual({ url: ARTICLE, mode: 'text', trigger: 'shared' });
+});
+
+// "Covered" is per article: the ping names the shared article, so a grant for that one site
+// (auto-open turned on there) counts as much as the all-sites grant, and a grant for another
+// site does not.
+test('the ping asks about the shared article\'s own site', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    chrome.permissions.contains = (need, cb) => cb(need.origins.length === 1 && need.origins[0] === 'https://example.com/*');
+  });
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await page.locator('#ask-panel').isVisible()).toBe(false);
+  expect(await page.locator('#auto-hint').isVisible()).toBe(true);
+  const other = await context.newPage();
+  await other.clock.install();
+  await other.goto(readLink(LIVE_READ, 'https://other.test/a', 'Elsewhere'));
+  await expect.poll(() => readState(other)).toBe('installed');
+  expect(await other.locator('#ask-panel').isVisible()).toBe(true);
+});
+
+// The second opt-in: auto-open on the shared article's site, the context menu's flow. The site
+// it names comes from the address, so a title made to look like another site changes nothing.
+test('Always open this site asks for that site only, named from the address, not the title', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'mybank.com'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await page.locator('#site-on').textContent()).toBe('Always open example.com in reading mode');
+  const popup = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html'));
+  await page.locator('#site-on').click();
+  const perm = await popup;
+  await perm.waitForLoadState();
+  const q = new URL(perm.url()).searchParams;
+  expect({ origins: q.get('origins'), reason: q.get('reason'), host: q.get('host') })
+    .toEqual({ origins: '*://example.com/*,*://www.example.com/*', reason: 'auto-open', host: 'example.com' });
+  expect(await page.locator('#ask-status').textContent()).toContain('Waiting for your answer');
+});
+
+// Allow, as the permission page reports it: the worker writes the auto-open rule, the page sees
+// the site's grant on its next re-ping and hands the article over as a shared open.
+test('once this site is allowed, auto-open is on there and the article opens in reading mode', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    globalThis.__granted = false;
+    chrome.permissions.contains = (need, cb) => cb(globalThis.__granted && need.origins.indexOf('<all_urls>') === -1);
+    globalThis.__invoked = [];
+    invokeReader = (...args) => { globalThis.__invoked.push(args); };
+  });
+  await seeTabUrls(serviceWorker);
+  await loading(serviceWorker, ARTICLE);
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  const popup = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html'));
+  await page.locator('#site-on').click();
+  const perm = await popup;
+  await perm.waitForLoadState();
+  await serviceWorker.evaluate(() => { globalThis.__granted = true; });
+  await perm.evaluate(() => new Promise((res) => chrome.runtime.sendMessage({ type: 'obr-perms-result' }, () => res())));
+  await expect.poll(() => serviceWorker.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || [])
+      .filter((r) => r.match === 'example.com').map((r) => ({ match: r.match, auto: r.auto }))))))).toEqual([{ match: 'example.com', auto: true }]);
+  await page.clock.runFor(1600); // the page's re-check
+  await page.waitForURL(ARTICLE);
+  await expect.poll(() => serviceWorker.evaluate(() => globalThis.__invoked.map((a) => a[3] && a[3].trigger))).toContain('shared');
+});
+
+// "Don't ask again" moves the page to the countdown; both opt-ins stay reachable under it.
+test('counting down after Don\'t ask again, Always open this site is still offered', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await context.addInitScript(() => { try { localStorage.setItem('obr-shared-optin-declined', '1'); } catch (e) { /* */ } });
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await page.locator('#optin-site').textContent()).toBe('Always open example.com in reading mode');
+  const popup = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html'));
+  await page.locator('#optin-site').click();
+  const q = new URL((await popup).url()).searchParams;
+  expect(q.get('reason')).toBe('auto-open');
+  expect(await countdown(page)).toContain('Waiting for your answer');
+});
+
+// The choice is never offered while a grant covers the article, so a request then is not the
+// page's button, and it must not write a rule without Chrome's prompt.
+test('Always open this site is refused when a grant already covers the article', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => { chrome.permissions.contains = (_need, cb) => cb(true); });
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.clock.install();
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  let prompted = false;
+  context.on('page', (p) => { if (p.url().includes('/src/permission.html')) prompted = true; });
+  const reply = await page.evaluate((id) => new Promise((res) =>
+    chrome.runtime.sendMessage(id, { type: 'obr-auto-open-site', url: 'https://victim.test/x' }, (r) => { void chrome.runtime.lastError; res(r); })), extensionId);
+  expect(reply).toEqual({ ok: false });
+  await page.waitForTimeout(500);
+  expect(prompted).toBe(false);
+  const rules = await serviceWorker.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || []).map((r) => r.match)))));
+  expect(rules).not.toContain('victim.test');
+});
+
+// A friend who clicks one choice and then the other has changed their mind: the window still up
+// must give way to one that asks what the page now says it asks, not queue behind it.
+test('switching to Always open this site replaces the all-sites window', async ({ context, page, extensionId }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  const first = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html'));
+  await page.locator('#turn-on').click();
+  const allSites = await first;
+  expect(new URL(allSites.url()).searchParams.get('reason')).toBe('shared-links');
+  const second = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html') && p !== allSites);
+  const closed = allSites.waitForEvent('close');
+  await page.locator('#site-on').click();
+  await closed;
+  expect(new URL((await second).url()).searchParams.get('reason')).toBe('auto-open');
+});
+
+// Only a window holding share-page asks alone gives way: another tab's ZIP prompt stays up, and
+// the share page's ask queues behind it as any other ask does.
+test('a share-page ask never closes another tab\'s permission window', async ({ context, page, extensionId, serviceWorker }) => {
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  const zipWindow = context.waitForEvent('page', (p) => p.url().includes('/src/permission.html'));
+  await serviceWorker.evaluate(() => { requestPerm({ origins: ['*://cdn.test/*'] }, () => {}); });
+  const zip = await zipWindow;
+  let another = false;
+  context.on('page', (p) => { if (p.url().includes('/src/permission.html')) another = true; });
+  await page.locator('#site-on').click();
+  await page.waitForTimeout(800);
+  expect(zip.isClosed()).toBe(false);
+  expect(another).toBe(false);
+});
+
+// The page can be out of date: a grant landed in another share tab after this one pinged. The
+// worker refuses the ask, and the page goes on from what Open Book holds now, not "Not turned on".
+test('an ask refused because the article is already covered goes straight into reading mode', async ({ context, page, extensionId, serviceWorker }) => {
+  await serviceWorker.evaluate(() => {
+    globalThis.__granted = false;
+    chrome.permissions.contains = (_need, cb) => cb(globalThis.__granted);
+    globalThis.__invoked = [];
+    invokeReader = (...args) => { globalThis.__invoked.push(args); };
+  });
+  await seeTabUrls(serviceWorker);
+  await loading(serviceWorker, ARTICLE);
+  await serveReadAt(context, 'https://openbook.peach-studio.com', extensionId);
+  await page.goto(readLink(LIVE_READ, ARTICLE, 'Story'));
+  await expect.poll(() => readState(page)).toBe('installed');
+  expect(await page.locator('#ask-panel').isVisible()).toBe(true);
+  await serviceWorker.evaluate(() => { globalThis.__granted = true; }); // allowed in another tab
+  await page.locator('#site-on').click();
+  await page.waitForURL(ARTICLE);
+  await expect.poll(() => serviceWorker.evaluate(() => globalThis.__invoked.map((a) => a[3] && a[3].trigger))).toContain('shared');
+});
+
+// The worker that asked is often gone by the time the friend answers (MV3 idles it out while the
+// prompt is up), so the permission page writes the auto-open rule itself on Allow. Opened here
+// with no worker waiting on it, which is that situation; the host must be the one its origins
+// were built from.
+test('the permission page writes the auto-open rule on its own Allow, for the site it asked for only', async ({ context, extensionId, serviceWorker }) => {
+  const rulesNow = () => serviceWorker.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || [])
+      .map((r) => ({ match: r.match, auto: !!r.auto }))))));
+  const allow = async (host, origins) => {
+    const perm = await context.newPage();
+    await perm.goto(`chrome-extension://${extensionId}/src/permission.html?reason=auto-open&host=${host}&origins=${encodeURIComponent(origins)}`);
+    await perm.evaluate(() => { chrome.permissions.request = (_req, cb) => cb(true); });
+    const closed = perm.waitForEvent('close');
+    await perm.locator('#allow').click();
+    await closed;
+  };
+  await allow('other.test', '*://example.com/*,*://www.example.com/*'); // a host its origins do not name
+  expect(await rulesNow()).toEqual([]);
+  await allow('example.com', '*://example.com/*,*://www.example.com/*');
+  expect(await rulesNow()).toEqual([{ match: 'example.com', auto: true }]);
 });
 
 test('the same page on any other origin cannot reach Open Book', async ({ context, page, extensionId }) => {

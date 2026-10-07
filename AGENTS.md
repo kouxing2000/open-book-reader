@@ -42,8 +42,9 @@ On-demand injection — nothing runs on a page until the user invokes it (toolba
 text / `Alt+Shift+B` images). Two deliberate exceptions, both opt-in and both riding a host grant:
 sites where the user explicitly enabled per-site **auto-open** (its registered sentinel is the only
 pre-gesture code; see `docs/auto-open-spec.md`), and — for users who turned on opening shared links
-in reading mode (the all-sites grant) — the article a share link hands over (`openShared` in
-`background.js`; see `docs/engagement.md`).
+in reading mode (the all-sites grant, or auto-open on the shared article's site, both offered by the
+share page) — the article a share link hands over (`openShared` in `background.js`; see
+`docs/engagement.md`).
 
 ```
 manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage, contextMenus)
@@ -214,7 +215,8 @@ npx playwright install chromium                # first run only
   Also `site/read.html`, where every "Share this article" link lands: its states, the crafted-title
   and non-http guards, the 404 page's fallback to the article when the read page is missing, and
   the real install check end to end (ask first; countdown → article; opted in → the page goes there
-  and the worker opens the reader as a `'shared'` open, only on that article) — the page is ROUTED to
+  and the worker opens the reader as a `'shared'` open, only on that article; "Always open <site>"
+  turns on auto-open for the site named by the address, never by the title) — the page is ROUTED to
   the production origin with the unpacked build's extension id swapped in, since
   `externally_connectable` answers only that origin and only the store id is in the file.
 - **The suite shells out to `unzip`** (`packaging.spec.js` for `dist.zip`, `gallery.spec.js` for

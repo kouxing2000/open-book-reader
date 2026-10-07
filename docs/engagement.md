@@ -117,15 +117,27 @@ window) would otherwise spill into a column the spread count never sees and push
 `site/read.html` is the landing page: it shows the title as text under the destination's real domain
 (anyone can craft one of these links, so the page must never vouch for the destination), refuses
 anything but http(s), and talks to the extension — `externally_connectable` admits only
-`https://openbook.peach-studio.com/*`, and `onMessageExternal` in `background.js` answers three
-messages from that origin: `obr-ping` → `{ok, autoRead}` (autoRead = the all-sites grant is held,
-which IS the opt-in below — read from permission state, never stored), `obr-allow-shared-links` →
-the permission page asks for all sites (`reason=shared-links`; no answer is sent back, the worker
-dies across the prompt, so the page re-pings), and `obr-open-shared` → only with a grant covering the
+`https://openbook.peach-studio.com/*`, and `onMessageExternal` in `background.js` answers four
+messages from that origin: `obr-ping` with the article's URL → `{ok, autoRead}` (autoRead = a grant
+covers THAT article: the all-sites grant or any grant for that site (auto-open, or a ZIP
+download's) — the same origin `openShared` tests,
+read from permission state, never stored), `obr-allow-shared-links` → the permission page asks for
+all sites (`reason=shared-links`), `obr-auto-open-site` → auto-open turned on for the article's site
+through the context menu's own flow (`enableAutoOpen`: the permission page asks for that site only,
+then the rule is written with `auto: true`). Neither reply says whether access was granted (the
+worker routinely dies across the prompt), so the page re-pings until the grant shows; the rule is
+written by the permission page on its own Allow (`OBR.storeAutoRule`), so it does not depend on the
+worker outliving the prompt. `obr-auto-open-site` is refused (`{ok:false}`) when a grant already
+covers the article: the page never offers the choice then, and a rule must never be written without
+Chrome's prompt. A second ask while the first one's window is still up replaces that window
+(`requestSharePerm`), so the window asks what the page says it asks — as long as the worker that
+opened the first window is still running; a restarted worker does not know that window, and the new
+ask opens beside it. And
+`obr-open-shared` → only with a grant covering the
 article, the worker arms a one-shot listener on the SENDER's tab and the page then replaces itself
 with the article (so Back skips the share page); when that tab finishes a load that is not on the
 share site, the worker opens the reader as a `'shared'` open (not `'auto'`: the auto chip's Stop has
-no rule to stop). All three answer TOP-LEVEL pages only (`sender.frameId === 0`), and read.html does
+no rule to stop). All four answer TOP-LEVEL pages only (`sender.frameId === 0`), and read.html does
 not talk to the extension from inside a frame: framed by another site, it could otherwise steer the
 host tab through the worker. The load listener is one shot: the first non-share-site page the tab
 finishes is opened only if it IS the shared article (`sameArticle`: host without `www.`, path without
@@ -138,11 +150,14 @@ store link tagged `utm_medium=article`), step 2 Read it as a book greyed until O
 Just open the article, and "Already have Open Book? Open the article and press Alt+B" (catches
 versions that predate the check); installed and opted in → a 3-second countdown straight into
 reading mode; installed, not opted in → the page ASKS FIRST (no countdown: it would hurry people past
-the one choice that makes every later link seamless): Turn on & read (opt in, then straight into
-reading mode once the grant shows up) inside the opt-in card; OUTSIDE it, Just open the article (with
+the choice that makes later links seamless). Inside the opt-in card, two ways in, each going straight
+into reading mode once its grant shows up: Turn on & read (every shared link: all sites), and
+Always open <site> in reading mode (auto-open on the article's site: every article there, shared or
+not, for a Chrome prompt that names one site). The site is named from the address, never the title,
+which anyone can write. OUTSIDE the card, Just open the article (with
 the Alt+B hint — kept out of the card so it cannot read as "reading mode, just this once"), and
 Don't ask again, remembered in this origin's localStorage (`obr-shared-optin-declined`), after which the page just
-counts down to the article with the Alt+B hint and a small opt-in link. Every exit is
+counts down to the article with the Alt+B hint and both opt-ins as small links. Every exit is
 `location.replace`, so Back does not land on the page again. The page reaches an unpacked build through
 a developer switch, `localStorage['obr-ext-id']` (only an Open Book build answers this origin, so it
 can reach nothing else); a phone, tablet or non-Chromium browser (no `window.chrome`) → the article plus "Open

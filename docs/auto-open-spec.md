@@ -87,7 +87,10 @@ Non-goals (explicitly rejected or deferred)
   1. if the origin permission is missing, run the existing permission-popup flow
      (`src/permission.html`) requesting just this site's origins;
   2. on grant, upsert the site rule with `auto: true` (mode = the rule's existing mode, else
-     `auto`);
+     `auto`) — `OBR.storeAutoRule`, called by the permission page on its own Allow AND by the
+     worker's callback: the worker that asked routinely dies while the prompt is up, so the page
+     is the write that cannot be missed. Step 3 has no such backup: when that worker is gone,
+     the tab is armed only by its next load;
   3. `executeScript` the sentinel files into the **current tab** — registration only
      affects future document loads, so on an SPA forum the enabling tab would otherwise
      stay sentinel-less (no auto-open on the very next topic click) until a full reload.
@@ -103,6 +106,15 @@ Non-goals (explicitly rejected or deferred)
      `chrome.tabs.query({ url: originsForRule(...) })` sweep could cover them — it works
      without the `tabs` permission once the origin is granted — but verify that in the
      harness before adopting it.)
+- **Share page** (`site/read.html`): a friend opening a shared link can choose "Always open
+  <site> in reading mode" for the article's site. The worker runs the context menu's flow
+  (`enableAutoOpen`) with no tab, so step 3 is skipped: the share page itself gets no sentinel.
+  The article then opens through the share hand-off (`openShared`), or through the newly
+  registered sentinel's ladder when that gets there first; the reader's `active || opening`
+  guard and the sentinel's overlay-open check make a second open of the same view a no-op. A
+  site whose rule already exists keeps its mode: where that picks the gallery, the hand-off
+  (text) and the sentinel (gallery) each close the other's view, so whichever opens last wins
+  on the shared article, and later visits auto-open galleries.
 - **Options page**: the site-rules table gains an `Auto` checkbox per rule (and on the
   add-rule row). Checking it calls `chrome.permissions.request` directly (extension page +
   click = valid gesture); a denied prompt reverts the checkbox. This is where **path-scoped**

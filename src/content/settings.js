@@ -849,6 +849,21 @@
     return raw;
   };
 
+  // Turn auto-open ON for `host`'s whole-site rule in storage, keeping the rule's mode (else
+  // 'auto': decide per page). Two places call it once the site's grant is held: the service
+  // worker, and the permission page on its own Allow. The page is the one that cannot miss it:
+  // the worker that asked routinely dies while the prompt is up, and its callback with it.
+  OBR.storeAutoRule = function (host, done) {
+    chrome.storage.sync.get('obr_settings', (data) => {
+      void chrome.runtime.lastError;
+      const raw = (data && data.obr_settings) || {};
+      OBR.migrateSiteRules(raw);
+      const prev = raw.siteRules.find((r) => r && r.match === host);
+      OBR.upsertSiteRule(raw, host, (prev && prev.mode) || 'auto', { auto: true });
+      chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; if (done) done(); });
+    });
+  };
+
   // Set / clear the auto-open flag on the EXACT rule `match` in a fresh copy of `rules`
   // (no mutation — callers hand the result to saveSettings). Used by the auto chip's
   // "stop auto-opening" (which must clear `auto` on whichever rule matched — possibly a

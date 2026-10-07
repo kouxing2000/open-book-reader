@@ -88,6 +88,8 @@
     .ask { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
     .ask-title { margin: 0; font-weight: 700; font-size: 16px; }
     .ask .sub { margin: 4px 0 12px; }
+    .ask .why { margin: 6px 0 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+    .ask .or-site { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
     .actions.or { margin: 14px 0 10px; }
     .ask-status { margin: 10px 0 0; text-align: center; font-size: 13px; color: var(--muted); }
     .ask-status:empty { display: none; }
@@ -137,6 +139,11 @@
             <p class="ask-title">Open shared links straight in reading mode</p>
             <p class="sub">No Alt+B, now or next time. Chrome asks once for permission; everything stays on your device.</p>
             <button class="btn btn-primary" type="button" id="turn-on">Turn on &amp; read</button>
+            <p class="why">Every shared link, from any site. Chrome asks for access to all sites.</p>
+            <div class="or-site">
+              <button class="btn btn-ghost" type="button" id="site-on">Always open <span class="site-name"></span> in reading mode</button>
+              <p class="why">Every article there, shared or not. Chrome asks for this site only.</p>
+            </div>
             <p class="ask-status" id="ask-status" aria-live="polite"></p>
           </div>
           <div class="actions or">
@@ -153,7 +160,8 @@
           <p class="note" id="key-hint">When it opens, press <kbd>Alt+B</kbd> (<kbd>⌥B</kbd> on a Mac) or click the Open Book icon.</p>
           <p class="note" id="auto-hint" hidden>It opens straight in reading mode.</p>
           <p class="links"><button class="linklike" type="button" id="cancel">Cancel</button> · <a class="article-link" id="plain">Just open the article</a></p>
-          <p class="note links" id="optin-row"><button class="linklike" type="button" id="optin">Always open shared links in reading mode</button></p>
+          <p class="note links" id="optin-row"><button class="linklike" type="button" id="optin">Always open shared links in reading mode</button>
+            <br /><button class="linklike" type="button" id="optin-site">Always open <span class="site-name"></span> in reading mode</button></p>
         </div>
       </div>
 
@@ -196,6 +204,10 @@
       var host = url.hostname.replace(/^www\./, '');
       document.getElementById('title').textContent = (p.get('t') || '').trim().slice(0, 200) || host;
       document.getElementById('domain').textContent = host;
+      // The site whose auto-open the "this site" choice turns on: from the address, never from
+      // the title, so a crafted title cannot disguise which site it is.
+      var names = document.querySelectorAll('.site-name');
+      for (var n = 0; n < names.length; n++) names[n].textContent = host;
       document.getElementById('dest').textContent = url.href;
       var links = document.querySelectorAll('.article-link');
       for (var i = 0; i < links.length; i++) links[i].href = url.href;
@@ -224,10 +236,12 @@
         });
       });
 
-      // Open Book is here. Opted in (autoRead: Open Book holds the all-sites grant): a countdown
-      // straight into reading mode. Not opted in: ASK FIRST, because the opt-in is what makes every
-      // later link seamless and a countdown hurries people past it; "Not now" is remembered on this
-      // device and from then on the page just counts down to the article with the Alt+B hint.
+      // Open Book is here. A grant already covers this article (autoRead: all sites, or this site's
+      // auto-open): a countdown straight into reading mode. Otherwise ASK FIRST, because the opt-in
+      // is what makes later links seamless and a countdown hurries people past it. Two opt-ins:
+      // every shared link (the all-sites grant), or auto-open on this one site. "Not now" is
+      // remembered on this device and from then on the page just counts down to the article with
+      // the Alt+B hint, the two opt-ins still offered under it.
       // Every exit from these states is location.replace(), so Back does not land on this page
       // and count down again.
       var DECLINED = 'obr-shared-optin-declined';
@@ -240,12 +254,14 @@
         try { declined = localStorage.getItem(DECLINED) === '1'; } catch (e) { /* storage blocked: ask */ }
         if (autoRead || declined) counting(); else panel('ask');
 
-        document.getElementById('turn-on').addEventListener('click', function () {
+        var askFor = function (kind) {
           var status = document.getElementById('ask-status');
           status.textContent = 'Waiting for your answer in the Open Book window…';
-          optIn(function () { setAutoRead(true); go(); },
+          optIn(kind, function () { setAutoRead(true); go(); },
             function () { status.textContent = 'Not turned on. You can still just open the article.'; });
-        });
+        };
+        document.getElementById('turn-on').addEventListener('click', function () { askFor('obr-allow-shared-links'); });
+        document.getElementById('site-on').addEventListener('click', function () { askFor('obr-auto-open-site'); });
         document.getElementById('once').addEventListener('click', function (e) { e.preventDefault(); go(); });
         document.getElementById('not-now').addEventListener('click', function () {
           try { localStorage.setItem(DECLINED, '1'); } catch (e) { /* asked again next time */ }
@@ -260,11 +276,13 @@
           location.replace(url.href);
         });
         document.getElementById('cancel').addEventListener('click', function () { stop('Stopped. Open it when you are ready.'); });
-        document.getElementById('optin').addEventListener('click', function () {
+        var askWhileCounting = function (kind) {
           stop('Waiting for your answer in the Open Book window…');
-          optIn(function () { setAutoRead(true); start(); },
+          optIn(kind, function () { setAutoRead(true); start(); },
             function () { stop('Not turned on. Open it when you are ready.'); });
-        });
+        };
+        document.getElementById('optin').addEventListener('click', function () { askWhileCounting('obr-allow-shared-links'); });
+        document.getElementById('optin-site').addEventListener('click', function () { askWhileCounting('obr-auto-open-site'); });
 
         function panel(name) {
           document.getElementById('ask-panel').hidden = name !== 'ask';
@@ -278,13 +296,17 @@
         // been answered or closed, so no grant means no. Each wait is its own: a second click
         // ends the first, and an answer still in flight for an ended wait is ignored.
         var endWait = function () {};
-        function optIn(onGranted, onDeclined) {
+        function optIn(kind, onGranted, onDeclined) {
           endWait();
           var over = false, poll = 0;
           var onFocus = function () { recheck(true); };
           var end = function () { over = true; clearInterval(poll); window.removeEventListener('focus', onFocus); };
           endWait = end;
-          send({ type: 'obr-allow-shared-links' }, function () {});
+          // A refusal (no site to name, or a grant already covers the article, say from another
+          // share tab) settles the wait at once on what Open Book holds now.
+          send({ type: kind, url: url.href }, function (r) {
+            if (r && r.ok === false) recheck(true);
+          });
           var until = Date.now() + 120000;
           poll = setInterval(function () { recheck(false); }, 1500);
           window.addEventListener('focus', onFocus);
@@ -351,7 +373,7 @@
         if (!rt || typeof rt.sendMessage !== 'function') { finish(null); return; }
         setTimeout(function () { finish(null); }, 3000);
         try {
-          rt.sendMessage(EXT_ID, { type: 'obr-ping' }, function (res) {
+          rt.sendMessage(EXT_ID, { type: 'obr-ping', url: url.href }, function (res) {
             void rt.lastError;
             finish(res && res.ok ? res : null);
           });

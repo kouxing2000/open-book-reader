@@ -37,10 +37,18 @@
         : msg('permWhyDownloads', 'Open Book Reader needs permission to save files to your Downloads folder.');
 
   function finish(granted) {
-    chrome.runtime.sendMessage({ type: 'obr-perms-result', granted: !!granted }, () => {
+    const report = () => chrome.runtime.sendMessage({ type: 'obr-perms-result', granted: !!granted }, () => {
       void chrome.runtime.lastError;
       window.close();
     });
+    // Auto-open's rule is written HERE on Allow, not only by the worker that asked: that worker
+    // routinely dies while the prompt is up, which would leave the grant without its rule. Only
+    // for the site these origins were built from, so the host named cannot differ from the
+    // access Chrome just granted.
+    const OBR = globalThis.OBR;
+    if (granted && reason === 'auto-open' && host && OBR && OBR.storeAutoRule &&
+        OBR.originsForRule(host).join(',') === origins.join(',')) return void OBR.storeAutoRule(host, report);
+    report();
   }
 
   // The ZIP fetch asks for the origins its images actually live on (background.js permsFor),
