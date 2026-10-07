@@ -112,7 +112,9 @@
   let readMs = 0, lastTick = 0;
   let priorMs = 0, priorFin = false;
   let engageState = null, lifetimeStats = null;
-  let colophonEl = null, articleWords = 0, articleTitle = '', contentColumns = 1;
+  let colophonEl = null, endMarkEl = null, articleWords = 0, articleTitle = '', contentColumns = 1;
+  let colophonLight = false;  // the back cover of a short or one-spread piece: The End + Share only
+  let hasArticle = false;     // false while the reader shows its "no article here" empty state
   let finishedThisOpen = false, colSeenThisOpen = false;
   let openedByAuto = false;   // this session was sentinel-opened (tempers the ask moment)
   let flipSnapping = false;   // inside beginFlip's synchronous snap (see syncColophonView)
@@ -1925,7 +1927,9 @@
     // belongs to the previous content (open() re-fills it from the saved entry).
     articleWords = article ? countWords(article.textContent) : 0;
     articleTitle = title;
+    hasArticle = !!article;
     colophonEl = null;
+    endMarkEl = null;
     finishedThisOpen = false;
     priorMs = 0;
     priorFin = false;
@@ -1970,7 +1974,7 @@
 
   function colophonAskVisible() {
     const eng = engageState || {};
-    return !eng.done && (eng.colSeen || 0) < COLOPHON_ASK_SEEN_MAX;
+    return !colophonLight && !eng.done && (eng.colSeen || 0) < COLOPHON_ASK_SEEN_MAX;
   }
 
   // Any interaction with the ask — including dismissing it — means "stop asking",
@@ -2096,6 +2100,51 @@
     colophonEl.querySelector('.obr-colo-share-article').setAttribute('aria-expanded', 'true');
   }
 
+  // How many columns the article's text actually reaches. The strip is never narrower than the
+  // view, so by scrollWidth alone a piece that fits one spread measures as a full spread and
+  // its free right page would look taken.
+  function reachedColumns(root) {
+    const range = document.createRange();
+    range.selectNodeContents(root);
+    const left = pagesEl.getBoundingClientRect().left;
+    let right = 0;
+    for (const r of range.getClientRects()) {
+      if (r.width > 0 && r.height > 0) right = Math.max(right, r.right - left);
+    }
+    return Math.max(1, Math.floor(Math.max(0, right - 1) / (colW + colGap)) + 1);
+  }
+
+  // The end of an article whose last spread has no free page: a small mark right after the
+  // text, in the flow. A substantial article gets "The End" and a Share link; a short one only
+  // the link. The link opens the ⋯ menu's share options, so nothing in the column grows and
+  // re-paginates. Its content depends on `full`, which a relayout can change, so it is rebuilt
+  // on every call.
+  function ensureEndMarkEl(full) {
+    if (!endMarkEl) {
+      endMarkEl = document.createElement('div');
+      endMarkEl.className = 'obr-endmark';
+    }
+    const parts = [];
+    if (full) {
+      const fin = document.createElement('div');
+      fin.className = 'obr-endmark-fin';
+      fin.textContent = OBR.t('colophonTheEnd');
+      parts.push(fin);
+    }
+    const share = document.createElement('button');
+    share.className = 'obr-endmark-share';
+    share.textContent = OBR.t('shareArticle');
+    share.addEventListener('click', (e) => {
+      // Not to the overlay: its outside-a-popover click would close the menu opened here.
+      e.stopPropagation();
+      if (openPop !== 'more') togglePop('more');
+      openShareInPop();
+    });
+    parts.push(share);
+    endMarkEl.replaceChildren(...parts);
+    return endMarkEl;
+  }
+
   // The ⋯ popover's "Share this article": the same options, unfolded inside the popover, so
   // every article can be shared — the back cover is skipped whenever an article fills its last
   // spread exactly.
@@ -2185,8 +2234,11 @@
   function updateColophonContent() {
     if (!colophonEl) return;
     const ms = totalArticleMs(); // ticks first, so readMs below is current too
+    // The light back cover (a short or one-spread piece) is The End and Share only: no stats, no
+    // lifetime line, and no rating ask — which is therefore never counted as seen either.
     const stats = colophonEl.querySelector('.obr-colo-stats');
     if (stats) {
+      stats.hidden = colophonLight;
       stats.textContent = OBR.t('colophonStats',
         [articleWords.toLocaleString(), OBR._formatReadingDuration(ms)]);
     }
@@ -2195,7 +2247,8 @@
       const lt = lifetimeStats || {};
       // The lifetime line earns its place only once there IS a lifetime (3rd article on);
       // readMs adds the not-yet-flushed session so the total never reads behind the clock.
-      const show = settings.colophonLifetime !== false && (lt.articles || 0) >= LIFETIME_MIN_ARTICLES;
+      const show = !colophonLight && settings.colophonLifetime !== false
+        && (lt.articles || 0) >= LIFETIME_MIN_ARTICLES;
       life.hidden = !show;
       if (show) {
         life.querySelector('span').textContent = OBR.t('colophonLifeLine',
@@ -2699,9 +2752,10 @@
     // Center spine only fits an even split (its 50% line lands on the middle gap).
     overlay.querySelector('.obr-spine').classList.toggle('hidden', pagesPerSpread % 2 !== 0);
 
-    // Measure the CONTENT alone first — a colophon left attached by a previous pass
+    // Measure the CONTENT alone first — a colophon or end mark left attached by a previous pass
     // would distort the blank-page detection below.
     if (colophonEl && colophonEl.parentNode) colophonEl.remove();
+    if (endMarkEl && endMarkEl.parentNode) endMarkEl.remove();
     void pagesEl.offsetWidth; // force reflow before measuring
     // Cut each long picture into page-height strips, give each picture in a run its own page,
     // then shrink any figure that bumped to a new column back into the slack it left behind —
@@ -2717,22 +2771,33 @@
     totalColumns = Math.max(1, Math.round((total + colGap) / (colW + colGap)));
     contentColumns = totalColumns;
     // Back-cover colophon: appended INTO the column flow (break-before → its own column,
-    // sized to exactly one page), so it FILLS the final spread's already-blank page.
-    // Gated to substantial articles with at least two content spreads: the moment must be
-    // earned, and a one-spread piece would surface it with zero interaction.
-    // ONLY append when it FITS the last content spread's already-blank page — never when it
-    // would push onto a fresh spread with a blank facing page (the "546 words → blank right
-    // page" report; see _colophonFitsLastSpread). When it's skipped, the engagement chip on
-    // close still carries the ask (one channel at a time), so nothing is lost but the blank.
-    const contentRoot = pagesEl.querySelector('.obr-content');
-    if (contentRoot && settings.colophon !== false && articleWords >= COLOPHON_MIN_WORDS
-        && Math.ceil(contentColumns / pagesPerSpread) >= 2
-        && OBR._colophonFitsLastSpread(contentColumns, pagesPerSpread)) {
+    // sized to exactly one page), so it FILLS the final spread's already-blank page — never
+    // pushed onto a fresh spread with a blank facing page (the "546 words → blank right page"
+    // report; see _colophonFitsLastSpread). The FULL back cover (stats, the rating ask) is for a
+    // substantial article with at least two content spreads, where the moment is earned; a
+    // short or one-spread piece gets a LIGHT one (The End and Share). Single-page mode never has
+    // a free page, so there only a substantial article gets a page of its own; a short piece
+    // gets the inline end mark. The reader's "no article here" state gets neither.
+    const contentRoot = hasArticle && settings.colophon !== false ? pagesEl.querySelector('.obr-content') : null;
+    const substantial = articleWords >= COLOPHON_MIN_WORDS && Math.ceil(contentColumns / pagesPerSpread) >= 2;
+    const textColumns = contentRoot && contentColumns <= pagesPerSpread ? reachedColumns(contentRoot) : contentColumns;
+    if (contentRoot && (substantial || pagesPerSpread > 1) && OBR._colophonFitsLastSpread(textColumns, pagesPerSpread)) {
+      colophonLight = !substantial;
       const colo = ensureColophonEl();
+      colo.classList.toggle('obr-colo-light', colophonLight);
       colo.style.height = colH + 'px';
       contentRoot.appendChild(colo);
       void pagesEl.offsetWidth;
       totalColumns = Math.max(1, Math.round((pagesEl.scrollWidth + colGap) / (colW + colGap)));
+    } else if (contentRoot) {
+      // No back cover: end with the inline mark instead — unless it would spill into a column of
+      // its own, which would bring the blank page back. The footer's "End of article" still
+      // answers a turn past the end there.
+      const mark = ensureEndMarkEl(substantial);
+      contentRoot.appendChild(mark);
+      void pagesEl.offsetWidth;
+      const withMark = Math.max(1, Math.round((pagesEl.scrollWidth + colGap) / (colW + colGap)));
+      if (withMark > contentColumns) mark.remove();
     }
     totalSpreads = Math.max(1, Math.ceil(totalColumns / pagesPerSpread));
 

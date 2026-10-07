@@ -417,6 +417,17 @@
       cursor: pointer; color: inherit; font-family: ${FONT_STACKS.sans}; font-size: 13px;
       opacity: .72; text-decoration: underline; text-underline-offset: 3px; padding: 2px 4px; }
     .obr-colo-share-article:hover { opacity: 1; }
+    /* The light back cover (a short or one-spread piece) is The End and Share only. */
+    .obr-colo-light .obr-colo-stats, .obr-colo-light .obr-colo-life,
+    .obr-colo-light .obr-colo-ask { display: none !important; }
+    /* The end mark: where an article with no back cover ends, right after its last paragraph. */
+    .obr-endmark { break-inside: avoid; display: flex; flex-direction: column; align-items: center;
+      gap: 6px; margin: 2.4em 0 0; text-align: center; }
+    .obr-endmark-fin { font-size: .74em; letter-spacing: .3em; opacity: .5; }
+    .obr-endmark-share { border: none; background: transparent; cursor: pointer; color: inherit;
+      font-family: ${FONT_STACKS.sans}; font-size: 13px; opacity: .72; text-decoration: underline;
+      text-underline-offset: 3px; padding: 2px 4px; }
+    .obr-endmark-share:hover { opacity: 1; }
     .obr-colophon .obr-share-fallback, .obr-pop .obr-share-fallback { margin-top: .9em; width: 86%; display: flex;
       flex-direction: column; gap: 4px; font-family: ${FONT_STACKS.sans}; font-size: 12px; }
     .obr-colophon .obr-share-fallback .obr-share-field, .obr-pop .obr-share-fallback .obr-share-field { font: inherit; color: inherit;

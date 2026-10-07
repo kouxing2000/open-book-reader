@@ -2202,8 +2202,11 @@ test.describe('content override', () => {
         // empty state takes its colour from the theme instead of a hardcoded alert palette.
         headColor: empty ? getComputedStyle(empty.querySelector('.obr-empty-head')).color : '',
         overlayColor: getComputedStyle(root.querySelector('.obr-overlay')).color,
+        // "No article here" must not then offer "The End" or to share the article.
+        ending: !!root.querySelector('.obr-colophon') || !!root.querySelector('.obr-endmark'),
       };
     });
+    expect(r.ending).toBe(false);
     expect(r.shown).toBe(true);
     expect(r.head).toBe('No article on this page');
     // 'report-empty', not 'report': the hint bar's button reports 'suspect-extraction', which
@@ -3658,6 +3661,138 @@ test.describe('back-cover colophon', () => {
     expect(r.noTitle).toBe('https://openbook.peach-studio.com/read#u=' + encodeURIComponent('https://a.test/'));
   });
 
+  // Every article ends visibly. A free last page always gets the back cover: the full one for a
+  // substantial article (300+ words, more than one spread), a light one — The End and Share, no
+  // stats, no lifetime line, no rating ask — for a short or one-spread piece. With no free page,
+  // a small mark follows the text: "The End" and Share for a substantial article, Share alone for
+  // a short one.
+  const endState = (page) => page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const m = root.querySelector('.obr-endmark');
+    const c = root.querySelector('.obr-colophon');
+    const shown = (sel) => { const el = c && c.querySelector(sel); return !!el && !el.hidden; };
+    const d = OBR._diagReader();
+    const textCols = c ? d.cols - 1 : d.cols; // the back cover takes a column of its own
+    return {
+      colophon: !!c,
+      light: !!c && c.classList.contains('obr-colo-light'),
+      coloStats: shown('.obr-colo-stats'), coloAsk: shown('.obr-colo-ask'), coloLife: shown('.obr-colo-life'),
+      mark: !!m && m.isConnected,
+      fin: m ? !!m.querySelector('.obr-endmark-fin') : false,
+      share: m ? (m.querySelector('.obr-endmark-share') || {}).textContent || null : null,
+      fullLastSpread: textCols % d.perSpread === 0,
+      cols: d.cols, perSpread: d.perSpread,
+    };
+  });
+  // The column parity follows the window (and the platform's fonts), so walk the height down and
+  // keep every state: a rule is checked against all of them, never against the first one found.
+  // `full`/`free` are the first full-spread state that kept its mark and the first free-page one.
+  async function findEndings(page) {
+    const all = [];
+    for (let h = 800; h >= 300; h -= 16) {
+      await page.setViewportSize({ width: 1280, height: h });
+      if (!(await page.evaluate(() => OBR._diagReader().active))) await openReader(page);
+      await page.waitForTimeout(350); // the resize relayout
+      await page.keyboard.press('End');
+      all.push({ h, ...(await endState(page)) });
+    }
+    return {
+      all,
+      full: all.find((st) => st.fullLastSpread && st.mark) || null,
+      free: all.find((st) => !st.fullLastSpread) || null,
+    };
+  }
+
+  test('a short one-page article gets a light back cover on its free right page', async ({ page }) => {
+    await resetEngagement(page);
+    await gotoFixture(page, 'short-article.html');
+    // A lifetime the full back cover WOULD show: the light one must still leave it out.
+    await page.evaluate(() => new Promise((res) =>
+      chrome.storage.local.set({ obr_lifetime: { articles: 11, ms: 4320000 } }, res)));
+    await injectReader(page);
+    await openReader(page);
+    await page.keyboard.press('End');
+    const st = await endState(page);
+    expect(st).toMatchObject({ colophon: true, light: true, coloStats: false, coloAsk: false, coloLife: false, mark: false });
+    expect(st.cols).toBe(st.perSpread); // on the free right page, not a spread of its own
+    expect(await page.evaluate(() => {
+      const c = document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon');
+      return { fin: c.querySelector('.obr-colo-fin').textContent, share: c.querySelector('.obr-colo-share-article').textContent };
+    })).toEqual({ fin: '— The End —', share: 'Share this article' });
+    // The light page asks for nothing, so it never counts as a rating-ask impression either.
+    expect(await page.evaluate(() => new Promise((res) =>
+      chrome.storage.sync.get('obr_engage', (d) => res((d.obr_engage || {}).colSeen || 0))))).toBe(0);
+  });
+
+  test('a substantial article: full back cover on a free page, The End and Share under the text otherwise', async ({ page }) => {
+    await resetEngagement(page);
+    const seen = await findEndings(page);
+    // Every full last spread: no back cover, and a mark — when it fit — that says The End.
+    for (const st of seen.all.filter((x) => x.fullLastSpread)) {
+      expect({ h: st.h, colophon: st.colophon, finIfMark: !st.mark || st.fin }).toEqual({ h: st.h, colophon: false, finIfMark: true });
+    }
+    // Every free last page: the full back cover, no mark.
+    for (const st of seen.all.filter((x) => !x.fullLastSpread)) {
+      expect({ h: st.h, colophon: st.colophon, light: st.light, mark: st.mark }).toEqual({ h: st.h, colophon: true, light: false, mark: false });
+    }
+    expect(seen.full, 'a full last spread whose mark fit').not.toBeNull();
+    expect(seen.full).toMatchObject({ fin: true, share: 'Share this article' });
+    expect(seen.free, 'a window height with a free last page').not.toBeNull();
+  });
+
+  test('a short article that fills its last spread ends with a Share link alone, which opens the ⋯ share options', async ({ page }) => {
+    await resetEngagement(page);
+    await gotoFixture(page, 'short-article.html');
+    await injectReader(page);
+    const seen = await findEndings(page);
+    for (const st of seen.all.filter((x) => x.fullLastSpread)) {
+      expect({ h: st.h, colophon: st.colophon, fin: st.fin }).toEqual({ h: st.h, colophon: false, fin: false });
+    }
+    expect(seen.full, 'a window height where the short text fills its spread and the mark fit').not.toBeNull();
+    expect(seen.full).toMatchObject({ share: 'Share this article' });
+    await page.setViewportSize({ width: 1280, height: seen.full.h });
+    await page.waitForTimeout(350);
+    await page.keyboard.press('End');
+    await page.evaluate(() =>
+      document.getElementById('obr-host').shadowRoot.querySelector('.obr-endmark-share').click());
+    expect(await page.evaluate(() => {
+      const pop = document.getElementById('obr-host').shadowRoot.querySelector('.obr-pop[data-for="more"]');
+      return { popOpen: !pop.hidden, menuOpen: !pop.querySelector('.obr-share-menu').hidden };
+    })).toEqual({ popOpen: true, menuOpen: true }); // the overlay's outside-click did not shut it
+  });
+
+  // Single-page mode never has a free page: a short piece ends with the inline mark rather than
+  // a page holding only "The End"; a substantial article keeps its full back cover page.
+  test('on a single page a short piece ends with the inline mark, not a page of its own', async ({ page }) => {
+    await resetEngagement(page);
+    await page.setViewportSize({ width: 600, height: 800 }); // below singlePageBelow (720)
+    await gotoFixture(page, 'short-article.html');
+    await injectReader(page);
+    await openReader(page);
+    await page.keyboard.press('End');
+    const st = await endState(page);
+    expect(st).toMatchObject({ perSpread: 1, colophon: false, mark: true, fin: false, share: 'Share this article' });
+  });
+
+  test('the end mark never takes a page of its own', async ({ page }) => {
+    await resetEngagement(page);
+    const seen = await findEndings(page);
+    await page.setViewportSize({ width: 1280, height: seen.full.h });
+    await page.waitForTimeout(350);
+    const before = await endState(page);
+    expect(before.mark).toBe(true);
+    // Stand in for a last page with no room left: a mark taller than any page.
+    await page.evaluate(() => {
+      const st = document.createElement('style');
+      st.textContent = '.obr-endmark { height: 4000px; }';
+      document.getElementById('obr-host').shadowRoot.appendChild(st);
+    });
+    await page.setViewportSize({ width: 1270, height: seen.full.h }); // relayout
+    await page.waitForTimeout(400);
+    const after = await endState(page);
+    expect({ mark: after.mark, cols: after.cols }).toEqual({ mark: false, cols: before.cols });
+  });
+
   test('colophon setting off = the article just ends', async ({ page }) => {
     await resetEngagement(page);
     await page.evaluate(() => OBR.saveSettings({ colophon: false }));
@@ -3665,6 +3800,8 @@ test.describe('back-cover colophon', () => {
     await page.keyboard.press('End');
     expect(await page.evaluate(() =>
       !!document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon'))).toBe(false);
+    expect(await page.evaluate(() =>
+      !!document.getElementById('obr-host').shadowRoot.querySelector('.obr-endmark'))).toBe(false);
     await page.evaluate(() => OBR.saveSettings({ colophon: true })); // restore for later tests
   });
 

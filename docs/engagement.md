@@ -44,7 +44,21 @@ the pure `OBR._colophonFitsLastSpread(contentColumns, pagesPerSpread)` gate: con
 divide evenly into spreads (an even column count at 2-up would push the colophon onto a fresh
 spread with a blank facing page — the "546 words → blank page" report — re-introducing the very
 blanks pagination fights; single-page mode has no facing page, so it always fits). When it's
-skipped, the engagement chip on close still carries the ask (one channel at a time). It never
+skipped, the engagement chip on close still carries the ask (one channel at a time). Every
+article still ends visibly. A free last page ALWAYS gets the back cover: the full one for a
+substantial article, a **light** one (`colophonLight`, `.obr-colo-light`: The End and Share — no
+stats, no lifetime line, no rating ask, so no ask impression is counted) for a short or one-spread
+piece (under 300 words, or one spread), whose ask would come too soon. A piece that fits one spread
+measures as a full spread by scrollWidth (the strip is never narrower than the view), so its free
+right page is found by `reachedColumns` — the columns its text actually reaches. With no free page,
+an inline **end mark** (`ensureEndMarkEl`, `.obr-endmark`) follows the text: "The End" plus Share this
+article on a substantial article, the Share link alone on a short one. The link opens the ⋯ menu's
+share options (`openShareInPop`), so nothing in the column grows; its click stops at the link, or
+the overlay's outside-a-popover click would close the menu it just opened. The mark is removed again
+whenever it would spill into a column of its own (that would be the blank page again), and the
+`colophon` setting turns both off with the back cover. Single-page mode never has a free page, so
+there only a substantial article gets the back cover as a page of its own and a short piece gets
+the mark; the reader's "no article here" empty state gets neither. The back cover never
 covers text, never auto-navigates, fades in once (reduced-motion: instant). (2) **Engagement chip** (reuses the auto-chip shell CSS): shown
 only by `_maybeEngageAsk` on a USER-initiated close (reader or gallery; `suppress:false` paths
 never ask), gated by the pure `_shouldAskEngage`: ≥5 opens across ≥2 distinct days, max 2 asks
