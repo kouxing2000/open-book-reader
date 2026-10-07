@@ -220,8 +220,9 @@ test('a tap on a picture opens the viewer from the middle band, and an edge tap 
 
   const before = (await readState(page)).translateX;
   await page.touchscreen.tap(Math.round(r.right - 6), y);
+  // Turned forward, as an edge tap does — once the tap's click arrives, which a slow machine delays.
+  await expect.poll(() => readState(page).then((s) => s.translateX)).toBeLessThan(before);
   expect((await zoomViewer(page)).open).toBe(false);
-  expect((await readState(page)).translateX).toBeLessThan(before); // turned forward, as an edge tap does
 
   await page.keyboard.press('ArrowLeft');
   r = await turnToPicture(page, 'Linked photo');
@@ -229,7 +230,7 @@ test('a tap on a picture opens the viewer from the middle band, and an edge tap 
   // route to it, and a picture can fill the page); a tap while it shows opens the viewer.
   await waitForChromeHidden(page);
   await page.touchscreen.tap(CENTRE_X, Math.round((r.top + r.bottom) / 2));
-  expect((await diag(page)).chromeHidden).toBe(false);
+  await expect.poll(() => diag(page).then((d) => d.chromeHidden)).toBe(false);
   expect((await zoomViewer(page)).open).toBe(false);
   await page.touchscreen.tap(CENTRE_X, Math.round((r.top + r.bottom) / 2));
   await expect.poll(() => zoomViewer(page).then((v) => v.open && v.loaded)).toBe(true);

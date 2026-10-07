@@ -4012,7 +4012,19 @@ test.describe('picture viewer', () => {
     expect(v.width).toBe(750); // its own width: neither the ~100px sliver nor enlarged
     expect((await readState(page)).translateX).toBe(before);
 
-    await page.keyboard.press('PageDown'); // the viewer scrolls; the book does not turn
+    // PageDown is the viewer's: it holds focus, can scroll, and the key reaches it with its
+    // default (the browser's own scroll) intact, while the book does not turn. The scroll itself
+    // is Chromium's and is not asserted: headless Chromium on a starved CPU drops keyboard
+    // scrolls (ArrowDown, Space and PageDown alike) that nothing prevented.
+    await page.evaluate(() => window.addEventListener('keydown', (e) => { window.__key = e; }, { capture: true, once: true }));
+    await page.keyboard.press('PageDown');
+    expect(await page.evaluate(() => {
+      const z = document.getElementById('obr-host').shadowRoot.querySelector('.obr-zoom');
+      return { focused: z.getRootNode().activeElement === z, prevented: window.__key.defaultPrevented,
+        scrolls: getComputedStyle(z).overflowY === 'auto' && z.scrollHeight > z.clientHeight };
+    })).toEqual({ focused: true, prevented: false, scrolls: true });
+    expect((await readState(page)).translateX).toBe(before);
+    await page.mouse.wheel(0, 600); // and it does scroll, while the book stays put
     await expect.poll(() => zoomViewer(page).then((z) => z.scrollTop)).toBeGreaterThan(0);
     expect((await readState(page)).translateX).toBe(before);
 
@@ -4027,8 +4039,11 @@ test.describe('picture viewer', () => {
     const before = await openLong(page);
     const { width, height } = page.viewportSize();
     // The RIGHT band: the picture sits on the first spread, where a backward turn is a no-op
-    // and would hide a click that leaked through to the page-turn handler.
-    await page.mouse.click(width - 6, Math.round(height / 2));
+    // and would hide a click that leaked through to the page-turn handler. Inside the viewer's
+    // client area: where scrollbars take room (Linux), the window's last pixels are its scrollbar.
+    const inner = await page.evaluate(() => document.getElementById('obr-host').shadowRoot.querySelector('.obr-zoom').clientWidth);
+    expect(inner - 6).toBeGreaterThan(width * (1 - EDGE_FRAC));
+    await page.mouse.click(inner - 6, Math.round(height / 2));
     expect((await zoomViewer(page)).open).toBe(false);
     expect((await readState(page)).translateX).toBe(before);
   });
@@ -4191,13 +4206,19 @@ test.describe('long pictures cut into page-height strips', () => {
 
   test('a long picture is cut only once its file arrives, never on its size attributes', async ({ page }) => {
     // beforeEach registered the shims via addInitScript, which re-run on this navigation; stop at
-    // DOMContentLoaded so the reader opens while the file is still on its way.
+    // DOMContentLoaded so the reader opens while the file is still on its way. The file is HELD
+    // until the early look is done: a timed delay alone loses the race on a slow machine.
+    let release, caught = 0;
+    const held = new Promise((r) => { release = r; });
+    await page.route(/long-picture\.svg\?delay=/, async (route) => { caught += 1; await held; await route.continue(); });
     await page.goto('/long-picture-late.html', { waitUntil: 'domcontentloaded' });
     await injectReader(page);
     await openReader(page);
     const early = await drawn(page, 'Late long infographic'); // its attributes alone qualify it
     expect(early.whole).toBe(true);
     expect(early.cut).toBe(false);
+    expect(caught).toBeGreaterThan(0); // the file really was held, not merely late
+    release();
     await expect.poll(() => drawn(page, 'Late long infographic').then((d) => d.cut), { timeout: 10_000 }).toBe(true);
     expect(onePerPage(await drawn(page, 'Late long infographic'))).toBe(true);
   });
