@@ -216,10 +216,26 @@ export async function clickInReader(page, selector) {
   await page.locator(`#obr-host >> ${selector}`).click();
 }
 
+/** Hold the reader's toolbar up the way a user does before reaching for it: the desktop bar hides
+ *  after a short idle (CHROME_HIDE_MS), and a slow machine can spend that long between opening
+ *  the reader and the click, or let the hide fire mid-click, leaving the button off-screen. Any
+ *  move over the reader shows the bar; a pointer resting where the bar sits (the top edge of the
+ *  window) keeps it up (overControls) once it slides in under it. */
+export async function holdReaderChrome(page) {
+  const hidden = () => page.evaluate(() => document.getElementById('obr-host').shadowRoot
+    .querySelector('.obr-overlay').classList.contains('obr-chrome-hidden'));
+  const { width, height } = page.viewportSize();
+  await page.mouse.move(Math.round(width / 2), Math.round(height / 2));
+  await page.mouse.move(Math.round(width / 2) + 1, Math.round(height / 2));
+  await expect.poll(hidden).toBe(false);
+  await page.mouse.move(Math.round(width / 2), 20);
+}
+
 /** Run a reader toolbar action wherever the width-aware toolbar put it: inline in the bar, in
  *  the Aa popover (font / theme / columns, `val` picks a segment), or in the ⋯ menu — opening
  *  the popover first when it is closed. */
 export async function clickReaderAction(page, act, val) {
+  await holdReaderChrome(page);
   const sel = `[data-act="${act}"]` + (val != null ? `[data-val="${val}"]` : '');
   const home = await page.evaluate((s) => {
     const sr = document.getElementById('obr-host').shadowRoot;
