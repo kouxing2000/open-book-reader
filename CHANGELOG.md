@@ -11,6 +11,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-07
+
+- **Share the article you just read.** A "Share this article" button sits on the back cover and
+  in the ⋯ menu. It opens a menu in place: your system share sheet where Chrome has one, Copy
+  link, Email, X, Facebook, LinkedIn, Reddit, WhatsApp and Telegram, plus LINE, Weibo or VK
+  depending on your language. The link goes to a small page on the extension's website that
+  shows the article's title and real address. A friend without Open Book is offered to add it
+  or just open the article. The article's
+  address rides after the "#" in the link, which a browser never sends to a server, so the
+  website never learns what was shared.
+- **Shared links can open straight into reading mode, if you choose.** When a friend's share
+  link reaches you and you already have Open Book, the page asks first. You can turn on
+  "Always open shared links in reading mode" (Chrome asks for access to all sites), or
+  "Always open this site in reading mode" (Chrome asks for that one site only, the same as
+  auto-open), or just open the article. Once on, shared links count down for 3 seconds and
+  open in the reader.
+- **Every article now ends visibly.** The back cover used to appear only when the last spread
+  had a blank page, so about half of all articles simply stopped. A free last page now always
+  gets one: the full back cover for a longer article, a light "The End" with Share for a short
+  one. When there is no free page, a small end mark follows the text instead.
+- **Long pictures are cut into page-height strips you read page by page,** instead of
+  shrinking to an unreadable sliver (infographics, long screenshots). Each strip repeats a
+  little of the one before, so nothing is lost at the cut. You can turn this off in Options.
+- **Click a picture to see it bigger.** A picture the reader shows smaller than its file opens
+  in a viewer, at the linked original or the largest size the page offers. Cmd/Ctrl-click
+  still opens a linked picture in a new tab. On a phone, the first tap on a picture brings the
+  hidden toolbar back, and the next one opens the viewer.
+- **Save as Markdown (beta).** Turn it on in Options to get a ⤓ Markdown button that saves the
+  cleaned article as a .md file, with its title, author and source at the top.
+- **A smaller toolbar.** Text size, theme and columns live under Aa; everything else under ⋯.
+  It fits on one row at every width (on a phone it was three rows). A ◐ button next to Aa
+  switches theme in one tap, the same as the T key.
+- **Wikipedia section headings are back.** Headings that sit next to an [edit] link were
+  being dropped, on nearly every Wikipedia page in every language, and permalink marks like ¶
+  leaked into the text.
+- **Pictures that load as you scroll keep their full size** in a picked or selected area,
+  instead of being replaced by a blurry placeholder or skipped.
+- **Turning on auto-open from the right-click menu no longer forgets the site** when Chrome's
+  permission prompt stays open for a while.
+- **Printed pages show the extension's website address** (openbook.peach-studio.com) in the
+  footer, which leads to the store listing when typed in. The QR code is unchanged.
+
 ## [1.12.1] - 2026-10-02
 
 - **The reader now opens where you were on the page, and closing it takes the page to where you
@@ -467,7 +509,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.12.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.0
 [1.12.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.1
 [1.12.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.0
 [1.11.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.11.0
