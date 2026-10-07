@@ -171,6 +171,8 @@
   "optColophonHint": { "message": "Ao chegar ao fim de um artigo, adiciona uma pequena contracapa com suas estatísticas de leitura (palavras, tempo) e uma linha discreta de avaliar/feedback. Ela nunca cobre o texto do artigo, e tudo é contado apenas neste dispositivo — nada é enviado. Desligado = o artigo simplesmente termina." },
   "optColophonLife": { "message": "Estatísticas totais na contracapa" },
   "optColophonLifeHint": { "message": "Incluir seus totais (artigos concluídos, tempo total de leitura) na contracapa. Guardados apenas neste dispositivo; nunca enviados." },
+  "optSplitLong": { "message": "Dividir imagens longas em páginas" },
+  "optSplitLongHint": { "message": "Uma imagem muito longa (um infográfico, uma captura de tela longa) é cortada em faixas da altura de uma página, lidas página a página; cada uma repete um pouco da anterior para que nenhuma linha fique cortada ao meio. Clique em uma faixa para ver a imagem inteira. Desligado = continua uma única imagem, reduzida a uma página." },
   "optRateLink": { "message": "★ Avaliar na Chrome Web Store" },
   "optStarLink": { "message": "⭐ Dar uma estrela no GitHub" },
   "welcomeRate": { "message": "Avaliar ★" },

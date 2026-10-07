@@ -324,6 +324,9 @@
     colophonLifetime: true, // colophon: include the lifetime line (articles finished + total
                            // reading time, per device). The line carries its own inline "hide"
                            // link that flips this off — no options-hunting needed.
+    splitLongPictures: true, // text reader: cut a very long picture (at least 3:1, more than two
+                           // pages tall at page width) into page-height strips read page by page
+                           // (reader.js cutLongPictures). Off = it stays one picture, shrunk to a page.
     galleryColumns: 4,     // image-gallery WALL layout: masonry column COUNT (fewer = larger images;
                            // clamped per screen so "biggest" is a 2-up grid everywhere)
     galleryOrderedCols: 2, // image-gallery ORDERED layout: columns per row (1 = single-page reading

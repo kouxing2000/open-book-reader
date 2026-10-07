@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reading A Long Picture</title>
+</head>
+<body>
+  <!-- The picture viewer's three cases, each kept apart by prose so none of them forms a run
+       (a run would be plated, which is a different layout):
+       - a 750x4600 infographic, which the reader's 72%-of-a-page cap draws as a sliver about a
+         hundred pixels wide: the viewer shows it at its own width and it scrolls;
+       - a 400x300 photo linked to its own file, as WordPress links the original: the viewer
+         opens the linked file instead of the browser leaving the reader for it;
+       - the same photo unlinked, drawn at its own size: the viewer has nothing to add, so a
+         click on it still turns the page;
+       - a 1200x800 picture linked to a web page, drawn smaller than its pixels: it would be
+         zoomable, but the link is the author's meaning, so a click still follows it;
+       - a 300x1800 long picture, narrower than the page: cut into strips at its own width;
+       - a 600x1700 photo, more than two pages tall at page width but under 3:1: never cut;
+       - the infographic again inside a list item, narrower than the page: cut at the item's width.
+       The infographic is cut into strips too, so the viewer tests click a strip. -->
+  <article>
+    <h1>Reading A Long Picture</h1>
+    <p>Readers keep asking how the new line changes their commute. The short answer is that most trips across the river get shorter, and the airport finally has a direct link. The longer answer depends on where you live, which is why the city published the full breakdown below as a single long graphic.</p>
+    <p>Most of the stations open in the spring. The first trains run every eight minutes at peak and every twelve in the evening, and the fare cap means a resident never pays more than three euros in a day, however many times they ride.</p>
+    <p>The airport link is the headline, but the quieter change is the river crossing. Three of the new stations sit within a short walk of the old ferry piers, and the ferries keep running on their summer timetable for one more year while the city watches how many riders switch.</p>
+    <figure><img src="long-picture.svg" width="750" height="4600" alt="Long infographic"><figcaption>The full breakdown, as published by the city.</figcaption></figure>
+    <p>The graphic splits the city into four parts. Each part gets its own section with the stations that serve it, the trips that get shorter, and the trips that do not change at all. The last section covers the night service, which starts a month after the opening.</p>
+    <p>Not every neighbourhood wins. The northern districts keep their bus routes, and two of those routes lose a stop each where the new line runs close by. The city says the change saves four minutes per trip; the residents who used those stops say otherwise.</p>
+    <p>The council will publish ridership numbers every quarter for the first two years. The first report is due in the summer, and it will decide whether the ferry timetable survives into the following year.</p>
+    <p><a href="/photo-400.png?full"><img src="/photo-400.png?thumb" alt="Linked photo"></a></p>
+    <p>The photo above shows the new platform at the airport terminal, where the line ends. Trains wait there for six minutes before turning back, long enough for a full train to empty and refill without a rush at the doors.</p>
+    <p>Construction ran two years late and about a fifth over budget. Most of the delay came from the tunnel under the river, where the ground turned out to be softer than the survey said, and the boring machine had to stop for four months while engineers redesigned the lining.</p>
+    <p>The stations themselves came in on time. Each one has step-free access from the street to the platform, which the old lines still lack at more than half of their stops, and the city has promised to retrofit those by the end of the decade.</p>
+    <figure><img src="/photo-400.png?plain" alt="Plain photo"><figcaption>The river station, from the old ferry pier.</figcaption></figure>
+    <p>The river station is the busiest of the new stops in the city's own forecast, because it is the only one that connects to both ferry routes and three bus lines. It is also the deepest, at thirty metres below the street.</p>
+    <figure><img src="narrow-long.svg" width="300" height="1800" alt="Narrow long infographic"><figcaption>The night service, in one narrow graphic.</figcaption></figure>
+    <p>The night service runs every twenty minutes on the core section only, from the old town to the river station, and stops entirely on Sunday nights for maintenance during the first year.</p>
+    <p>The operator says the Sunday closure will end once the signalling has been tested at full frequency, which it expects to take about nine months after the opening.</p>
+    <figure><img src="tall-photo.svg" width="600" height="1700" alt="Tall photo"><figcaption>The deepest escalator on the line.</figcaption></figure>
+    <ul>
+      <li>Find your stop on the full map before you set out: <img src="long-picture.svg?listed" width="750" height="4600" alt="Listed long infographic"></li>
+      <li>Then check the night timetable, which differs from the day one on every branch.</li>
+    </ul>
+    <p>Whether the forecast holds will depend on the fare cap more than on the trains. A cap that covers the ferry as well as the line would make the crossing free for anyone already riding, and the council has said it will decide on that after the first quarterly report.</p>
+    <p><a href="/elsewhere.html"><img src="wide-picture.svg" width="1200" height="800" alt="Page-linked picture"></a></p>
+    <p>The operator's shop sells a model of the new trains, pictured above, with every station on the line printed along its side. The first batch sold out in a day, and a second batch arrives in the autumn.</p>
+    <p>Until then the ferries charge their own fare. Riders who switch between the two pay twice, which the city admits is the one part of the plan that nobody likes, including the people who wrote it.</p>
+  </article>
+</body>
+</html>

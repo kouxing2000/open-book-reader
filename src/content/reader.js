@@ -35,6 +35,7 @@
 
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, pickHintEl, hintEl;
+  let zoomEl, zoomImg; // the picture viewer (openZoom), a sibling of the overlay
   // Element-picker mode (the ⌖ Pick override): a separate Shadow host so its highlight
   // box / instruction bar can't disturb the reader's styles, plus the live hover target.
   let pickerActive = false, pickHost = null, pickRoot = null, pickBox = null, pickLabel = null, pickHoverNode = null;
@@ -231,6 +232,19 @@
       <div class="obr-progress"><div class="obr-progress-fill"></div></div>`;
     root.appendChild(overlay);
 
+    // The picture viewer is the overlay's SIBLING, not its child: a click on its backdrop must
+    // not bubble into the overlay's handler below, where a click in the edge band would close
+    // the viewer AND turn the page behind it, and its mousemove must not wake the chrome.
+    // Same z-index as the overlay, and later in the tree, so it paints above it.
+    zoomEl = document.createElement('div');
+    zoomEl.className = 'obr-zoom';
+    zoomEl.tabIndex = -1; // focused while open, so arrows / space / PgDn scroll it natively
+    zoomEl.hidden = true;
+    zoomEl.innerHTML = `<img class="obr-zoom-img" alt=""><button class="obr-zoom-x" title="${OBR.t('galleryClose')}" aria-label="${OBR.t('galleryClose')}">✕</button>`;
+    zoomImg = zoomEl.querySelector('.obr-zoom-img');
+    zoomEl.addEventListener('click', (e) => { if (e.target !== zoomImg) closeZoom(); });
+    root.appendChild(zoomEl);
+
     titleEl = overlay.querySelector('.obr-doc-title');
     metaEl = overlay.querySelector('.obr-doc-meta');
     viewportEl = overlay.querySelector('.obr-viewport');
@@ -250,7 +264,16 @@
       if (!active || pickerActive) return;
       // A click outside an open popover only dismisses it — it must not also turn the page.
       if (openPop && !e.target.closest('.obr-pop, [data-pop]')) { closePop(); return; }
-      if (e.target.closest('a, button, input, label, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
+      // A picture the viewer would show larger opens there instead of turning the page. Ahead of
+      // the link check: a picture linked to its own full-size file opens in the viewer rather
+      // than leaving the reader for the bare file.
+      const pic = zoomTarget(e);
+      if (pic) { e.preventDefault(); openZoom(pic); return; }
+      // The viewer stands in for a picture's link to its own file, so a tap that did not open
+      // it (a touch edge band) turns the page rather than leaving the reader for the bare file.
+      const linked = pictureAt(e.target);
+      if (linked && linkedImage(linked.at)) e.preventDefault();
+      else if (e.target.closest('a, button, input, label, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
       // The content is in an open shadow root; window.getSelection() can't see selections inside
       // it, so use shadowRoot.getSelection() (Chrome) and fall back to the document selection.
       const sel = root.getSelection ? root.getSelection() : (globalThis.getSelection && getSelection());
@@ -280,6 +303,13 @@
     // mouseleave does not reliably fire on touch, so overControls would latch true and the chrome
     // would never hide again.
     overlay.addEventListener('mousemove', () => { if (!touchMode) showChrome(); });
+    // The zoom-in cursor is decided on hover, not at layout: what the viewer adds depends on the
+    // picture's drawn size, which every relayout, late image and figure fit can change.
+    overlay.addEventListener('mouseover', (e) => {
+      if (touchMode) return;
+      const pic = pictureAt(e.target);
+      if (pic) pic.at.classList.toggle('obr-zoomable', canZoom(pic));
+    });
     [overlay.querySelector('.obr-topbar'), overlay.querySelector('.obr-footer')].forEach((bar) => {
       bar.addEventListener('mouseenter', () => {
         if (touchMode) return;
@@ -293,6 +323,96 @@
 
     applyStylesheet();
     built = true;
+  }
+
+  /* ------------------------------------------------------------------ picture viewer
+   * A click on a picture the page draws smaller than its own pixels opens it full-screen at its
+   * OWN width, never enlarged. A long picture (more than two screens tall at that width) opens
+   * at that width and scrolls; anything shorter is fitted to the window. */
+  const ZOOM_MIN_GAIN = 1.15; // under this the viewer would show nothing the page does not
+  const ZOOM_PAD = 16;        // px around the picture in the viewer; the .obr-zoom padding
+
+  /** The width the viewer draws a w x h picture at, and whether it scrolls. */
+  function zoomFit(w, h) {
+    const availW = window.innerWidth - ZOOM_PAD * 2, availH = window.innerHeight - ZOOM_PAD * 2;
+    const fitW = Math.min(w, availW);
+    const long = fitW * h / w > availH * 2;
+    return { width: long ? fitW : Math.min(fitW, availH * w / h), long };
+  }
+
+  /** The picture under `target`, as { img, at }: `at` is what the page holds, the <img> itself
+   *  or the strips standing in for a cut one. Link and colophon rules are judged at `at`: a cut
+   *  picture's <img> is out of the tree, so it has no ancestors to ask. */
+  function pictureAt(target) {
+    const at = target.closest && target.closest('.obr-content img, .obr-content .obr-strips');
+    if (!at) return null;
+    return { img: at.tagName === 'IMG' ? at : stripSource.get(at).img, at };
+  }
+
+  /** The full-size file a picture links to — WordPress and most CMSs link the original. */
+  function linkedImage(at) {
+    const a = at.closest('a[href]');
+    return a && IMG_URL.test(a.href) ? a.href : null;
+  }
+
+  function canZoom({ img, at }) {
+    if (at.closest('.obr-colophon')) return false;
+    // Linked to its own file, the viewer stands in for the link whatever the picture's size (a
+    // thumbnail linked to its original is the classic case). Linked to a web page, it keeps its
+    // link.
+    if (at.closest('a[href]')) return !!linkedImage(at);
+    if (at !== img) return true; // strips: the viewer shows the picture whole, without its cuts
+    if (!isContent(img)) return false; // icons, badges, rules, and pictures of unknown size
+    const { w, h } = intrinsic(img);
+    const r = img.getBoundingClientRect();
+    // The PAINTED width: a plate draws with object-fit: scale-down, so its box can be wider
+    // than the picture inside it.
+    const painted = Math.min(r.width, r.height * w / h, w);
+    return zoomFit(w, h).width > painted * ZOOM_MIN_GAIN;
+  }
+
+  /** The picture this click should open, or null to let the click page as before. */
+  function zoomTarget(e) {
+    const pic = pictureAt(e.target);
+    // A modified click keeps the browser's meaning (Cmd/Ctrl+click opens a link in a new tab).
+    if (!pic || !canZoom(pic) || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+    // On touch the edge bands stay page turns: a picture can cover a phone's whole page, and a
+    // tap there that zoomed would leave no way to turn it.
+    if (touchMode) {
+      const w = window.innerWidth;
+      if (e.clientX < w * EDGE_FRAC || e.clientX > w * (1 - EDGE_FRAC)) return null;
+    }
+    return pic;
+  }
+
+  function openZoom({ img, at }) {
+    const shown = img.currentSrc || img.src;
+    // The largest file on offer: the linked original, else the widest srcset candidate. If it
+    // fails, fall back to the file the page is already showing.
+    const best = linkedImage(at) || realSrcset(img.getAttribute('srcset'));
+    const { w, h } = intrinsic(img);
+    zoomEl.classList.toggle('obr-zoom-long', zoomFit(w, h).long);
+    zoomImg.onload = refitZoom;
+    zoomImg.onerror = best ? () => { zoomImg.onerror = null; zoomImg.src = shown; } : null;
+    zoomImg.alt = img.alt || '';
+    zoomImg.src = best ? absUrl(best) : shown;
+    zoomEl.hidden = false;
+    zoomEl.scrollTop = 0;
+    zoomEl.focus({ preventScroll: true });
+  }
+
+  /** Re-decide long (scrolls) vs fitted from the file actually shown, at the current window. */
+  function refitZoom() {
+    if (zoomEl && !zoomEl.hidden && zoomImg.naturalWidth) {
+      zoomEl.classList.toggle('obr-zoom-long', zoomFit(zoomImg.naturalWidth, zoomImg.naturalHeight).long);
+    }
+  }
+
+  function closeZoom() {
+    if (!zoomEl || zoomEl.hidden) return;
+    zoomEl.hidden = true;
+    zoomImg.onload = zoomImg.onerror = null;
+    zoomImg.removeAttribute('src'); // a long picture can be tens of megapixels once decoded
   }
 
   function showChrome() {
@@ -2149,7 +2269,14 @@
     const fig = el.closest('figure');
     if (fig) return fig;
     const wrap = el.closest('.obr-media-only');
-    return wrap && pictures(wrap).length === 1 ? wrap : el;
+    return wrap && holdsOnePicture(wrap) ? wrap : el;
+  }
+
+  /** The box holds this one picture and nothing else that draws as one. A picture cut into
+   *  strips has left the tree, so pictures() no longer counts it — but its strips still fill
+   *  pages, and a one-page plate box around them would spill them over the text. */
+  function holdsOnePicture(box) {
+    return pictures(box).length === 1 && !box.querySelector('.obr-strips');
   }
 
   /** Is this picture one of several, rather than a lone illustration inside prose? Either it
@@ -2239,12 +2366,84 @@
   function isPictureContainer(node) {
     if (!node || node.nodeType !== 1) return false;
     if (node.tagName === 'IMG' || node.tagName === 'SVG') return isContent(node);
-    if (!node.querySelector('img, svg, picture, video')) return false;
+    // A picture cut into strips is still a picture: its <img> is out of the tree, and without
+    // this its neighbours would drop out of their run and lose their plates.
+    if (node.classList.contains('obr-strips')) return true;
+    if (!node.querySelector('img, svg, picture, video, .obr-strips')) return false;
     if (node.tagName !== 'FIGURE' && node.textContent.trim()) return false; // prose, not a picture
     if (pictures(node).length) return true;
     // "Holds nothing we can size" and "holds only furniture" are different answers: a <picture>
     // or <video> with no measurable image still counts, a <p> holding one divider rule does not.
     return !node.querySelector('img, svg');
+  }
+
+  /* ------------------------------------------- long pictures cut into page-height strips
+   * A picture at least STRIP_MIN_ASPECT times taller than wide that would stand more than
+   * STRIP_MIN_PAGES pages tall at the page's width cannot be drawn on one page except as a sliver,
+   * so it is cut into strips, one page tall each, that flow like text. Each cut repeats
+   * STRIP_OVERLAP px, so a line of text the cut runs through is whole on one side of it.
+   * - The aspect gate keeps photos whole: a 900x1270 portrait is over two pages tall at page
+   *   width on any short window. Runs are cut too: a long graphic is often published as
+   *   several stacked images, and plating those is the sliver again.
+   * - Strips are background-image DIVs, never <img>s, and the picture's own node is DETACHED
+   *   (kept in stripSource), so no pass that measures pictures sees a strip or a hidden
+   *   duplicate: plates, the figure fit and the flip snapshot's pins all select img.
+   * - Cut only once the file has LOADED. An attribute-sized lazy image cut before loading is
+   *   detached unloaded, and a detached lazy image never loads, so its relayout never comes.
+   * - Never enlarged: a strip is the page's width or the picture's own, whichever is smaller.
+   * Re-run from scratch on every layout(): every cut is put back first, like fitTallFigures. */
+  const STRIP_MIN_ASPECT = 3;
+  const STRIP_MIN_PAGES = 2;
+  const STRIP_OVERLAP = 24;
+  const stripSource = new WeakMap(); // .obr-strips -> { img, node }: node is the <img> or its <picture>
+
+  function cutLongPictures(colW, colH) {
+    const contentRoot = pagesEl.querySelector('.obr-content');
+    if (!contentRoot) return;
+    contentRoot.querySelectorAll('.obr-strips').forEach((box) => box.replaceWith(stripSource.get(box).node));
+    if (settings.splitLongPictures === false) return; // after the put-back, so turning it off restores every picture
+    // Every width is read before anything is cut: a cut invalidates layout, and a read after
+    // it would force a fresh layout per picture.
+    const cuts = [];
+    contentRoot.querySelectorAll('img').forEach((img) => {
+      if (!img.complete || !img.naturalWidth || img.closest('table')) return;
+      const { w, h, known } = intrinsic(img);
+      if (!known || !isContent(img) || h < w * STRIP_MIN_ASPECT) return;
+      const width = Math.min(roomFor(img, colW), w), height = width * h / w;
+      if (height > colH * STRIP_MIN_PAGES) cuts.push({ img, width, height });
+    });
+    for (const { img, width, height } of cuts) {
+      const node = img.parentElement && img.parentElement.tagName === 'PICTURE' ? img.parentElement : img;
+      const box = document.createElement('div');
+      box.className = 'obr-strips';
+      box.setAttribute('role', 'img');
+      if (img.alt) box.setAttribute('aria-label', img.alt);
+      const url = 'url(' + JSON.stringify(img.currentSrc || img.src) + ')';
+      const step = colH - STRIP_OVERLAP;
+      for (let top = 0; top < height - STRIP_OVERLAP; top += step) {
+        const strip = document.createElement('div');
+        strip.className = 'obr-strip';
+        strip.style.width = width + 'px';
+        strip.style.height = Math.min(colH, height - top) + 'px';
+        strip.style.backgroundImage = url;
+        strip.style.backgroundSize = width + 'px ' + height + 'px';
+        strip.style.backgroundPosition = '0 ' + -top + 'px';
+        box.appendChild(strip);
+      }
+      stripSource.set(box, { img, node });
+      node.replaceWith(box);
+    }
+  }
+
+  /** The width a block standing where `el` is gets: the content box of its nearest block
+   *  ancestor, which a list item or a quote makes narrower than the page. An <img> shrank into
+   *  it through max-width: 100%; a strip is sized in px and has to be told. */
+  function roomFor(el, colW) {
+    let c = el.parentElement;
+    while (c && c !== pagesEl && /^(inline|contents)/.test(getComputedStyle(c).display)) c = c.parentElement;
+    if (!c || c === pagesEl) return colW;
+    const cs = getComputedStyle(c);
+    return Math.min(colW, c.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0));
   }
 
   function classifyPlates(colW, colH) {
@@ -2253,6 +2452,11 @@
     // The ceiling the stylesheet already applies to every picture, read from its own variable
     // so the two cannot drift; the literal is inert while that stylesheet is attached.
     const cap = parseFloat(getComputedStyle(pagesEl).getPropertyValue('--obr-imgcap')) || 0.72;
+    // Start from no plates at all. Toggling only what is still in the tree is not enough: a
+    // picture cut into strips since the last layout has LEFT the tree, and the one-page box
+    // its wrapper still carries would hold pages of strips and spill them over the text.
+    contentRoot.querySelectorAll('.obr-plate, .obr-plate-box, .obr-plate-wrap, .obr-plate-pass')
+      .forEach((n) => n.classList.remove('obr-plate', 'obr-plate-box', 'obr-plate-wrap', 'obr-plate-pass'));
     const media = contentRoot.querySelectorAll('img, svg');
     const touched = new Set();
     for (let i = 0; i < media.length; i++) {
@@ -2272,7 +2476,7 @@
       // plating it puts two half-height pictures on the same page.
       const plate = known && inPictureRun(el)
         && shownH >= colH * cap
-        && (box === el || pictures(box).length === 1);
+        && (box === el || holdsOnePicture(box));
       el.classList.toggle('obr-plate', plate);
       // Everything between the picture and its box hands the box's height down (see the
       // obr-plate-pass rule): the picture is frequently wrapped in an <a>, a <picture> or a
@@ -2481,11 +2685,14 @@
     // would distort the blank-page detection below.
     if (colophonEl && colophonEl.parentNode) colophonEl.remove();
     void pagesEl.offsetWidth; // force reflow before measuring
-    // Give each picture in a run its own page, then shrink any figure that bumped to a new
-    // column back into the slack it left behind — so the column count below (and the colophon
-    // fit, and the anchor restore) all measure the CORRECTED flow. Both run after the colophon
-    // removal so a back-cover page never skews them, and plates first because the shrink pass
-    // skips them. --obr-colh, which the plate height is expressed in, is set just above.
+    // Cut each long picture into page-height strips, give each picture in a run its own page,
+    // then shrink any figure that bumped to a new column back into the slack it left behind —
+    // so the column count below (and the colophon fit, and the anchor restore) all measure the
+    // CORRECTED flow. All three run after the colophon removal so a back-cover page never skews
+    // them; cutting first because a cut picture is no longer an <img> for the other two to
+    // size, and plates before the shrink pass because it skips them. --obr-colh, which the
+    // plate height is expressed in, is set just above.
+    cutLongPictures(colW, colH);
     classifyPlates(colW, colH);
     fitTallFigures(colW, colGap, colH);
     const total = pagesEl.scrollWidth;
@@ -2721,7 +2928,7 @@
     text.onfinish = clearSpotlight;
     spotAnims = [text];
     const vr = viewportEl.getBoundingClientRect();
-    for (const m of content.querySelectorAll('img, svg, video, canvas')) {
+    for (const m of content.querySelectorAll('img, svg, video, canvas, .obr-strip')) {
       const r = m.getBoundingClientRect();
       if (r.right > vr.left && r.left < vr.right && before.intersectsNode(m)) spotAnims.push(m.animate(fade('opacity', 0.34, 1), OBR.SPOT_MS));
     }
@@ -3721,6 +3928,7 @@
     openGen++; // invalidate any in-flight open() (e.g. the gallery taking over mid-open)
     if (!active) return;
     closePop();
+    closeZoom();
     if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
     if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
     clearInterval(ctxTimer);  // nothing to watch once the overlay is gone
@@ -3788,6 +3996,7 @@
     if (!active || pickerActive) return; // don't relayout against the hidden overlay mid-pick
     clearTimeout(resizeTimer);
     closePop(); // its right offset was measured against the old bar
+    refitZoom(); // a rotated phone can turn a fitted picture into a long one, or back
     resizeTimer = setTimeout(() => { if (!pickerActive) { fitControls(); layout(true); } }, 150);
   });
 
@@ -3799,6 +4008,17 @@
     // stops all of them at once; guarding them one by one would never end.
     if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown);
     tickRead(); // keyboard activity keeps the reading clock's gaps small
+    // The open picture viewer takes the keyboard: Esc closes it, and every other key is left to
+    // the viewer, which holds focus and so scrolls on arrows, space and PgUp/PgDn natively.
+    if (zoomEl && !zoomEl.hidden) {
+      // Cmd/Ctrl+P still gets the reader's clean print below, never the browser's own.
+      if ((e.key === 'p' || e.key === 'P') && (e.ctrlKey || e.metaKey)) closeZoom();
+      else {
+        e.stopPropagation();
+        if (e.key === 'Escape') { e.preventDefault(); closeZoom(); }
+        return;
+      }
+    }
     // Let modifier combos fall through to the browser for zoom (Ctrl/Cmd+±) and new tab
     // (Cmd+T). Print is the deliberate exception: Cmd/Ctrl+P stays captured so it runs the
     // reader's CLEAN print (printReader) rather than the browser printing the clipped overlay

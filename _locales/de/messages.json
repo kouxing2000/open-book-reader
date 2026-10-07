@@ -171,6 +171,8 @@
   "optColophonHint": { "message": "Am Ende eines Artikels eine kleine Abschlussseite mit Ihrer Lesestatistik (Wörter, Zeit) und einer dezenten Bewerten/Feedback-Zeile anzeigen. Sie überdeckt nie den Artikeltext, und alles wird nur auf diesem Gerät gezählt — nichts wird gesendet. Aus = der Artikel endet einfach." },
   "optColophonLife": { "message": "Gesamtstatistik auf der Abschlussseite" },
   "optColophonLifeHint": { "message": "Ihre Gesamtzahlen (gelesene Artikel, gesamte Lesezeit) auf der Abschlussseite anzeigen. Nur lokal auf diesem Gerät gespeichert; wird nie gesendet." },
+  "optSplitLong": { "message": "Lange Bilder auf Seiten aufteilen" },
+  "optSplitLongHint": { "message": "Ein sehr langes Bild (eine Infografik, ein langer Screenshot) wird in seitenhohe Streifen geschnitten, die Sie Seite für Seite lesen; jeder wiederholt einen schmalen Rand des vorigen, damit keine Zeile halbiert wird. Klicken Sie auf einen Streifen, um das ganze Bild zu sehen. Aus = es bleibt ein Bild, verkleinert auf eine Seite." },
   "optRateLink": { "message": "★ Im Chrome Web Store bewerten" },
   "optStarLink": { "message": "⭐ Auf GitHub einen Stern geben" },
   "welcomeRate": { "message": "Bewerten ★" },

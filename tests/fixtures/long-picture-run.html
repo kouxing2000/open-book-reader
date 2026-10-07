@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>A Long Graphic In Two Parts</title>
+</head>
+<body>
+  <!-- A long graphic published as two stacked images, then a tall photo, back to back: a RUN.
+       Both parts are long (6:1) and are cut into strips, so the graphic reads on continuously
+       from one part to the next. The photo (600x1700, under 3:1) is never cut; it qualifies
+       for a plate, and keeps it only if a cut picture still counts as its neighbour. Last, one
+       <figure> holding a third long part AND a photo: once the part is cut the figure holds one
+       <img>, but it must never become a one-page plate box with pages of strips inside. -->
+  <article>
+    <h1>A Long Graphic In Two Parts</h1>
+    <p>The city published its breakdown of the new metro line as one long graphic, delivered in two parts so that each file stays small enough to load quickly on a phone. Both parts are below, followed by a photo of the airport platform.</p>
+    <p>The first part covers the airport link and the river crossing. The second covers the northern districts and the night service, which starts a month after the opening.</p>
+    <figure><img src="long-picture.svg" width="750" height="4600" alt="Part one"></figure>
+    <figure><img src="long-picture.svg?part=2" width="750" height="4600" alt="Part two"></figure>
+    <figure><img src="tall-photo.svg" width="600" height="1700" alt="Platform photo"></figure>
+    <figure><img src="long-picture.svg?part=3" width="750" height="4600" alt="Part three"><img src="tall-photo.svg?shared" width="600" height="1700" alt="Shared photo"></figure>
+    <p>The council will publish ridership numbers every quarter for the first two years. The first report is due in the summer, and it will decide whether the ferry timetable survives into the following year.</p>
+    <p>Construction ran two years late and about a fifth over budget. Most of the delay came from the tunnel under the river, where the ground turned out to be softer than the survey said.</p>
+  </article>
+</body>
+</html>

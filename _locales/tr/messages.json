@@ -171,6 +171,8 @@
   "optColophonHint": { "message": "Bir makalenin sonuna geldiğinizde, okuma istatistiklerinizi (kelime, süre) ve sessiz bir puan verme/geri bildirim satırını içeren küçük bir arka kapak sayfası eklenir. Makale metnini asla örtmez ve her şey yalnızca bu cihazda sayılır — hiçbir şey gönderilmez. Kapalı = makale öylece biter." },
   "optColophonLife": { "message": "Son sayfada toplam istatistikler" },
   "optColophonLifeHint": { "message": "Toplam sayılarınızı (bitirilen makaleler, toplam okuma süresi) makale sonu sayfasına ekler. Yalnızca bu cihazda saklanır; hiçbir yere gönderilmez." },
+  "optSplitLong": { "message": "Uzun görselleri sayfalara böl" },
+  "optSplitLongHint": { "message": "Çok uzun bir görsel (bir infografik, uzun bir ekran görüntüsü) sayfa yüksekliğinde şeritlere kesilir ve sayfa sayfa okunur; her şerit bir öncekinin küçük bir kısmını tekrarlar, böylece hiçbir satır ikiye bölünmez. Görselin tamamını görmek için herhangi bir şeride tıklayın. Kapalı = tek bir görsel olarak kalır, bir sayfaya sığacak şekilde küçültülür." },
   "optRateLink": { "message": "★ Chrome Web Mağazası'nda puan verin" },
   "optStarLink": { "message": "⭐ GitHub'da yıldız verin" },
   "welcomeRate": { "message": "Puan ver ★" },

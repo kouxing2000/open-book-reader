@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="1800" viewBox="0 0 300 1800">
+  <rect width="300" height="900" fill="#29335c"/>
+  <rect y="900" width="300" height="900" fill="#17bebb"/>
+  <text x="150" y="450" font-size="40" fill="#ffffff" text-anchor="middle">TOP</text>
+  <text x="150" y="1350" font-size="40" fill="#ffffff" text-anchor="middle">BOTTOM</text>
+</svg>

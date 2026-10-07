@@ -171,6 +171,8 @@
   "optColophonHint": { "message": "Gdy dotrzesz do końca artykułu, dodawaj małą tylną okładkę ze statystykami czytania (słowa, czas) i dyskretnym wierszem oceny/opinii. Nigdy nie zasłania tekstu artykułu, a wszystko liczone jest wyłącznie na tym urządzeniu — nic nie jest wysyłane. Wył. = artykuł po prostu się kończy." },
   "optColophonLife": { "message": "Statystyki ogólne na stronie końcowej" },
   "optColophonLifeHint": { "message": "Pokazuj bieżące sumy (ukończone artykuły, łączny czas czytania) na stronie na końcu artykułu. Przechowywane lokalnie na tym urządzeniu; nigdy nigdzie nie wysyłane." },
+  "optSplitLong": { "message": "Dziel długie obrazy na strony" },
+  "optSplitLongHint": { "message": "Bardzo długi obraz (infografika, długi zrzut ekranu) zostaje pocięty na paski o wysokości strony, czytane strona po stronie; każdy powtarza skrawek poprzedniego, by żaden wiersz nie został przecięty na pół. Kliknij dowolny pasek, aby zobaczyć cały obraz. Wył. = pozostaje jednym obrazem, pomniejszonym do jednej strony." },
   "optRateLink": { "message": "★ Oceń w Chrome Web Store" },
   "optStarLink": { "message": "⭐ Zostaw gwiazdkę na GitHub" },
   "welcomeRate": { "message": "Oceń ★" },

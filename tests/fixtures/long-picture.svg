@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="4600" viewBox="0 0 750 4600">
+  <rect width="750" height="4600" fill="#fbf7ef"/>
+  <rect y="0" width="750" height="1150" fill="#29335c"/>
+  <rect y="1150" width="750" height="1150" fill="#17bebb"/>
+  <rect y="2300" width="750" height="1150" fill="#f3a712"/>
+  <rect y="3450" width="750" height="1150" fill="#e4572e"/>
+  <text x="375" y="575" font-size="64" fill="#ffffff" text-anchor="middle">PART 1</text>
+  <text x="375" y="1725" font-size="64" fill="#ffffff" text-anchor="middle">PART 2</text>
+  <text x="375" y="2875" font-size="64" fill="#ffffff" text-anchor="middle">PART 3</text>
+  <text x="375" y="4025" font-size="64" fill="#ffffff" text-anchor="middle">PART 4</text>
+</svg>

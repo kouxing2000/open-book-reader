@@ -10,7 +10,7 @@
  */
 
 import { test, expect } from './fixtures.js';
-import { gotoArticle, injectReader, openReader, readState } from './helpers.js';
+import { gotoArticle, gotoFixture, injectReader, openReader, readState, turnToPicture, zoomViewer } from './helpers.js';
 
 // 412x915 is a common Android CSS viewport and is comfortably under singlePageBelow.
 test.use({ viewport: { width: 412, height: 915 }, hasTouch: true });
@@ -206,3 +206,25 @@ test('the phone toolbar is one row with every action reachable, and the footer s
     expect(s.justify).toBe('space-between');
     expect(s.hintOrder).toBe('-1');   // hint left, page count right
   });
+
+test('a tap on a picture opens the viewer from the middle band, and an edge tap on it still turns the page', async ({ page }) => {
+  // A picture can cover a phone's whole page, so on touch the edge bands stay page turns even
+  // over a picture; only the middle band opens it. The linked photo is always zoomable and is
+  // drawn the full width of the page, so it reaches into both bands.
+  await gotoFixture(page, 'long-picture.html');
+  await injectReader(page); // beforeEach injected into the previous page; this is a fresh document
+  await openReader(page);
+  let r = await turnToPicture(page, 'Linked photo');
+  const y = Math.round((r.top + r.bottom) / 2);
+  expect(r.right - 6).toBeGreaterThan(W * (1 - 0.28)); // the picture reaches the right band
+
+  const before = (await readState(page)).translateX;
+  await page.touchscreen.tap(Math.round(r.right - 6), y);
+  expect((await zoomViewer(page)).open).toBe(false);
+  expect((await readState(page)).translateX).toBeLessThan(before); // turned forward, as an edge tap does
+
+  await page.keyboard.press('ArrowLeft');
+  r = await turnToPicture(page, 'Linked photo');
+  await page.touchscreen.tap(CENTRE_X, Math.round((r.top + r.bottom) / 2));
+  await expect.poll(() => zoomViewer(page).then((v) => v.open && v.loaded)).toBe(true);
+});

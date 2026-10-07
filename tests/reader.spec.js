@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader, clickReaderAction, seedSettings, READER_JS } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader, clickReaderAction, seedSettings, readerPicture, turnToPicture, zoomViewer, READER_JS } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -3837,5 +3837,251 @@ test.describe('engagement ask policy', () => {
     await page.evaluate(() => OBR.close({ suppress: false })); // internal close path
     await page.waitForTimeout(250);
     expect(await page.evaluate(() => !!document.getElementById('obr-engage-chip-host'))).toBe(false);
+  });
+});
+
+test.describe('picture viewer', () => {
+  const EDGE_FRAC = 0.28; // reader.js: the outer bands of the window that turn pages
+  const inBand = (x, vw) => x < vw * EDGE_FRAC || x > vw * (1 - EDGE_FRAC);
+  /** A point on the picture inside a page-turn band — where a click used to turn the page. */
+  const bandPoint = (r, vw) => ({ x: (r.left + r.right) / 2 < vw / 2 ? r.left + 3 : r.right - 3, y: (r.top + r.bottom) / 2 });
+
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' }); // instant turns; read when reader.js loads
+    await gotoFixture(page, 'long-picture.html');
+    await injectReader(page);
+    await openReader(page);
+  });
+
+  async function openLong(page) {
+    const vw = page.viewportSize().width;
+    const r = await turnToPicture(page, 'Long infographic');
+    expect(r.cut).toBe(true); // a click on a strip, which opens the whole picture
+    const at = bandPoint(r, vw);
+    expect(inBand(at.x, vw)).toBe(true); // otherwise this proves nothing about the band
+    await page.mouse.move(at.x, at.y);
+    expect((await readerPicture(page, 'Long infographic')).zoomable).toBe(true); // the zoom-in cursor
+    const before = (await readState(page)).translateX;
+    await page.mouse.click(at.x, at.y);
+    await expect.poll(() => zoomViewer(page).then((v) => v.open && v.loaded)).toBe(true);
+    return before;
+  }
+
+  test('a long picture opens at its own width from inside the page-turn band, scrolls, and Esc returns to the same page', async ({ page }) => {
+    const before = await openLong(page);
+    const v = await zoomViewer(page);
+    expect(v.src).toMatch(/long-picture\.svg$/);
+    expect(v.long).toBe(true);
+    expect(v.width).toBe(750); // its own width: neither the ~100px sliver nor enlarged
+    expect((await readState(page)).translateX).toBe(before);
+
+    await page.keyboard.press('PageDown'); // the viewer scrolls; the book does not turn
+    await expect.poll(() => zoomViewer(page).then((z) => z.scrollTop)).toBeGreaterThan(0);
+    expect((await readState(page)).translateX).toBe(before);
+
+    await page.keyboard.press('Escape'); // closes the viewer, not the reader
+    expect((await zoomViewer(page)).open).toBe(false);
+    const s = await readState(page);
+    expect(s.hostDisplay).not.toBe('none');
+    expect(s.translateX).toBe(before);
+  });
+
+  test('a click on the viewer backdrop in the page-turn band closes it without turning the page', async ({ page }) => {
+    const before = await openLong(page);
+    const { width, height } = page.viewportSize();
+    // The RIGHT band: the picture sits on the first spread, where a backward turn is a no-op
+    // and would hide a click that leaked through to the page-turn handler.
+    await page.mouse.click(width - 6, Math.round(height / 2));
+    expect((await zoomViewer(page)).open).toBe(false);
+    expect((await readState(page)).translateX).toBe(before);
+  });
+
+  test('a picture already drawn at its own size still turns the page', async ({ page }) => {
+    const vw = page.viewportSize().width;
+    const r = await turnToPicture(page, 'Plain photo');
+    expect(r.width).toBe(400); // drawn at its own size: the viewer would add nothing
+    const at = bandPoint(r, vw);
+    expect(inBand(at.x, vw)).toBe(true);
+    await page.mouse.move(at.x, at.y);
+    expect((await readerPicture(page, 'Plain photo')).zoomable).toBe(false);
+    const before = (await readState(page)).translateX;
+    await page.mouse.click(at.x, at.y);
+    expect((await zoomViewer(page)).open).toBe(false);
+    expect((await readState(page)).translateX).not.toBe(before);
+  });
+
+  test('a picture linked to a web page keeps its link, even though the viewer could enlarge it', async ({ page }) => {
+    const r = await turnToPicture(page, 'Page-linked picture');
+    expect(r.width).toBeLessThan(1200 / 1.15); // drawn small enough that only the link keeps it out of the viewer
+    await Promise.all([
+      page.waitForURL('**/elsewhere.html'),
+      page.mouse.click((r.left + r.right) / 2, (r.top + r.bottom) / 2),
+    ]);
+  });
+
+  test('a picture linked to its own file opens that file in the viewer instead of leaving the reader', async ({ page }) => {
+    const r = await turnToPicture(page, 'Linked photo');
+    const url = page.url();
+    await page.mouse.click((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+    await expect.poll(() => zoomViewer(page).then((v) => v.open && v.loaded)).toBe(true);
+    const v = await zoomViewer(page);
+    expect(v.src).toMatch(/\/photo-400\.png\?full$/); // the linked original, not the inline copy
+    expect(v.long).toBe(false);
+    expect(v.width).toBe(400);
+    expect(page.url()).toBe(url);
+  });
+});
+
+test.describe('long pictures cut into page-height strips', () => {
+  const OVERLAP = 24; // reader.js STRIP_OVERLAP: repeated at each cut
+
+  test.beforeEach(async ({ page }) => {
+    await gotoFixture(page, 'long-picture.html');
+    await injectReader(page);
+    await openReader(page);
+  });
+
+  /** A picture as the reader draws it: whole, or cut — and then each strip's page, size, and
+   *  the band of the file it shows. */
+  const drawn = (page, alt) => page.evaluate((alt) => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const pages = root.querySelector('.obr-pages');
+    const colW = parseFloat(pages.style.columnWidth), gap = parseFloat(pages.style.columnGap) || 0;
+    const colH = parseFloat(pages.style.getPropertyValue('--obr-colh'));
+    const whole = !!root.querySelector(`.obr-content img[alt="${alt}"]`);
+    const box = root.querySelector(`.obr-content .obr-strips[aria-label="${alt}"]`);
+    if (!box) return { cut: false, whole, colW, colH, strips: [] };
+    const p = pages.getBoundingClientRect();
+    const strips = [...box.children].map((el) => {
+      const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      return { page: Math.round((r.left - p.left) / (colW + gap)), top: Math.round(r.top - p.top),
+        w: r.width, h: r.height, from: -parseFloat(cs.backgroundPositionY), file: cs.backgroundImage };
+    });
+    return { cut: true, whole, colW, colH, strips };
+  }, alt);
+
+  test('a long picture is cut into strips a page tall, one per page, each repeating the last 24px of the one before', async ({ page }) => {
+    const d = await drawn(page, 'Long infographic');
+    expect(d.cut).toBe(true);
+    expect(d.whole).toBe(false);
+    const width = Math.min(d.colW, 750), height = width * 4600 / 750;
+    expect(d.strips.length).toBeGreaterThan(2);
+    d.strips.forEach((s, k) => {
+      expect(s.w).toBeCloseTo(width, 0);
+      expect(s.top).toBe(0);                           // each starts at the top of its page...
+      expect(s.page).toBe(d.strips[0].page + k);       // ...one page each, in order
+      expect(s.from).toBeCloseTo(k * (d.colH - OVERLAP), 0); // and shows the band after the last, less the repeat
+      expect(s.file).toContain('long-picture.svg');
+    });
+    // Every strip but the last fills its page, so no page inside the picture is part-blank...
+    d.strips.slice(0, -1).forEach((s) => expect(s.h).toBeCloseTo(d.colH, 0));
+    // ...and the last ends exactly where the picture does: nothing lost off the end.
+    const last = d.strips[d.strips.length - 1];
+    expect(last.from + last.h).toBeCloseTo(height, 0);
+  });
+
+  test('never enlarged: a long picture narrower than the page is cut at its own width', async ({ page }) => {
+    const d = await drawn(page, 'Narrow long infographic');
+    expect(d.colW).toBeGreaterThan(300); // otherwise this proves nothing about enlarging
+    expect(d.cut).toBe(true);
+    d.strips.forEach((s) => expect(s.w).toBeCloseTo(300, 0));
+  });
+
+  test('a picture under 3:1 stays whole, however many pages tall it would be', async ({ page }) => {
+    const d = await drawn(page, 'Tall photo');
+    // Taller than two pages at page width, so only the 3:1 rule keeps it whole.
+    expect(Math.min(d.colW, 600) * 1700 / 600).toBeGreaterThan(2 * d.colH);
+    expect(d.cut).toBe(false);
+    expect(d.whole).toBe(true);
+  });
+
+  test('the cut follows the window: a taller one re-cuts it, a tall enough one puts the picture back whole', async ({ page }) => {
+    const before = (await drawn(page, 'Long infographic')).strips.length;
+    await page.setViewportSize({ width: 1280, height: 1100 });
+    await expect.poll(() => drawn(page, 'Long infographic').then((d) => d.colH > 1000 && d.cut
+      && d.strips.every((s) => s.h <= d.colH + 0.5))).toBe(true);
+    expect((await drawn(page, 'Long infographic')).strips.length).toBeLessThan(before);
+    // Under two pages tall at this window: no longer a long picture, so back in one piece.
+    await page.setViewportSize({ width: 1280, height: 2000 });
+    await expect.poll(() => drawn(page, 'Long infographic').then((d) => !d.cut && d.whole)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(() => drawn(page, 'Long infographic').then((d) => d.strips.length)).toBe(before);
+  });
+
+  /** Strips one per page, each from the top of its page: what a reader sees when a cut picture
+   *  flows freely, and what a one-page box around it would break. */
+  const onePerPage = (d) => d.strips.every((s, k) => s.top === 0 && s.page === d.strips[0].page + k);
+
+  test('strips fit the box they stand in: inside a list item they take the item\'s width, not the page\'s', async ({ page }) => {
+    const d = await drawn(page, 'Listed long infographic');
+    const item = await page.evaluate(() => {
+      const li = document.getElementById('obr-host').shadowRoot
+        .querySelector('.obr-strips[aria-label="Listed long infographic"]').closest('li');
+      const cs = getComputedStyle(li);
+      return li.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    });
+    expect(item).toBeLessThan(d.colW); // otherwise this proves nothing
+    expect(d.cut).toBe(true);
+    d.strips.forEach((s) => expect(s.w).toBeLessThanOrEqual(item + 0.5));
+  });
+
+  test('a long picture is cut only once its file arrives, never on its size attributes', async ({ page }) => {
+    // beforeEach registered the shims via addInitScript, which re-run on this navigation; stop at
+    // DOMContentLoaded so the reader opens while the file is still on its way.
+    await page.goto('/long-picture-late.html', { waitUntil: 'domcontentloaded' });
+    await injectReader(page);
+    await openReader(page);
+    const early = await drawn(page, 'Late long infographic'); // its attributes alone qualify it
+    expect(early.whole).toBe(true);
+    expect(early.cut).toBe(false);
+    await expect.poll(() => drawn(page, 'Late long infographic').then((d) => d.cut), { timeout: 10_000 }).toBe(true);
+    expect(onePerPage(await drawn(page, 'Late long infographic'))).toBe(true);
+  });
+
+  test('a picture plated at one window and cut at another sheds its one-page box', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 2000 });
+    await gotoFixture(page, 'long-picture-run.html');
+    await injectReader(page);
+    await openReader(page);
+    expect((await drawn(page, 'Part one')).whole).toBe(true); // under two pages tall here, so plated
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(() => drawn(page, 'Part one').then((d) => d.cut)).toBe(true);
+    expect(onePerPage(await drawn(page, 'Part one'))).toBe(true);
+    expect(onePerPage(await drawn(page, 'Part two'))).toBe(true);
+  });
+
+  test('a figure holding a cut picture and a photo is never squeezed into one page', async ({ page }) => {
+    await gotoFixture(page, 'long-picture-run.html');
+    await injectReader(page);
+    await openReader(page);
+    const d = await drawn(page, 'Part three');
+    expect(d.cut).toBe(true);
+    expect(onePerPage(d)).toBe(true);
+  });
+
+  test('switching the setting off puts a cut picture back whole while the reader is open, and on cuts it again', async ({ page }) => {
+    expect((await drawn(page, 'Long infographic')).cut).toBe(true);
+    await seedSettings(page, { splitLongPictures: false }); // what the Options page writes; the open reader applies it live
+    await expect.poll(() => drawn(page, 'Long infographic').then((d) => !d.cut && d.whole)).toBe(true);
+    await seedSettings(page, { splitLongPictures: true });
+    await expect.poll(() => drawn(page, 'Long infographic').then((d) => d.cut)).toBe(true);
+  });
+
+  test('a long graphic in stacked parts reads on from part to part, and the photo after it keeps its page', async ({ page }) => {
+    await gotoFixture(page, 'long-picture-run.html');
+    await injectReader(page); // beforeEach injected into the previous page; this is a fresh document
+    await openReader(page);
+    const one = await drawn(page, 'Part one'), two = await drawn(page, 'Part two');
+    expect(one.cut && two.cut).toBe(true); // a run is cut too: plating it would be the sliver again
+    expect(two.strips[0].page).toBe(one.strips[one.strips.length - 1].page + 1);
+    // The photo is a plate only while a cut picture still counts as its neighbour in the run.
+    const frac = await page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const colH = parseFloat(root.querySelector('.obr-pages').style.getPropertyValue('--obr-colh'));
+      const img = root.querySelector('.obr-content img[alt="Platform photo"]');
+      const r = img.getBoundingClientRect();
+      return Math.min(r.height, r.width * img.naturalHeight / img.naturalWidth, img.naturalHeight) / colH;
+    });
+    expect(frac).toBeGreaterThan(0.9); // a whole page, not the 72% cap
   });
 });

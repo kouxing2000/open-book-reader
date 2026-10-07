@@ -395,3 +395,47 @@ export function galleryState(page) {
     };
   });
 }
+
+/** A picture in the reader by its alt text (a cut one by its strips' label): its on-screen box, and whether the spread the
+ *  reader is turning to holds it. `onSpread` is read from the picture's offset in the flow
+ *  against the target transform, so it is right even while a turn is still animating. */
+export function readerPicture(page, alt) {
+  return page.evaluate((alt) => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    // A cut picture is its strips; its box is the first strip.
+    const at = root.querySelector(`.obr-content img[alt="${alt}"]`)
+      || root.querySelector(`.obr-content .obr-strips[aria-label="${alt}"]`);
+    if (!at) return null;
+    const cut = at.classList.contains('obr-strips');
+    const pages = root.querySelector('.obr-pages');
+    const viewW = root.querySelector('.obr-viewport').getBoundingClientRect().width;
+    const r = (cut ? at.firstElementChild : at).getBoundingClientRect(), p = pages.getBoundingClientRect();
+    const tx = -Number((pages.style.transform.match(/-?\d+(\.\d+)?/) || [0])[0]);
+    const x = r.left - p.left;
+    return { cut, onSpread: x >= tx - 1 && x + r.width <= tx + viewW + 1, zoomable: at.classList.contains('obr-zoomable'),
+      left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width };
+  }, alt);
+}
+
+/** Turn forward until the picture is on screen and the turn has landed; returns its box. */
+export async function turnToPicture(page, alt) {
+  for (let i = 0; i < 40 && !(await readerPicture(page, alt)).onSpread; i++) await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => {
+    const a = await readerPicture(page, alt);
+    await page.waitForTimeout(80);
+    const b = await readerPicture(page, alt);
+    return a.onSpread && a.left === b.left;
+  }).toBe(true);
+  return readerPicture(page, alt);
+}
+
+/** The reader's picture viewer: open or not, and what it shows once its picture has loaded. */
+export function zoomViewer(page) {
+  return page.evaluate(() => {
+    const z = document.getElementById('obr-host').shadowRoot.querySelector('.obr-zoom');
+    const img = z.querySelector('.obr-zoom-img');
+    return { open: !z.hidden, long: z.classList.contains('obr-zoom-long'),
+      loaded: img.complete && img.naturalWidth > 0, src: img.getAttribute('src') || '',
+      width: Math.round(img.getBoundingClientRect().width), scrollTop: z.scrollTop };
+  });
+}

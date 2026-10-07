@@ -171,6 +171,8 @@
   "optColophonHint": { "message": "À la fin d’un article, ajoute une petite page de couverture arrière avec vos statistiques de lecture (mots, temps) et une discrète ligne noter/avis. Elle ne recouvre jamais le texte de l’article, et tout est compté uniquement sur cet appareil — rien n’est envoyé. Désactivé = l’article se termine simplement." },
   "optColophonLife": { "message": "Statistiques cumulées sur la page de fin" },
   "optColophonLifeHint": { "message": "Afficher vos totaux (articles terminés, temps de lecture total) sur la page de fin d’article. Stockés localement sur cet appareil ; jamais envoyés." },
+  "optSplitLong": { "message": "Découper les images longues en pages" },
+  "optSplitLongHint": { "message": "Une image très longue (une infographie, une longue capture d’écran) est découpée en bandes d’une page de haut, à lire page par page ; chacune reprend un peu de la précédente pour qu’aucune ligne ne soit coupée en deux. Cliquez sur une bande pour voir l’image entière. Désactivé = elle reste une seule image, réduite à une page." },
   "optRateLink": { "message": "★ Noter sur le Chrome Web Store" },
   "optStarLink": { "message": "⭐ Ajouter une étoile sur GitHub" },
   "welcomeRate": { "message": "Noter ★" },

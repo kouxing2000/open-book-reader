@@ -20,7 +20,7 @@
 
   const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
-  const CHECKBOXES = ['readSelection', 'markdownExport', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding', 'colophon', 'colophonLifetime'];
+  const CHECKBOXES = ['splitLongPictures', 'readSelection', 'markdownExport', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding', 'colophon', 'colophonLifetime'];
   const savedEl = document.getElementById('saved');
   let saveTimer;
 

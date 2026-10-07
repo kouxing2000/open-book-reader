@@ -317,6 +317,30 @@
     .obr-pages img, .obr-pages video, .obr-pages svg, .obr-pages iframe {
       max-height: calc(var(--obr-colh, 82vh) * var(--obr-imgcap, .72)); object-fit: contain;
     }
+    /* A long picture cut into page-height strips (reader.js cutLongPictures). Each strip is one
+       page tall at most and may not break, so each takes a page of its own; the width, height
+       and background band are set per strip. */
+    .obr-pages .obr-strip { display: block; margin: 0 auto; break-inside: avoid; background-repeat: no-repeat; border-radius: 0; }
+    /* The picture viewer (reader.js openZoom). Dark whatever the theme. Flex plus margin:auto
+       centres a short picture yet still lets a long one scroll from its very top: centring with
+       align-items would push the top of anything taller than the window out of reach. The
+       padding is ZOOM_PAD in reader.js. Never enlarged: the picture's own width is the most it
+       gets, and only a picture that is not long is also held to the window's height. */
+    .obr-pages .obr-zoomable { cursor: zoom-in; }
+    .obr-zoom {
+      position: fixed; inset: 0; z-index: 2147483647; display: flex; overflow: auto;
+      padding: 16px; background: rgba(8,8,10,.94); outline: none; overscroll-behavior: contain;
+      animation: obr-fade .16s ease;
+    }
+    .obr-zoom[hidden] { display: none; }
+    .obr-zoom-img { display: block; flex: none; margin: auto; max-width: 100%; height: auto; border-radius: 4px; }
+    .obr-zoom:not(.obr-zoom-long) .obr-zoom-img { max-height: 100%; }
+    .obr-zoom-x {
+      position: fixed; top: 12px; right: 16px; width: 44px; height: 44px; border: 0; padding: 0;
+      border-radius: 50%; background: rgba(20,20,24,.6); color: #fff; font: 22px/44px system-ui, sans-serif;
+      cursor: pointer; opacity: .8;
+    }
+    .obr-zoom-x:hover { opacity: 1; }
     .obr-pages blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid rgba(127,127,127,.4); opacity: .85; font-style: italic; }
     .obr-pages pre, .obr-pages code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .85em; }
     .obr-pages pre { white-space: pre-wrap; word-break: break-word; background: rgba(127,127,127,.12); padding: .7em; border-radius: 4px; break-inside: avoid; }

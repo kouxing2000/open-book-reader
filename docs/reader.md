@@ -49,6 +49,33 @@ shortcuts. `pen` is deliberately not touch — a stylus hovers, so it wants the 
 `tests/reader-touch.spec.js` pins all of it, and is the only spec that runs below
 `singlePageBelow` (720) — i.e. the only coverage of the one-column layout a phone gets.
 
+**A picture the page draws smaller than its own pixels opens in the picture viewer instead of
+turning the page** (`zoomTarget` → `openZoom`, ahead of every other branch of the click handler).
+The viewer shows it at its own width, never enlarged: a picture more than two screens tall at
+that width scrolls, anything shorter is fitted to the window. It loads the largest file on
+offer: the file a picture links to (most CMSs link the original), else the widest `srcset`
+candidate, falling back to what the page shows. Esc, the ✕ or a backdrop click closes it on the
+same spread. The rules, each pinned in `reader.spec.js` / `reader-touch.spec.js`:
+- **Mouse: anywhere on the picture, the edge bands included.** The zoom-in cursor says so. It is
+  decided on hover (`isZoomable`), not at layout, because the drawn size moves with every
+  relayout, late image and figure fit. A picture already at its own size gains nothing in the
+  viewer (`ZOOM_MIN_GAIN`), so a click on it still turns the page; so does one on an icon or a
+  picture of unknown size (`isContent`).
+- **Touch: the middle band only.** A picture can cover a phone's whole page, and if edge taps
+  zoomed there would be no way to turn it. Known gap: on a two-page touch layout a narrow picture
+  centred in the left page sits inside the left band, so a tap turns instead of zooming.
+- **A long picture cut into strips is always zoomable**: the viewer shows it whole, without its
+  cuts (see the strips gotcha below).
+- **A picture linked to its own file is always zoomable**, whatever its size (the thumbnail
+  linked to its original is the classic case). The viewer stands in for the link, so a touch
+  edge tap on it turns the page rather than leaving the reader for the bare file. A picture
+  linked to a web page keeps its link.
+- **The viewer is the overlay's sibling, never its child.** Inside the overlay, a backdrop click
+  bubbled into the page-turn handler: in an edge band it closed the viewer AND turned the page.
+  Being outside also keeps its mousemove from waking the chrome. While open it holds focus, so
+  the document keydown handler only takes Esc and leaves every other key to the viewer's native
+  scrolling.
+
 **A turn past either end is answered, never dropped** (`bumpEdge`, reached from `flip()` for keys,
 edge clicks and taps alike). The book nudges about 10px the way the turn would have gone, and the
 footer comes up with the indicator reading "End of article" / "Start of article" ahead of the page
@@ -737,6 +764,53 @@ those synthetic pages.
     full page for a picture merely centred in it. A lower bound alone is just as blind: `frac >
     0.9` is satisfied by a picture 1.85x its page, cropped top and bottom, which is how the
     wrapped-picture defect above stayed green. Assert `over <= 2` as well.
+
+## GOTCHA — a long picture is cut into page-height strips
+
+- **A picture at least 3:1 tall that would stand more than two pages tall at the page's width is
+  cut into strips, one page tall each, that flow like text** (`cutLongPictures`, run first in
+  `layout()`). Capped or plated, such a picture is a sliver: a 750x4600 infographic drew 100x611.
+  Each cut repeats `STRIP_OVERLAP` (24px), so a line of text the cut runs through reads whole on
+  one side of it. A click on any strip opens the whole picture in the viewer.
+  - **Both gates are needed, and each is pinned.** Height alone cuts photos: a 900x1270 portrait
+    is over two pages tall at page width on any short window. Aspect alone cuts a 300x1200 comic
+    panel that fits on one page today. A run is cut too, because a long graphic is often published
+    as several stacked images, and plating those is the sliver again.
+  - **Strips are full pages, not even shares.** Even cuts (`(H - overlap) / n` each) left every
+    page inside the picture part-blank — the failure the tall-images gotcha above exists to
+    prevent. Every strip but the last is exactly one column tall; the text after the picture
+    continues on the last strip's page. The first strip starts a fresh page, like any tall
+    picture.
+  - **Strips are background-image DIVs and the picture's own node is DETACHED** (kept in
+    `stripSource`). Every pass that sizes pictures selects `img` — plates, `fitTallFigures`,
+    the flip snapshot's pins, `watchMedia` — so none of them sees a strip or a hidden duplicate.
+    The cost is that the detached `<img>` stops counting as a picture, and three things that
+    asked "which pictures are here" went wrong on it, each now pinned by a test:
+    - a neighbour in a run lost its plate, so `isPictureContainer` counts `.obr-strips`;
+    - a `<figure>` holding a cut picture and a photo looked like a one-picture box and became a
+      one-page plate box with pages of strips inside, so `holdsOnePicture` refuses a box with
+      strips in it;
+    - a picture plated at one window and cut at another left its wrapper's plate classes behind,
+      because `classifyPlates` toggled only what was still in the tree. It now clears every plate
+      class first. Real pages hit this whenever a picture is plated on its attributes and cut
+      when the file arrives.
+  - **A strip is sized in px, so it is told the width of the block it stands in** (`roomFor`):
+    the `<img>` it replaces shrank into a list item or a quote through `max-width: 100%`.
+  - **Cut only once the file has loaded**, never on the width/height attributes `intrinsic()`
+    falls back to. A lazy image detached before loading never loads, so the relayout that
+    would have corrected an attribute-sized cut never comes.
+  - **Never enlarged**: a strip is the page's width or the picture's own, whichever is smaller.
+  - **Off switch**: the `splitLongPictures` setting (Options, Reader card; default on). The check
+    sits AFTER the put-back, so turning it off while the reader is open restores every picture
+    on the next layout, which the settings listener runs.
+  - It re-runs from scratch on every `layout()` — every cut is put back first — so a resize, a
+    column change or a late image re-cuts with no bookkeeping, as `fitTallFigures` does. Print
+    and the Markdown export read the extracted article, not the rendered pages, so they keep
+    the picture whole.
+  - The rejected alternative: one box with the picture as its background, left breakable, which
+    Chrome fragments across columns by itself — less code, and it starts in the slack the text
+    left. It cannot repeat a band at the cut, so a line of text there is split in half, and the
+    overlap was the requirement. Revisit only if that requirement goes.
 
 ## GOTCHA — an `<img width>` attribute survives extraction and pins images small
 

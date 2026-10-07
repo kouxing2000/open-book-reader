@@ -173,6 +173,8 @@
   "optColophonHint": { "message": "When you reach the end of an article, add a small back-cover page with your reading stats (words, time) and a quiet rate/feedback line. It never covers article text, and everything is counted on this device only — nothing is sent. Off = the article just ends." },
   "optColophonLife": { "message": "Lifetime stats on the end page" },
   "optColophonLifeHint": { "message": "Include your running totals (articles finished, total reading time) on the end-of-article page. Stored locally on this device; never sent anywhere." },
+  "optSplitLong": { "message": "Split long pictures across pages" },
+  "optSplitLongHint": { "message": "A very long picture (an infographic, a long screenshot) is cut into page-height strips you read page by page, each repeating a sliver of the last so no line is cut in half. Click any strip to see the whole picture. Off = it stays one picture, shrunk to fit a page." },
   "optRateLink": { "message": "★ Rate on the Chrome Web Store" },
   "optStarLink": { "message": "⭐ Star on GitHub" },
   "welcomeRate": { "message": "Rate ★" },

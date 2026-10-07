@@ -171,6 +171,8 @@
   "optColophonHint": { "message": "读到文章末尾时，加上一页小小的“封底”：本文字数、阅读用时，以及一行安静的评分/反馈链接。它绝不会遮挡正文，所有统计只保存在本设备 — 不会发送任何数据。关 = 文章直接结束。" },
   "optColophonLife": { "message": "封底页显示累计数据" },
   "optColophonLifeHint": { "message": "在封底页显示累计读完的文章数与总阅读时长。仅保存在本设备，绝不上传。" },
+  "optSplitLong": { "message": "长图分页显示" },
+  "optSplitLongHint": { "message": "很长的图片（信息图、长截图）会被切成一页高的条带，逐页阅读；每条都会重复上一条末尾的一小段，保证没有哪行字被切成两半。点击任意条带可查看整张图片。关 = 保持为一张图片，缩小到一页内。" },
   "optRateLink": { "message": "★ 到 Chrome 应用商店评分" },
   "optStarLink": { "message": "⭐ 在 GitHub 上加星" },
   "welcomeRate": { "message": "评分 ★" },

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>A Long Picture That Arrives Late</title>
+</head>
+<body>
+  <!-- A long picture whose file arrives 1.5s after the reader opens (the test server's ?delay),
+       marked loading="lazy" with honest size attributes, as WordPress writes it. Its attributes
+       alone would qualify it for strips, but it is cut only once the file has loaded: a lazy
+       image detached before loading never loads, so nothing would ever correct the cut. -->
+  <article>
+    <h1>A Long Picture That Arrives Late</h1>
+    <p>The city published its breakdown of the new metro line as one long graphic. It loads after the rest of the page on a slow connection, which is exactly when the reader is most likely to have opened already.</p>
+    <figure><img src="long-picture.svg?delay=1500" loading="lazy" width="750" height="4600" alt="Late long infographic"></figure>
+    <p>The council will publish ridership numbers every quarter for the first two years. The first report is due in the summer, and it will decide whether the ferry timetable survives into the following year.</p>
+  </article>
+</body>
+</html>
