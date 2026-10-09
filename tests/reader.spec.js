@@ -1930,6 +1930,54 @@ test.describe('⤓ Markdown export', () => {
   });
 });
 
+test.describe('title echo', () => {
+  // tests/fixtures/cjk-title-echo.html: a Chinese article whose <title> keeps the site name and
+  // whose body opens with the article's own h1 — the shape that showed the title twice.
+  test('a CJK article shows its title once, and keeps its section headings', async ({ page }) => {
+    await gotoFixture(page, 'cjk-title-echo.html');
+    await injectReader(page);
+    await openReader(page);
+    const r = await page.evaluate(() => {
+      const c = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content');
+      return [...c.querySelectorAll('h1, h2, h3')].map((h) => h.className + '|' + h.textContent.trim());
+    });
+    // The reader's own title keeps the site name (Readability's title for CJK), so count every
+    // heading that carries the title text: before the fix the body's h1 made it two.
+    const withTitle = r.filter((h) => h.includes('慢读这件事'));
+    expect(withTitle).toHaveLength(1);
+    expect(withTitle[0]).toMatch(/^obr-doc-h1\|/);
+    expect(r.map((h) => h.split('|')[1])).toEqual(expect.arrayContaining(['书页为什么重要', '专注是一种练习']));
+  });
+
+  test('the rule drops only a leading heading that equals the title or one part of it', async ({ page }) => {
+    await gotoArticle(page);
+    await injectReader(page);
+    const r = await page.evaluate(() => {
+      const run = (title, html) => OBR._dropTitleEcho({ title, content: html }).content;
+      return {
+        exact: run('慢读这件事', '<h1>慢读这件事</h1><p>正文</p>'),
+        siteDash: run('慢读这件事 - 每日快讯', '<h1>慢读这件事</h1><p>正文</p>'),
+        siteUnderscore: run('慢读这件事_文化频道_每日快讯网', '<h2>慢读这件事</h2><p>正文</p>'),
+        tagBracket: run('【深度】慢读这件事', '<h1>慢读这件事</h1><p>正文</p>'),
+        japanese: run('読書の技術｜ブログ', '<h1>読書の技術</h1><p>本文</p>'),
+        afterFigure: run('慢读这件事 - 每日快讯', '<figure><img src="a.png"></figure><h1>慢读这件事</h1><p>正文</p>'),
+        sectionWord: run('React Hooks Guide - Dev Blog', '<h2>Hooks</h2><p>Body</p>'),
+        sectionCjk: run('慢读这件事 - 每日快讯', '<h2>慢读</h2><p>正文</p>'),
+        textFirst: run('慢读这件事', '<p>导语</p><h2>慢读这件事</h2><p>正文</p>'),
+      };
+    });
+    expect(r.exact).toBe('<p>正文</p>');
+    expect(r.siteDash).toBe('<p>正文</p>');
+    expect(r.siteUnderscore).toBe('<p>正文</p>');
+    expect(r.tagBracket).toBe('<p>正文</p>');
+    expect(r.japanese).toBe('<p>本文</p>');
+    expect(r.afterFigure).toBe('<figure><img src="a.png"></figure><p>正文</p>');
+    expect(r.sectionWord).toBe('<h2>Hooks</h2><p>Body</p>');
+    expect(r.sectionCjk).toBe('<h2>慢读</h2><p>正文</p>');
+    expect(r.textFirst).toBe('<p>导语</p><h2>慢读这件事</h2><p>正文</p>');
+  });
+});
+
 test.describe('heading chrome', () => {
   // tests/fixtures/heading-chrome.html carries the three shapes real sites ship: Wikipedia's
   // [edit] link beside each heading in a div.mw-heading, a Sphinx ¶ permalink inside a heading,

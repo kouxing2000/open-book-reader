@@ -1854,8 +1854,39 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
+  /* The reader prints the title itself (.obr-doc-h1), so a heading opening the body that repeats
+   * it shows the title twice. Readability drops such a heading only when its word tokens match
+   * the title's, and it tokenizes on \W: an all-CJK title yields no tokens and never matches, so
+   * the echo survives on Chinese, Japanese and Korean pages. A pick or a selection never passes
+   * through Readability at all. So it is dropped here, for every content path at once: only a
+   * heading with no text before it, and only when its text equals the whole title or one
+   * separator-delimited part of it. A CJK title keeps the site name ("标题 - 站名", "标题_频道"),
+   * which is why a whole-title match alone would miss it; matching a whole PART, never a
+   * substring, is what keeps a section heading that merely shares a word with the title. */
+  const TITLE_SEPS = /\s+[-–—|:\/\\>»·•]\s+|[|｜_–—»【】]|(?<=[぀-鿿가-힯])\s*-\s*|\s*-\s*(?=[぀-鿿가-힯])/u;
+  const titleKey = (s) => String(s || '').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+  function dropTitleEcho(article) {
+    if (!article || !article.content || !article.title) return article;
+    const keys = new Set([article.title, ...article.title.split(TITLE_SEPS)].map(titleKey).filter((k) => k.length >= 2));
+    if (!keys.size) return article;
+    const doc = new DOMParser().parseFromString(article.content, 'text/html');
+    const h = doc.body.querySelector('h1, h2, h3');
+    if (!h || !keys.has(titleKey(h.textContent))) return article;
+    const before = doc.createRange();
+    before.setStart(doc.body, 0);
+    before.setEndBefore(h);
+    if (before.toString().trim()) return article; // text comes first: a section heading, not the title
+    h.remove();
+    article.content = doc.body.innerHTML;
+    return article;
+  }
+  OBR._dropTitleEcho = dropTitleEcho;
+
   function renderContent(article) {
     clearSpotlight(); // its ranges point into the content being replaced
+    // Mutates the article itself, so print and the Markdown export read the same body the
+    // page shows.
+    dropTitleEcho(article);
     const title = article ? article.title : document.title;
     const byline = article && article.byline ? article.byline : '';
     // No article: an EMPTY STATE, not an error. Nothing failed — the page simply isn't one, and

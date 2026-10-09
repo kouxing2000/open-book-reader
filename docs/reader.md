@@ -450,6 +450,23 @@ page in the sweep showed it. The Markdown export closes the other kind of hole �
 `h1` → `h3` — by renumbering body headings to start at `##` with no gap (`renumberHeadings`); the
 reader keeps the source's sizes.
 
+## A heading that repeats the title is dropped at render
+
+The reader prints the title itself (`.obr-doc-h1`), so a body that opens with the article's own
+heading shows the title twice. Readability removes that heading only when its word tokens match the
+title's (`_headerDuplicatesTitle` → `_textSimilarity`, `readability.js`), and it tokenizes on `\W`:
+an all-CJK title yields no tokens, scores 0, and the echo survives on Chinese, Japanese and Korean
+pages. Its title logic also keeps the full `标题 - 站名` for CJK (every part counts as one "word",
+so each split is judged too short and it falls back to the original), so the two are not even equal.
+
+`dropTitleEcho` (`reader.js`) runs at the top of `renderContent`, which every content path goes
+through, and mutates `lastArticle` so print and the Markdown export read the same body. It removes
+the FIRST `h1`–`h3` only when no text precedes it and its normalized text (NFKC, lowercase,
+whitespace and punctuation stripped) equals the whole title or one separator-delimited PART of it.
+A whole part, never a substring: that is what keeps a section heading that merely shares a word
+with the title. On English pages it is a subset of what Readability already removed; its new
+reach is CJK reads and picks/selections, which never pass through Readability.
+
 ## Content override — when extraction picks the wrong block
 
 **Content override — when extraction picks the WRONG block** (`reader.js`, plus pick storage in
