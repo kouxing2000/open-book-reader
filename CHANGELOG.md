@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-10-09
+
+- **Chinese, Japanese and Korean articles no longer show their title twice.** When a page's own
+  title heading opened the article, the reader showed it again right under its own title. The
+  same now holds for a block you pick or select, in any language. A section heading that only
+  shares a word with the title stays.
+
 ## [1.13.0] - 2026-10-07
 
 - **Share the article you just read.** A "Share this article" button sits on the back cover and
@@ -509,7 +516,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.13.1...HEAD
+[1.13.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.1
 [1.13.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.0
 [1.12.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.1
 [1.12.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.0
