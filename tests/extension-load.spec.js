@@ -590,6 +590,29 @@ test('invokeReader stamps the uninstall survey with the page — never incognito
   expect(stamps.join(' ')).not.toContain('unflagged.test'); // no flag means no stamp: fails closed
 });
 
+test('an extension update keeps the survey page stamp on the current base; install and an empty store stay bare', async ({ serviceWorker }) => {
+  const seen = await serviceWorker.evaluate(async () => {
+    const out = [];
+    const realSet = chrome.runtime.setUninstallURL;
+    chrome.runtime.setUninstallURL = async (u) => { out.push(u); };
+    try {
+      await chrome.storage.local.remove('obr_uninstall_stamp');
+      await restoreUninstallSurvey('update');                  // nothing saved yet → bare
+      stampUninstallSurvey('https://news.test/story/7?x=1', false);
+      await new Promise((r) => setTimeout(r, 50));             // let the storage write land
+      await restoreUninstallSurvey('update');                  // stamp carried over
+      await restoreUninstallSurvey('install');                 // install never carries one
+    } finally {
+      chrome.runtime.setUninstallURL = realSet;
+      await chrome.storage.local.remove('obr_uninstall_stamp');
+    }
+    return out;
+  });
+  const BASE = 'https://openbook.peach-studio.com/uninstall.html';
+  const PAGE = BASE + '#url=https%3A%2F%2Fnews.test%2Fstory%2F7';
+  expect(seen).toEqual([BASE, PAGE, PAGE, BASE]);
+});
+
 test('the report path survives a page the reader cannot draw on: menu item + worker-built meta', async ({ serviceWorker }) => {
   // Every ⚠ Report button lives inside an overlay, so the failures worth reporting are exactly
   // the ones that hide it. This entry point runs entirely in the worker — no content script.

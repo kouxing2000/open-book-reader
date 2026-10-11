@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **The uninstall survey keeps the last page you read across extension updates.** An update
+  used to reset the survey link to the bare page, so the "Report the problem site" box came up
+  empty. The page address is kept in this browser only, never sent unless you submit the survey.
+
 ## [1.13.1] - 2026-10-09
 
 - **Chinese, Japanese and Korean articles no longer show their title twice.** When a page's own

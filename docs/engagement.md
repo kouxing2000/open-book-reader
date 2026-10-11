@@ -184,7 +184,8 @@ identity travels IN the marker (`reporterEmail`: `null` = anonymous/no-reply for
 user's optional email for a repliable report; absent on a mailto → a reply goes to the envelope From).
 **The survey's site field.** The extension appends exactly one thing to the survey URL: `#url=<page>`, the
 last page the reader was opened on (`background.js`: `uninstallSurveyUrl`, re-stamped by `invokeReader` on
-every trigger). The page is cut by `OBR._reportPageUrl` — the SAME origin+pathname rule ⚠ Report uses, so
+every trigger, and saved in `storage.local` as `obr_uninstall_stamp` so `restoreUninstallSurvey` can
+re-apply it on top of the current base URL after an extension update; install sets the bare URL). The page is cut by `OBR._reportPageUrl` — the SAME origin+pathname rule ⚠ Report uses, so
 there is one definition of what an address may carry off the device. It rides the fragment, which never
 reaches the server; the survey shows it only for the two site-specific reasons, as a checked, editable
 "Report the problem site" box, and sends it as `pageUrl` only on submit with the box on. Incognito and

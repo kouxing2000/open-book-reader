@@ -828,6 +828,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // with that box on. No version or usage data is ever appended.
 const UNINSTALL_SURVEY_URL = 'https://openbook.peach-studio.com/uninstall.html';
 const UNINSTALL_URL_MAX = 1023; // Chrome rejects a longer uninstall URL outright
+const UNINSTALL_STAMP_KEY = 'obr_uninstall_stamp'; // storage.local: the encoded #url= value
+let stampGen = 0; // bumped on every stamp; restoreUninstallSurvey yields to a newer one
 
 // The survey URL naming `pageUrl`, or null to keep the current one: an incognito read must
 // leave no trace (the stamp outlives the session, like a saved position would), and a
@@ -847,18 +849,44 @@ function stampUninstallSurvey(pageUrl, incognito) {
   try { url = uninstallSurveyUrl(pageUrl, incognito); } catch (e) { /* a side effect must never block the open */ }
   swLog('survey stamp:', url ? 'page' : (incognito !== false ? 'skipped (incognito or unknown)' : 'skipped (not a web page)'));
   if (!url) return;
+  stampGen++;
   try { chrome.runtime.setUninstallURL(url).catch((e) => console.warn('[OpenBookReader] setUninstallURL:', e && e.message)); }
   catch (e) { /* */ }
+  // Kept so an extension update can re-apply it (restoreUninstallSurvey): Chrome holds the
+  // uninstall URL itself, and the update reset below would otherwise blank the page.
+  try {
+    chrome.storage.local.set({ [UNINSTALL_STAMP_KEY]: url.slice(url.indexOf('#url=') + 5) })
+      .catch((e) => console.warn('[OpenBookReader] save survey stamp:', e && e.message));
+  } catch (e) { /* */ }
+}
+
+// The survey URL to set on install/update: always the CURRENT base (it has moved once, so an
+// update must be able to change it), plus — on an update only — the stamp saved above, so an
+// update does not lose the page. A fresh install has no reading history: bare URL. Idempotent;
+// skips the set if invokeReader stamped a newer page while the saved one was being read.
+async function restoreUninstallSurvey(reason) {
+  const gen = stampGen;
+  let url = UNINSTALL_SURVEY_URL;
+  if (reason === 'update') {
+    try {
+      const saved = (await chrome.storage.local.get(UNINSTALL_STAMP_KEY))[UNINSTALL_STAMP_KEY];
+      const withPage = UNINSTALL_SURVEY_URL + '#url=' + saved;
+      if (typeof saved === 'string' && saved && withPage.length <= UNINSTALL_URL_MAX) url = withPage;
+    } catch (e) { console.warn('[OpenBookReader] read survey stamp:', e && e.message); }
+  }
+  if (gen !== stampGen) return;
+  try { await chrome.runtime.setUninstallURL(url); }
+  catch (e) { console.warn('[OpenBookReader] setUninstallURL:', e && e.message); }
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
   createMenus();
   syncSentinelRegistration(); // registration persists, but an update may change the rules/logic
   // Set on install AND extension update so a changed survey URL propagates with the next
-  // version. Not on 'chrome_update' / 'shared_module_update': those fire on every browser
-  // update and would wipe the #url= stamp for nothing, since they cannot change the survey URL.
+  // version; an update carries the saved page stamp over. Not on 'chrome_update' /
+  // 'shared_module_update': those cannot change the survey URL, so there is nothing to redo.
   if (details && (details.reason === 'install' || details.reason === 'update')) {
-    try { chrome.runtime.setUninstallURL(UNINSTALL_SURVEY_URL); } catch (e) { /* */ }
+    restoreUninstallSurvey(details.reason);
   }
   // First install only: open a one-screen WELCOME page — pin the icon, the two shortcuts, a
   // sample article — so a brand-new user reaches first value in one glance. (Not on
