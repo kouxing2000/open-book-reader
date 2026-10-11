@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-10-11
+
 - **The uninstall survey keeps the last page you read across extension updates.** An update
   used to reset the survey link to the bare page, so the "Report the problem site" box came up
   empty. The page address is kept in this browser only, never sent unless you submit the survey.
@@ -520,7 +522,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.13.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.13.2...HEAD
+[1.13.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.2
 [1.13.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.1
 [1.13.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.0
 [1.12.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.12.1
