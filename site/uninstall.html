@@ -112,6 +112,7 @@
           <!-- text, not type=url: constraint validation would block Send on a bare "example.com/page". -->
           <input type="text" inputmode="url" id="site" placeholder="example.com/the-article" autocomplete="off" />
           <p id="siteNote" class="fine hidden">The last page you opened in Open Book Reader — check it is the one that had the issue. It is sent only if this box is checked when you click send — edit it or uncheck it to leave it out.</p>
+          <p id="sampleNote" class="fine hidden">You've only opened the sample article in Open Book Reader so far. If another site didn't work, type it here.</p>
         </div>
         <textarea id="note" placeholder="Anything else? What went wrong — whatever helps (optional)"></textarea>
         <label class="rescue" for="email">If it's something we can fix, leave your email and we'll let you know — we'd love to have you back. <span class="opt-hint">(optional)</span></label>
@@ -174,7 +175,26 @@
         return /^https?:\/\//i.test(u) && u.length <= 1000 ? u : '';
       } catch (e) { return ''; }
     })();
-    if (prefill) {
+
+    // The welcome page's "Try it on a sample article" link (src/welcome.html). A stamp of it means
+    // the last page the reader opened was the sample — in practice the only one, since the welcome
+    // page shows once — which names no site the user reads: the box stays empty and the answer
+    // carries sampleOnly instead. tests/uninstall-survey.spec.js reads the
+    // welcome link, so changing one copy without the other fails it.
+    var SAMPLE_URL = 'https://en.wikipedia.org/wiki/Readability';
+    // The same page despite its scheme, a trailing slash, a #fragment or the m. mobile host — and
+    // no wider: any other Wikipedia article is a real report.
+    function pageKey(s) {
+      try {
+        var u = new URL(s);
+        return u.host.replace(/(^|\.)m\./, '$1') + u.pathname.replace(/\/+$/, '') + u.search;
+      } catch (e) { return ''; }
+    }
+    var sampleOnly = !!prefill && pageKey(prefill) === pageKey(SAMPLE_URL);
+
+    if (sampleOnly) {
+      document.getElementById('sampleNote').classList.remove('hidden');
+    } else if (prefill) {
       siteEl.value = prefill;
       document.getElementById('siteShare').classList.remove('hidden');
       document.getElementById('siteNote').classList.remove('hidden');
@@ -186,6 +206,10 @@
     function siteToSend() {
       if (SITE_REASONS.indexOf(selectedReason()) === -1 || !siteOn.checked) return '';
       return siteEl.value.trim().slice(0, 1000);
+    }
+    // Under the same reason gate as the site: the note that tells the user shows only then.
+    function sampleOnlyToSend() {
+      return sampleOnly && SITE_REASONS.indexOf(selectedReason()) !== -1;
     }
 
     // Require a reason before Send. The categorized reason is the signal we actually
@@ -210,7 +234,8 @@
     // byte-identical. reportSource:'uninstall-survey' keeps it separable; the note becomes the prose
     // above the divider.
     // `pageUrl` is the same key the in-app report uses for the page, so triage reads both alike.
-    function buildBody(reason, note, email, site) {
+    // `sample` adds sampleOnly: the stamped page was the welcome sample, so it named no real site.
+    function buildBody(reason, note, email, site, sample) {
       var meta = {
         app: 'open-book-reader',
         platform: 'chrome',
@@ -219,6 +244,7 @@
         reporterEmail: email || null,   // opt-in: a reply address if they'd like to hear back, else no-reply
       };
       if (site) meta.pageUrl = site;
+      if (sample) meta.sampleOnly = true;
       var lines = [
         note || '[No additional detail provided]',
         '', '---',
@@ -229,14 +255,14 @@
       lines.push('Source: ' + meta.reportSource, '', '[feedback-meta v1]', JSON.stringify(meta));
       return lines.join('\n');
     }
-    function mailtoHref(reason, note, email, site) {
+    function mailtoHref(reason, note, email, site, sample) {
       return 'mailto:' + FEEDBACK_EMAIL +
         '?subject=' + encodeURIComponent('Open Book Reader — uninstall feedback') +
-        '&body=' + encodeURIComponent(buildBody(reason, note, email, site));
+        '&body=' + encodeURIComponent(buildBody(reason, note, email, site, sample));
     }
     document.getElementById('mailLink').addEventListener('click', function (e) {
       e.preventDefault();
-      window.location.href = mailtoHref(selectedReason(), noteEl.value.trim(), emailEl.value.trim(), siteToSend());
+      window.location.href = mailtoHref(selectedReason(), noteEl.value.trim(), emailEl.value.trim(), siteToSend(), sampleOnlyToSend());
     });
 
     function done() {
@@ -250,6 +276,7 @@
       var note = noteEl.value.trim();
       var email = emailEl.value.trim();
       var site = siteToSend();
+      var sample = sampleOnlyToSend();
 
       if (GFORM_ACTION && GFORM_ENTRY_REPORT) {
         // Fire-and-forget POST into the hidden iframe (Google Forms answers with an opaque
@@ -257,14 +284,14 @@
         var f = document.createElement('form');
         f.action = GFORM_ACTION; f.method = 'POST'; f.target = 'gform_sink';
         var i = document.createElement('input');
-        i.type = 'hidden'; i.name = GFORM_ENTRY_REPORT; i.value = buildBody(reason, note, email, site);
+        i.type = 'hidden'; i.name = GFORM_ENTRY_REPORT; i.value = buildBody(reason, note, email, site, sample);
         f.appendChild(i);
         document.body.appendChild(f);
         f.submit();
         done();
       } else {
         // No form configured → open the user's mail client with everything prefilled.
-        window.location.href = mailtoHref(reason, note, email, site);
+        window.location.href = mailtoHref(reason, note, email, site, sample);
         done();
       }
     });
