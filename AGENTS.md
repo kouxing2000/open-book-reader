@@ -209,7 +209,9 @@ npx playwright install chromium                # first run only
   behaviour. These are the failures that look identical to a dead extension.
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
 - `uninstall-survey.spec.js` — `site/uninstall.html`: what the form POSTs. The stamped page
-  (`#url=`) is sent only for a site reason and only with "Report the problem site" checked.
+  (`#url=`) is sent only for a site reason and only with "Report the problem site" checked; a
+  stamp of the welcome page's sample article is never prefilled and sends `sampleOnly` instead
+  (the sample URL is read from `src/welcome.html`, so the two copies cannot drift).
 - `landing.spec.js` — `site/index.html`, where every Share invite points: `?ref=share-<surface>`
   becomes store UTM tags on Add to Chrome (and nothing else does), and the link-preview image exists.
   Also `site/read.html`, where every "Share this article" link lands: its states, the crafted-title
