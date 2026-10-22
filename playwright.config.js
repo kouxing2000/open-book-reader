@@ -17,7 +17,9 @@ export default defineConfig({
   webServer: {
     command: 'node tests/server.js',
     port: 5099,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: a fixture server left over from an earlier run serves that run's code, so a
+    // change to tests/server.js would silently not apply. A leftover now fails the run on the port.
+    reuseExistingServer: false,
     stdout: 'ignore',
     stderr: 'pipe',
   },

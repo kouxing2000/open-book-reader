@@ -102,7 +102,8 @@ test.describe('image gallery', () => {
       c.getContext('2d').fillRect(0, 0, 40, 40);
       const pic = document.createElement('picture');
       // unsupported type => the browser keeps the small <img> fallback (doesn't fetch the source)
-      pic.innerHTML = '<source type="image/x-nope" srcset="https://obr.test/big-source.jpg 800w">';
+      // The source URL must load: a tile whose image fails removes itself, which raced the poll below.
+      pic.innerHTML = '<source type="image/x-nope" srcset="/photo-400.png?big-source 800w">';
       const img = document.createElement('img');
       img.width = 40; img.height = 40; img.src = c.toDataURL('image/png');
       pic.appendChild(img);
@@ -117,7 +118,7 @@ test.describe('image gallery', () => {
     // did, in a full suite run, while passing every time the file ran alone).
     await expect.poll(() => page.evaluate(() =>
       [...document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile img')]
-        .some((im) => (im.getAttribute('src') || '').includes('big-source.jpg'))))
+        .some((im) => (im.getAttribute('src') || '').includes('big-source'))))
       .toBe(true); // the larger <source> survived; the picture isn't lost
   });
 
