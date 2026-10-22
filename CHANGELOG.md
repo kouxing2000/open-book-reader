@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Image mode now shows a page's videos.** A video that plays from a plain file appears as a
+  tile among the pictures, in page order. Click its play button to watch it right in the grid
+  with the browser's own controls, or open it large; Space plays and pauses. Streaming players
+  (YouTube, X, Instagram) and embedded players are left out, since only the page itself can play
+  those. "Download as ZIP" leaves videos out and says so; download a video on its own instead.
+- **The image count leaves out the images you hid.** The toolbar's choice between reading and
+  image mode, and the "Images · N" count in the reader, now skip the images you hid on that
+  site, so they match what image mode shows.
+
 ## [1.13.2] - 2026-10-11
 
 - **The uninstall survey keeps the last page you read across extension updates.** An update
