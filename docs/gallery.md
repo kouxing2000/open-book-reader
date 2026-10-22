@@ -171,9 +171,12 @@ element and never take part.
 flood the gallery with profile pics — a DIFFERENT URL per user, so dedup can't merge them and they
 clear the 80px min-size filter. Two zero-new-permission layers: (1) a **high-precision avatar
 auto-filter** (`isAvatarish`, `settings.galleryHideAvatars`, default on) drops avatars/emoji/badges,
-matched on the element's avatar/gravatar/emoji **class/id/alt/src token** OR a **profile-link wrapper
+matched on the element's avatar/gravatar/emoji **class/id/alt/src/lazy-URL token** OR a **profile-link wrapper
 around a small near-square image** — deliberately NOT size-based (album art / product shots are small
-squares too). It runs inside `eachGalleryImg`, so `collect()` AND the badge `imageCount()` exclude the
+squares too). The lazy URL matters because a forum's below-the-fold avatars and emoticons are lazy
+`<img>`s with only `data-src`, and a rescued lazy image skips the size filter; two URL shapes cover
+them: an avatar CDN host (`//avatar2.site/…`) and an emoticon folder (`/emotion/`, `/smilies/`).
+Pinned by `tests/fixtures/forum-lazy-noise.html`. It runs inside `eachGalleryImg`, so `collect()` AND the badge `imageCount()` exclude the
 same set — auto-filtered images are TAGGED, never silently vanished: they ride the same "N hidden"
 count/reveal, and Unhide on one stores a per-image **`+<target>` allow entry** that overrides the
 auto-filter from then on (the false-positive recovery path). (2) a manual **⊘ Hide** control on each

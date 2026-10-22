@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Forum thread with lazy avatars and emoticons (synthetic test fixture)</title>
+  <style>
+    body { margin: 0; font: 14px sans-serif; }
+    .c-section, .c-reply__item { display: flex; gap: 12px; padding: 12px; border-bottom: 1px solid #ddd; }
+  </style>
+</head>
+<body>
+<!-- A large forum's thread as a logged-out reader gets it. Every avatar, emoticon and most
+     photos are lazy <img>s whose real URL waits in data-src; no lazy loader runs here, so they
+     stay unloaded, as they are below the fold under the gallery's scroll lock, and a rescued lazy
+     image skips the size filter. Only the four photos belong in the gallery:
+     - avatars live on an avatar CDN host (the test routes avatar2.forum.test to the 40x40 and
+       110x160 fixtures). The poster's avatar is loaded and 110x160, so the size filter passes
+       it and only its host marks it; the replies' are lazy;
+     - emoticons are 19x19 and sit in an /emotion/ folder. -->
+<section class="c-section" id="floor-1">
+  <a class="c-user__avatar gamercard" href="/home/alice"><img id="avatar_fpath101" src="http://avatar2.forum.test/avataruserpic/a/l/alice/alice.png" alt=""></a>
+  <article class="c-article__content">
+    <p>Here are the screenshots from last night <img class="lazyload" data-src="/emotion/emote-19.svg?n=1"></p>
+    <img id="loaded-photo" src="/pic-700.png" alt="">
+    <img class="lazyload" data-src="/photo-400.png?n=1" alt="">
+    <img class="lazyload" data-src="/photo-400.png?n=2" alt="">
+    <p>and one more <img class="lazyload" data-src="/emotion/emote-19.svg?n=2"></p>
+    <img class="lazyload" data-src="/photo-400.png?n=3" alt="">
+  </article>
+</section>
+<div class="c-reply__item">
+  <a class="reply-avatar user--sm" href="/home/bob"><img class="gamercard lazyload" data-src="http://avatar2.forum.test/avataruserpic/b/o/bob/bob_s.png"></a>
+  <span class="comment_content">so good <img class="lazyload" data-src="/emotion/emote-19.svg?n=3"></span>
+</div>
+<div class="c-reply__item">
+  <a class="reply-avatar user--sm" href="/home/carol"><img class="gamercard lazyload" data-src="http://avatar2.forum.test/avataruserpic/c/a/carol/carol_s.png"></a>
+  <span class="comment_content">saved <img class="lazyload" data-src="/emotion/emote-19.svg?n=4"></span>
+</div>
+<div class="c-reply__item">
+  <a class="reply-avatar user--sm" href="/home/dave"><img class="gamercard lazyload" data-src="http://avatar2.forum.test/avataruserpic/d/a/dave/dave_s.png"></a>
+  <span class="comment_content">thanks for posting</span>
+</div>
+</body>
+</html>

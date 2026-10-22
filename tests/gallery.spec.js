@@ -1386,6 +1386,93 @@ test.describe('gallery image filter', () => {
   });
 });
 
+/* A forum thread as a logged-out reader gets it: avatars and emoticons are lazy <img>s carrying
+ * only data-src. A rescued lazy image skips the size filter, so the avatar filter has to catch them
+ * by URL: it reads the lazy URL (there is no src yet), an avatar CDN host and an emoticon folder.
+ * Fixture markup follows a large forum's thread page. */
+test.describe('lazy forum noise', () => {
+  test('lazy avatars and emoticons stay out of the wall, counted as hidden; the posted photos stay', async ({ page }) => {
+    const svg = (f) => fs.readFileSync(new URL('./fixtures/' + f, import.meta.url));
+    await page.route('http://avatar2.forum.test/**', (route) => route.fulfill({
+      contentType: 'image/svg+xml',
+      body: svg(/_s\.png$/.test(route.request().url()) ? 'forum-avatar-40.svg' : 'forum-avatar-110x160.svg'),
+    }));
+    await gotoFixture(page, 'forum-lazy-noise.html');
+    await page.waitForFunction(() => ['loaded-photo', 'avatar_fpath101'].every((id) => { const i = document.getElementById(id); return i && i.complete && i.naturalWidth > 0; }));
+    await injectGallery(page);
+    await openGallery(page);
+    const tileUrls = await page.evaluate(() =>
+      [...document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile img')]
+        .map((i) => { const u = new URL(i.src); return u.pathname + u.search; }).sort());
+    expect(tileUrls).toEqual(['/photo-400.png?n=1', '/photo-400.png?n=2', '/photo-400.png?n=3', '/pic-700.png']);
+    expect((await galleryState(page)).count).toBe('4 images');
+    // 4 avatars + 4 emoticons ride the "N hidden" toggle: recoverable, never silently dropped.
+    const hiddenLabel = await page.evaluate(() =>
+      document.getElementById('obr-gallery-host').shadowRoot.querySelector('.hidden-toggle .lbl').textContent);
+    expect(hiddenLabel).toBe('8 hidden');
+    expect(await page.evaluate(() => globalThis.OBR._imageCount())).toBe(4); // the badge agrees
+  });
+
+  test('an Unhide on a lazy image holds after the page loads another size of it', async ({ page }) => {
+    const png = fs.readFileSync(new URL('./fixtures/photo-400.png', import.meta.url));
+    await page.route('http://avatar2.forum.test/**', (route) => route.fulfill({ contentType: 'image/png', body: png }));
+    await gotoFixture(page, 'forum-lazy-noise.html');
+    // A false positive: a real photo on an avatar-named host, lazy, with a srcset.
+    await page.evaluate(() => {
+      const y = Object.assign(document.createElement('img'), { id: 'y', className: 'lazyload' });
+      y.setAttribute('data-src', 'http://avatar2.forum.test/photos/p/600x');
+      y.setAttribute('data-srcset', 'http://avatar2.forum.test/photos/p/300x 300w, http://avatar2.forum.test/photos/p/900x 900w');
+      y.setAttribute('sizes', '300px');
+      document.getElementById('floor-1').appendChild(y);
+    });
+    await injectGallery(page);
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
+    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/600x"]) .tile-unhide').click({ force: true });
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    // The page's lazy loader runs, and the browser picks the 300w size.
+    await page.evaluate(() => { const y = document.getElementById('y'); y.srcset = y.getAttribute('data-srcset'); y.src = y.getAttribute('data-src'); });
+    await page.waitForFunction(() => { const y = document.getElementById('y'); return y.complete && /\/300x$/.test(y.currentSrc); });
+    await openGallery(page);
+    const photoTiles = await page.evaluate(() => [...document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile img')]
+      .filter((i) => i.src.includes('/photos/p/')).length);
+    expect(photoTiles).toBe(1);
+  });
+
+  test('an Unhide given while the image is loaded holds when it is lazy again', async ({ page }) => {
+    const png = fs.readFileSync(new URL('./fixtures/photo-400.png', import.meta.url));
+    await page.route('http://avatar2.forum.test/**', (route) => route.fulfill({ contentType: 'image/png', body: png }));
+    await gotoFixture(page, 'forum-lazy-noise.html');
+    const SIZES = 'http://avatar2.forum.test/photos/p/300x 300w, http://avatar2.forum.test/photos/p/900x 900w';
+    // Loaded the way a lazy loader leaves it: the data-* attributes stay beside src/srcset.
+    await page.evaluate((sizes) => {
+      const y = Object.assign(document.createElement('img'), { id: 'y', sizes: '300px', srcset: sizes, src: 'http://avatar2.forum.test/photos/p/600x' });
+      y.setAttribute('data-src', 'http://avatar2.forum.test/photos/p/600x');
+      y.setAttribute('data-srcset', sizes);
+      document.getElementById('floor-1').appendChild(y);
+    }, SIZES);
+    await page.waitForFunction(() => { const y = document.getElementById('y'); return y.complete && /\/300x$/.test(y.currentSrc); });
+    await injectGallery(page);
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
+    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/300x"]) .tile-unhide').click({ force: true });
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    // A later visit: the same picture, not loaded yet.
+    await page.evaluate((sizes) => {
+      const y = Object.assign(document.createElement('img'), { id: 'y', className: 'lazyload' });
+      y.setAttribute('data-src', 'http://avatar2.forum.test/photos/p/600x');
+      y.setAttribute('data-srcset', sizes);
+      document.getElementById('y').replaceWith(y);
+    }, SIZES);
+    await openGallery(page);
+    const photoTiles = await page.evaluate(() => [...document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile img')]
+      .filter((i) => i.src.includes('/photos/p/')).length);
+    expect(photoTiles).toBe(1);
+  });
+});
+
 /* Element-selector hides (`css:` entries) — the 4th Hide scope, for when the URL can't
  * discriminate (same-CDN avatars vs content) but the noise sits in a distinct container.
  * Pins derivation (own class / ancestor class), the popover option, end-to-end hide →

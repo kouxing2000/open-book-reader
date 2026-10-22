@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Image mode on a forum thread shows the posted pictures, not everyone's avatars.** Avatars
+  and emoticons that a forum loads only as you scroll used to fill the wall. They now go under
+  the "N hidden" count with the other avatars, where Show brings any of them back. An image you
+  unhide stays shown after the page loads a different size of it.
+
 ## [1.14.0] - 2026-10-22
 
 - **Image mode now shows a page's videos.** A video that plays from a plain file appears as a

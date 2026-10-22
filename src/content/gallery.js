@@ -294,11 +294,14 @@
   // .galleryHideAvatars). Deliberately NOT size-based (album art / product shots are small
   // squares too): a token match on the element's own class/id/alt/src, OR a profile-link
   // wrapper AROUND a small near-square image. Kept tight so it doesn't eat real content.
-  const AVATAR_TOKEN = /\bavatars?\b|user[_-]?avatars?|gravatar|profile[_-]?(pic|photo|image)s?|\buserpics?\b|\bemoji\b|\bbadges?\b|\bsprite\b/i;
+  // Plus two forum shapes matched on the URL alone: an avatar CDN host (`//avatar2.site/…`) and
+  // an emoticon folder (`/emotion/`, `/smilies/`), whose lazy images skip the size filter.
+  const AVATAR_TOKEN = /\bavatars?\b|user[_-]?avatars?|gravatar|profile[_-]?(pic|photo|image)s?|\buserpics?\b|\bemoji\b|\bbadges?\b|\bsprite\b|\/\/avatars?\d*\.|\/(emotions?|emoticons?|smil(ies|eys?))\//i;
   const PROFILE_HREF = /(^|\/)(u|user|users|profile|profiles|member|members|people)(\/|$)|\/@[\w.-]/i;
   function isAvatarish(img) {
     try {
-      const hay = ((img.className || '') + ' ' + (img.id || '') + ' ' + (img.alt || '') + ' ' + (img.getAttribute('src') || '')).toLowerCase();
+      // The lazy URL too: an avatar the page never loaded has no src, only data-src.
+      const hay = ((img.className || '') + ' ' + (img.id || '') + ' ' + (img.alt || '') + ' ' + (img.getAttribute('src') || '') + ' ' + (lazyAttrUrl(img) || '')).toLowerCase();
       if (AVATAR_TOKEN.test(hay)) return true;
       const a = img.closest && img.closest('a[href]');
       if (a && PROFILE_HREF.test(a.getAttribute('href') || '')) {
@@ -369,6 +372,12 @@
     for (const p of hiddenPatterns) if (typeof p === 'string' && p.startsWith('+') && p.slice(1) === t) return true;
     return false;
   }
+  // An Unhide allow may name any URL the image answers to: liveUrls covers the loaded ones and one
+  // lazy URL, and a lazy image's other sizes wait in data-srcset.
+  function allowedAnyUrl(img, e) {
+    if ([...liveUrls(img, e)].some(isAllowed)) return true;
+    return OBR.srcsetUrls(img.getAttribute('data-srcset') || '').some((u) => isAllowed(resolveUrl(u, location.href)));
+  }
 
   // A plain-source <video>: one whose file URL the gallery can load in its own element. A blob:
   // source is a MediaSource stream that only the page's own element can attach, and a data: one
@@ -409,7 +418,10 @@
       // Avatar auto-filter: TAG, never silently vanish — tagged entries ride the same
       // hiddenSkipped count / "N hidden · Show" reveal as manual hides, so a false positive
       // is visible and recoverable (Unhide stores a per-image '+' allow entry).
-      if (hideAv && isAvatarish(img) && !isAllowed(resolveUrl(e.url, location.href))) e.autoHidden = true;
+      // The allow is checked against every URL the image answers to, lazy srcset sizes included:
+      // an Unhide names whichever URL the tile had (the lazy one, or the size the page loaded),
+      // and must hold in the other state too.
+      if (hideAv && isAvatarish(img) && !allowedAnyUrl(img, e)) e.autoHidden = true;
       else if (sels.length && matchesCssHidden(img, sels)) e.elHidden = true; // tagged; collect() drops or (peeking) keeps it
       fn(e, img);
     });
