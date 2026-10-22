@@ -146,7 +146,10 @@ visible before choosing. Everything is stored **per-site** in the `obr_hidden` s
 host count AND serialized bytes (`HIDDEN_MAX_BYTES`, mirrors `obr_picks`; plus a per-pattern length
 cap); entry prefixes: none = URL glob (matched by the shared `globToRegExp` over `host+pathname`),
 `css:` = element selector, `+` = per-image allow — `urlMatchesHidden` skips the prefixed kinds.
-`collect()` drops matches (tagging them `hidden` while peeking); a **"N hidden · Show"** toolbar
+`collect()` drops matches (tagging them `hidden` while peeking), and `imageCount()` — the toolbar
+auto-pick and the reader's badge — drops the same ones through the shared `urlHidden`/`imgTagged`.
+The patterns live in storage and the gallery loads them on open, so each count caller runs
+`loadImageFilter()` first; a count taken without it ignores the site's Hide rules and Unhide allows. A **"N hidden · Show"** toolbar
 toggle (kept fresh by `mergeNewImages` too, for lazy-hydrating pages) reveals them dimmed with an
 Unhide button (manual hides: drops the matching pattern, re-testing `css:` entries against the live
 element; auto-hides: stores the `+` allow), plus a one-tap **Undo** on the last hide. The Options page lists + removes

@@ -3762,14 +3762,18 @@
 
   // Advertise how many gallery-worthy images the page has, on the Images segment
   // (e.g. "🖼 Images · 42"), so the value of switching is visible before the jump.
-  // Hidden when there are none, or if the gallery engine isn't loaded.
+  // Hidden when there are none, or if the gallery engine isn't loaded. The count leaves out
+  // the images this site hides, which live in storage, so it lands a beat after the open.
   function updateImagesBadge() {
     const badge = overlay && overlay.querySelector('.obr-seg-badge');
     if (!badge) return;
-    let n = 0;
-    try { n = (OBR._imageCount && OBR._imageCount()) || 0; } catch (e) { n = 0; }
-    if (n > 0) { badge.textContent = ' · ' + n; badge.hidden = false; }
-    else { badge.textContent = ''; badge.hidden = true; }
+    const ready = OBR._loadImageFilter ? OBR._loadImageFilter() : Promise.resolve();
+    ready.then(() => {
+      let n = 0;
+      try { n = (OBR._imageCount && OBR._imageCount()) || 0; } catch (e) { n = 0; }
+      if (n > 0) { badge.textContent = ' · ' + n; badge.hidden = false; }
+      else { badge.textContent = ''; badge.hidden = true; }
+    });
   }
 
   /* ---------------------------------------------------------------- open/close */

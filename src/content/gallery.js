@@ -432,20 +432,17 @@
       // Per-site image filter — URL globs here; element (`css:`) and avatar-auto matches, and a
       // URL glob matching another URL the <img> loads as, are tagged upstream: drop matches (or,
       // while peeking, keep them tagged).
-      const hidden = !!tagged || !!autoHidden ||
-        (hiddenPatterns.length && OBR.urlMatchesHidden && OBR.urlMatchesHidden(url, hiddenPatterns));
+      const hidden = !!tagged || !!autoHidden || urlHidden(url);
       if (hidden && !revealHidden) { hiddenSkipped++; return; }
       const full = (fullRaw && resolveUrl(fullRaw, location.href)) || url;
       out.push({ url, full, w: w || 0, h: h || 0, hidden, auto: !!autoHidden });
     };
 
-    const urlHides = hiddenPatterns.length && OBR.urlMatchesHidden;
     eachGalleryImg((e, img) => {
       const url = resolveUrl(e.url, location.href);
       const alias = known && !known.has(url) ? loadedAs(img).find((u) => known.has(u)) : null;
       if (alias) return void out.push({ aliasOf: alias, full: resolveUrl(e.full, location.href) || url, w: e.w, h: e.h });
-      const tagged = e.elHidden || (urlHides && loadedAs(img).some((u) => OBR.urlMatchesHidden(u, hiddenPatterns)));
-      push(e.url, e.w, e.h, e.full, tagged, e.autoHidden);
+      push(e.url, e.w, e.h, e.full, imgTagged(e, img), e.autoHidden);
     });
     eachPictureSource(push); // <picture> fallback sources: full === url
     if (withBackgrounds) eachBackgroundImage(push);
@@ -453,25 +450,46 @@
     return out;
   }
 
-  // Lightweight count of gallery-worthy images, for the reader's "Images · N"
-  // badge / mode-switch affordance. Reuses the SAME <img> walk + tiny-image filter
+  // The per-site filter's verdict, shared by collect() and imageCount() so the gallery and the
+  // count drop the same images. An <img> is tagged for an element (`css:`) match upstream,
+  // and a URL glob can match any URL it loads as.
+  function urlHidden(url) {
+    return !!(hiddenPatterns.length && OBR.urlMatchesHidden && OBR.urlMatchesHidden(url, hiddenPatterns));
+  }
+  function imgTagged(e, img) {
+    return !!e.elHidden || (!!hiddenPatterns.length && loadedAs(img).some(urlHidden));
+  }
+
+  // Load this site's filter (obr_hidden) into hiddenPatterns. open() runs it, and so must any
+  // count taken before the gallery opens (the toolbar auto-pick, the reader's badge) — without
+  // it the count ignores the site's Hide rules and Unhide allows.
+  function loadImageFilter() {
+    const h = OBR.normalizeHost ? OBR.normalizeHost(location.href) : '';
+    return (OBR.loadHidden ? OBR.loadHidden(h) : Promise.resolve([]))
+      .catch(() => []).then((p) => { hiddenPatterns = p; });
+  }
+  OBR._loadImageFilter = loadImageFilter;
+
+  // Lightweight count of gallery-worthy images, for the toolbar auto-pick and the reader's
+  // "Images · N" badge. Reuses the SAME <img> walk, tiny-image filter and per-site filter
   // as collect() (via eachGalleryImg) plus the <source srcset> pass, but deliberately
   // SKIPS the per-element getComputedStyle background-image scan (the expensive part
   // of collect()) — a slight undercount on CSS-image galleries is fine for a hint;
   // full fidelity only matters once the gallery actually opens. Computed fresh each
-  // call so it stays accurate across SPA navigations.
+  // call so it stays accurate across SPA navigations. Honors hides only once
+  // loadImageFilter() has run.
   function imageCount() {
     const seen = new Set();
     let n = 0;
-    const tally = (rawUrl) => {
+    const tally = (rawUrl, tagged) => {
       if (!rawUrl || isSkippableDataUri(rawUrl)) return;
       const url = resolveUrl(rawUrl, location.href);
       if (!url || seen.has(url)) return;
       seen.add(url);
-      n++;
+      if (!tagged && !urlHidden(url)) n++;
     };
-    eachGalleryImg((e) => { if (!e.autoHidden && !e.elHidden) tally(e.url); }); // filtered images don't inflate the badge
-    eachPictureSource(tally);
+    eachGalleryImg((e, img) => tally(e.url, e.autoHidden || imgTagged(e, img)));
+    eachPictureSource((u) => tally(u));
     return n;
   }
   OBR._imageCount = imageCount;
@@ -1983,7 +2001,7 @@
     fitWidth = !!settings.galleryFitWidth;
     // Per-site image filter (hidden patterns). Fresh filter state each open.
     revealHidden = false; lastHide = null;
-    try { hiddenPatterns = OBR.loadHidden ? await OBR.loadHidden(galleryHost) : []; } catch (e) { hiddenPatterns = []; }
+    await loadImageFilter();
     if (t) t.mark('settings'); // settings + per-site layout/filter storage reads
     if (OBR.close) OBR.close({ suppress: false }); // ensure the text reader isn't also showing (defensive — not a user dismissal)
     build();
@@ -2138,9 +2156,10 @@
     if (shown('obr-host')) { if (OBR.close) OBR.close(); return Promise.resolve('closed-text'); }
     if (shown('obr-gallery-host')) { close(); return Promise.resolve('closed-images'); }
     const load = OBR.loadSettings ? OBR.loadSettings() : Promise.resolve(OBR.DEFAULTS);
-    return load.then((s) => {
+    return Promise.all([load, loadImageFilter()]).then(([s]) => {
       // Sync the module-local settings (imageCount()'s avatar filter reads them) so a
-      // pre-open auto-mode decision honors the user's galleryHideAvatars, not DEFAULTS.
+      // pre-open auto-mode decision honors the user's galleryHideAvatars, not DEFAULTS;
+      // loadImageFilter() above does the same for the site's hidden images.
       if (s) settings = Object.assign({}, settings, s);
       // Per-site rule wins over the auto-pick ladder (toolbar icon only; keyboard commands
       // and context-menu submodes bypass _autoToggle entirely). Most-specific rule wins.

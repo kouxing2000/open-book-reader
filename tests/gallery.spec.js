@@ -659,7 +659,16 @@ test.describe('mode switching', () => {
     // The lightweight badge count walks <img> + <source srcset> with the tiny
     // filter but deliberately SKIPS the background-image scan — so it sees the 5
     // large <img> (2 tiny filtered) and not the 1 CSS background the gallery keeps.
-    expect((await readState(page)).imagesBadge).toBe(' · 5');
+    await expect.poll(() => readState(page).then((s) => s.imagesBadge)).toBe(' · 5');
+  });
+
+  test('the Images badge leaves out the images this site hides', async ({ page }) => {
+    await gotoImages(page);
+    await injectAll(page);
+    await page.evaluate(() => globalThis.OBR.saveHidden(
+      globalThis.OBR.normalizeHost(location.href), ['css:#imgs img:first-child']));
+    await page.evaluate(() => globalThis.OBR.open()); // the gallery has never opened in this tab
+    await expect.poll(() => readState(page).then((s) => s.imagesBadge)).toBe(' · 4');
   });
 });
 
@@ -698,6 +707,26 @@ test.describe('toolbar auto-mode', () => {
     // `present`, not `hostDisplay`: readState returns {present:false} with no host, so
     // `hostDisplay` is undefined there and an `undefined !== 'none'` check can never fail.
     await expect.poll(() => readState(page).then((s) => s.present)).toBe(true);
+  });
+
+  /* The count must be the one the gallery would show: images the site's Hide rules drop don't
+   * vote. Those rules live in storage and the gallery has never opened in this tab, so this also
+   * pins that the auto-pick loads them itself. A URL rule needs an http image (a data: URL has
+   * no URL scope), hence the served one. */
+  test('images this site hides do not count toward autoGalleryMin', async ({ page }) => {
+    await gotoImages(page);
+    await injectAll(page);
+    const url = await page.evaluate(() => new Promise((res) => {
+      const img = document.createElement('img');
+      img.src = '/pic.png?hide=1'; // fixture PNG, 128x128 — clears the min-size filter
+      img.onload = () => res(img.src);
+      document.body.appendChild(img);
+    }));
+    await page.evaluate(() => globalThis.OBR.saveSettings({ autoGalleryMin: 6 }));
+    expect(await page.evaluate(() => globalThis.OBR._imageCount())).toBe(6); // 5 fixture + served: at the threshold
+    await page.evaluate((u) => globalThis.OBR.saveHidden(
+      globalThis.OBR.normalizeHost(location.href), [globalThis.OBR.hiddenTarget(u)]), url);
+    expect(await page.evaluate(() => globalThis.OBR._autoToggle())).toBe('text'); // 5 visible < 6
   });
 
   test('off (0) always opens the text reader regardless of image count', async ({ page }) => {
