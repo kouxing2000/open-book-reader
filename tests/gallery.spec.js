@@ -1332,6 +1332,19 @@ test.describe('gallery image filter', () => {
     await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns().length)).toBe(0);
   });
 
+  test('a count taken while the gallery is open keeps its Hide rules, saved or not', async ({ page }) => {
+    const url = await addServedImg(page);
+    await openGallery(page);
+    await page.evaluate((u) => globalThis.OBR._galleryHide(globalThis.OBR.hiddenTarget(u)), url);
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(6);
+    // Storage that has not caught up with that Hide yet: reloading from it would drop the Hide.
+    await page.evaluate(() => {
+      globalThis.OBR.loadHidden = () => Promise.resolve([]);
+      return globalThis.OBR._loadImageFilter();
+    });
+    expect(await page.evaluate(() => globalThis.OBR._galleryHiddenPatterns().length)).toBe(1);
+  });
+
   test('a hidden image stays hidden across a reopen (per-site memory)', async ({ page }) => {
     const url = await addServedImg(page);
     await openGallery(page);

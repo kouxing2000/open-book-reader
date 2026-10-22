@@ -499,6 +499,9 @@
   // count taken before the gallery opens (the toolbar auto-pick, the reader's badge) — without
   // it the count ignores the site's Hide rules and Unhide allows.
   function loadImageFilter() {
+    // An open gallery's list is already current, and may hold a Hide whose save has not landed:
+    // reloading it from storage would drop that Hide. open() loads before it sets `active`.
+    if (active) return Promise.resolve();
     const h = OBR.normalizeHost ? OBR.normalizeHost(location.href) : '';
     return (OBR.loadHidden ? OBR.loadHidden(h) : Promise.resolve([]))
       .catch(() => []).then((p) => { hiddenPatterns = p; });
