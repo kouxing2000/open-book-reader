@@ -114,6 +114,7 @@
   "galleryDownloadFailed": { "message": "Не удалось скачать" },
   "galleryDoneSavedFailed": { "message": "Готово — сохранено: $SAVED$, ошибок: $FAILED$", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Готово — сохранено: $SAVED$", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "Видео пропущено: $COUNT$ — сохраняйте видео кнопкой «Скачать»", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Выбрать" },
   "galleryEmpty": { "message": "Изображения пока не найдены. Прокрутите галерею, чтобы загрузить больше, или нажмите ⟳ Загрузить все." },
   "galleryImageCount": { "message": "Изображений: $COUNT$", "placeholders": { "count": { "content": "$1" } } },
@@ -127,6 +128,9 @@
   "galleryThumbnailAlt": { "message": "Миниатюра $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "Пауза слайд-шоу (A)" },
   "galleryImageAlt": { "message": "Изображение $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "Видео $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "Воспроизвести здесь" },
+  "galleryOpenLargeTitle": { "message": "Открыть крупно" },
 
   "ctxOpenTitle": { "message": "Открыть в Open Book" },
   "ctxAuto": { "message": "Открыть сейчас: Умный выбор" },

@@ -116,6 +116,7 @@
   "galleryDownloadFailed": { "message": "Download failed" },
   "galleryDoneSavedFailed": { "message": "Done — $SAVED$ saved, $FAILED$ failed", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Done — $SAVED$ saved", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "Videos skipped: $COUNT$ — use Download for videos", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Select" },
   "galleryEmpty": { "message": "No images found yet. Scroll the gallery to load more, or use ⟳ Load all." },
   "galleryImageCount": { "message": "$COUNT$ images", "placeholders": { "count": { "content": "$1" } } },
@@ -129,6 +130,9 @@
   "galleryThumbnailAlt": { "message": "Thumbnail $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "Pause slideshow (A)" },
   "galleryImageAlt": { "message": "Image $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "Video $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "Play here" },
+  "galleryOpenLargeTitle": { "message": "Open large" },
 
   "ctxOpenTitle": { "message": "Open in Book Reader" },
   "ctxAuto": { "message": "Open now: Smart pick" },

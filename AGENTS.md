@@ -61,7 +61,7 @@ src/content/
   turndown.js        VENDORED Turndown (MIT) — do not edit; HTML → Markdown for ⤓ Markdown; see TURNDOWN-LICENSE.md
   reader.js          TEXT mode: extract → render (Shadow DOM) → paginate (CSS columns) → navigate → print/PDF
   zip.js             minimal ZIP writer (OBR._buildZip) — used by the gallery's "Download as ZIP"
-  gallery.js         IMAGE mode: collect images → Wall masonry / Ordered rows + lightbox (Shadow DOM)
+  gallery.js         IMAGE mode: collect images (+ plain-source videos) → Wall masonry / Ordered rows + lightbox (Shadow DOM)
   notice.js          page-level banner (OBR._notice) — the one feedback surface for when the
                      reader's own UI can't be trusted (covered / host deleted / orphaned world).
                      Pure DOM, no chrome.*, no i18n: strings arrive pre-resolved from the caller
@@ -127,7 +127,7 @@ while editing a feature belongs beside that feature.
 | area | doc |
 | --- | --- |
 | Text reader — pagination, page-turn animation, print/PDF, Markdown export, heading chrome, progress fractions, page-scroll sync on open/close and the open spotlight, content override (selection / picker / saved pick), split article bodies, tall-figure fitting, long pictures cut into page-height strips, image sizing, the picture viewer (click a picture to enlarge it), why there is no text-wrap-around-image | `docs/reader.md` |
-| Image gallery — lazy hydration, Wall + Ordered layouts, lightbox, page-scroll sync on open/close and the open cue, avatar/noise filter, ZIP downloads | `docs/gallery.md` |
+| Image gallery — lazy hydration, Wall + Ordered layouts, lightbox, plain-source videos (why `blob:` streams are out), page-scroll sync on open/close and the open cue, avatar/noise filter, ZIP downloads | `docs/gallery.md` |
 | Auto-open — the sentinel's decision ladder, permission model, registration | `docs/auto-open-spec.md` |
 | Service worker — context-menu + sentinel-registration serialization, debug timing and trigger tracing | `docs/background-worker.md` |
 | Welcome, colophon + rating ask, report page, feedback pipeline | `docs/engagement.md` |
@@ -190,7 +190,7 @@ npx playwright install chromium                # first run only
   font size, progress/resume, page-scroll sync on open/close, close/toggle, settings persistence,
   the double-injection guard, the picture viewer, long pictures cut into strips.
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
-  (stubbed SW), mode switching, page-scroll sync on open/close and the open cue, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
+  (stubbed SW), plain-source videos (still tiles, the in-grid player, big-view playback, Space, slideshow, ZIP skip), mode switching, page-scroll sync on open/close and the open cue, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
   by real archive parsers.
 - `auto-open.spec.js` — the sentinel's decision ladder end-to-end (content gates, metadata veto,
   suppression + SPA re-arm, enable-time chip, engine chip/suppress integration) plus the pure rule

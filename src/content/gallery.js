@@ -31,6 +31,9 @@
   const ROWS_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="13" width="18" height="5" rx="1"/></svg>';
   // Lightbox "fit to width" glyph (a horizontal double-arrow).
+  // Open large: four corners pointing out, for a video tile that has become a player.
+  const EXPAND_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>';
   const FIT_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="m7 8-4 4 4 4"/><path d="m17 8 4 4-4 4"/></svg>';
   // Hide (eye-off) + Show (eye) glyphs for the image filter.
@@ -61,8 +64,8 @@
     return /^data:image\/(gif|svg)/i.test(url || '');
   }
 
-  // Derive a safe download filename from an image URL.
-  function filenameFromUrl(url, index = 0) {
+  // Derive a safe download filename from an image (or, with `video`, a video) URL.
+  function filenameFromUrl(url, index = 0, video = false) {
     const ordinal = String(index + 1).padStart(3, '0');
     let name = '';
     try {
@@ -78,8 +81,8 @@
     }
     name = name.replace(/[^\w.\-]+/g, '_').replace(/^[_.]+|_+$/g, '');
     if (!/\.[a-z0-9]{2,5}$/i.test(name)) {
-      const stem = name.replace(/\.+$/, '') || `image-${ordinal}`;
-      name = `${stem}.jpg`;
+      const stem = name.replace(/\.+$/, '') || `${video ? 'video' : 'image'}-${ordinal}`;
+      name = `${stem}.${video ? 'mp4' : 'jpg'}`;
     }
     return name;
   }
@@ -156,10 +159,10 @@
 
   /* -------------------------------------------------- state */
   let settings = Object.assign({}, OBR.DEFAULTS);
-  let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbCounter, lbStrip, lbSecsEl, lbControls;
+  let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbVideo, lbCounter, lbStrip, lbSecsEl, lbControls;
   let active = false, built = false;
   let openedByAuto = false; // this session was sentinel-opened (tempers the chip's ask moment)
-  let images = [];           // [{url, w, h}]
+  let images = [];           // [{url, full, w, h, ...}]; a video also carries {video: true, poster, loop}
   let lightboxIndex = -1;
   let busy = false;          // a batch download is in flight
   let sweeping = false;      // a hydration chunk / Load-all is in flight
@@ -367,10 +370,40 @@
     return false;
   }
 
-  function eachGalleryImg(fn) {
+  // A plain-source <video>: one whose file URL the gallery can load in its own element. A blob:
+  // source is a MediaSource stream that only the page's own element can attach, and a data: one
+  // would put the whole file into the hide patterns, so both yield null.
+  function videoSrc(video) {
+    const cands = [video.currentSrc, video.getAttribute('src')];
+    video.querySelectorAll('source[src]').forEach((s) => { if (!s.type || video.canPlayType(s.type)) cands.push(s.getAttribute('src')); });
+    for (const c of cands) {
+      if (!c) continue;
+      const u = resolveUrl(c, location.href);
+      if (/^blob:/i.test(u || '')) return null; // the element is playing a stream: its <source>s are not what shows
+      if (u && /^https?:/i.test(u)) return u;
+    }
+    return null;
+  }
+  // The gallery entry a <video> contributes, or null: the same tiny-box filter as an <img>, on
+  // its intrinsic size once metadata loaded, else its laid-out box.
+  function galleryVideoEntry(video) {
+    const url = videoSrc(video);
+    if (!url) return null;
+    const min = MIN();
+    const rect = video.getBoundingClientRect();
+    const w = video.videoWidth || rect.width, h = video.videoHeight || rect.height;
+    if (w && h && (w < min || h < min)) return null;
+    return { url, w, h, poster: video.poster || '', loop: video.loop };
+  }
+
+  function eachGalleryImg(fn) { eachGalleryMedia(fn, null); }
+  // The <img> walk, plus every <video> when `onVideo` is given, in document order, so a video
+  // tile keeps its place among the pictures (the Ordered layout's reading order).
+  function eachGalleryMedia(fn, onVideo) {
     const hideAv = settings.galleryHideAvatars;
     const sels = cssHiddenSelectors();
-    document.querySelectorAll('img').forEach((img) => {
+    document.querySelectorAll(onVideo ? 'img, video' : 'img').forEach((img) => {
+      if (img.tagName === 'VIDEO') { const v = galleryVideoEntry(img); if (v) onVideo(v); return; }
       const e = galleryImgEntry(img);
       if (!e) return;
       // Avatar auto-filter: TAG, never silently vanish — tagged entries ride the same
@@ -424,7 +457,7 @@
     const seen = new Set();
     const out = [];
     hiddenSkipped = 0; // recomputed each collect (drives the "N hidden" toggle)
-    const push = (rawUrl, w, h, fullRaw, tagged, autoHidden) => {
+    const push = (rawUrl, w, h, fullRaw, tagged, autoHidden, video) => {
       if (!rawUrl || isSkippableDataUri(rawUrl)) return;
       const url = resolveUrl(rawUrl, location.href);
       if (!url || seen.has(url)) return;
@@ -435,15 +468,17 @@
       const hidden = !!tagged || !!autoHidden || urlHidden(url);
       if (hidden && !revealHidden) { hiddenSkipped++; return; }
       const full = (fullRaw && resolveUrl(fullRaw, location.href)) || url;
-      out.push({ url, full, w: w || 0, h: h || 0, hidden, auto: !!autoHidden });
+      const im = { url, full, w: w || 0, h: h || 0, hidden, auto: !!autoHidden };
+      if (video) Object.assign(im, { video: true, poster: video.poster, loop: video.loop });
+      out.push(im);
     };
 
-    eachGalleryImg((e, img) => {
+    eachGalleryMedia((e, img) => {
       const url = resolveUrl(e.url, location.href);
       const alias = known && !known.has(url) ? loadedAs(img).find((u) => known.has(u)) : null;
       if (alias) return void out.push({ aliasOf: alias, full: resolveUrl(e.full, location.href) || url, w: e.w, h: e.h });
       push(e.url, e.w, e.h, e.full, imgTagged(e, img), e.autoHidden);
-    });
+    }, (v) => push(v.url, v.w, v.h, null, false, false, v));
     eachPictureSource(push); // <picture> fallback sources: full === url
     if (withBackgrounds) eachBackgroundImage(push);
 
@@ -567,7 +602,18 @@
       border: 1px solid #222228; transition: transform .12s ease, border-color .12s ease; }
     .tile:hover { transform: translateY(-2px); border-color: #7c6cff; }
     .tile.sel { border-color: #7c6cff; box-shadow: 0 0 0 2px #7c6cff inset; }
-    .tile img { width: 100%; height: auto; display: block; }
+    .tile img, .tile video { width: 100%; height: auto; display: block; }
+    /* A video tile is a still (poster or first frame) until its badge turns it into a player. */
+    .tile-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 1;
+      width: 44px; height: 44px; border: none; border-radius: 50%; background: rgba(20,20,24,.7); color: #fff;
+      display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+    .tile-play:hover { background: #7c6cff; }
+    .tile-play svg { width: 20px; height: 20px; }
+    .tile-open { right: 80px; width: 30px; height: 30px; border: none; border-radius: 8px; cursor: pointer;
+      color: #fff; background: rgba(20,20,24,.75); display: none; align-items: center; justify-content: center; }
+    .tile.is-player .tile-open { display: flex; }
+    .tile-open:hover { background: #7c6cff; }
+    .tile-open svg { width: 16px; height: 16px; }
     .tile-ctl { position: absolute; top: 8px; z-index: 2; opacity: 0; transition: opacity .12s ease; }
     .tile:hover .tile-ctl, .tile.sel .check { opacity: 1; }
     .check { left: 8px; width: 20px; height: 20px; margin: 0; cursor: pointer; accent-color: #7c6cff; }
@@ -581,10 +627,10 @@
     .tile-hide:hover { background: #d05a6a; }
     .tile-hide svg { width: 16px; height: 16px; }
     /* Revealed (peeking) hidden tile: dimmed image + an always-visible Unhide affordance. */
-    .tile.tile-is-hidden img { opacity: .4; filter: grayscale(.6); }
+    .tile.tile-is-hidden img, .tile.tile-is-hidden video { opacity: .4; filter: grayscale(.6); }
     /* Blast-radius preview: tiles a hovered Hide scope would remove. */
     .tile.hide-preview { border-color: #d05a6a; box-shadow: 0 0 0 2px #d05a6a inset; }
-    .tile.hide-preview img { opacity: .45; }
+    .tile.hide-preview img, .tile.hide-preview video { opacity: .45; }
     .tile-unhide { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 3;
       display: inline-flex; align-items: center; gap: 6px; background: rgba(20,20,24,.9); color: #fff;
       border: 1px solid #7c6cff; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px;
@@ -609,8 +655,14 @@
     .lb { position: fixed; inset: 0; z-index: 2147483647; background: rgba(8,8,10,.94);
       display: none; align-items: center; justify-content: center; }
     .lb.open { display: flex; }
-    .lb-img { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 6px;
+    .lb-img, .lb-video { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 6px;
       box-shadow: 0 12px 60px rgba(0,0,0,.6); }
+    /* The big view shows one of the two: the picture, or a video with its native controls. The
+       video sits above the prev/next click bands, which would otherwise swallow the play and
+       fullscreen buttons at its edges, and stops short of the filmstrip, which would cover its
+       control bar whenever the pointer moves. */
+    .lb-video, .lb.lb-is-video .lb-img { display: none; }
+    .lb.lb-is-video .lb-video { display: block; position: relative; z-index: 2; max-height: calc(100vh - 200px); }
     /* Fit-width reading: the page fills the width and the lightbox scrolls vertically for a
        tall page (manga/comic/scan) instead of shrinking it to fit. The chrome (arrows, close,
        counter, filmstrip, buttons) switches to position:fixed so it stays pinned while the
@@ -618,6 +670,8 @@
     .lb.lb-fit { align-items: flex-start; overflow-y: auto; overflow-x: hidden; }
     .lb.lb-fit .lb-img { width: min(96vw, 1200px); max-width: none; max-height: none; height: auto;
       object-fit: fill; border-radius: 0; margin: 8px auto 88px; }
+    /* Fit width is for reading a tall page; a video keeps its whole frame and control bar on screen. */
+    .lb.lb-fit.lb-is-video { align-items: center; overflow-y: hidden; }
     .lb.lb-fit .lb-close, .lb.lb-fit .lb-dl, .lb.lb-fit .lb-fit-btn,
     .lb.lb-fit .lb-slideshow, .lb.lb-fit .lb-nav, .lb.lb-fit .lb-strip { position: fixed; }
     .lb-nav { position: absolute; top: 0; bottom: 0; width: 16vw; display: flex; align-items: center;
@@ -730,6 +784,7 @@
         </div>
         <div class="lb-nav lb-prev">&#8249;</div>
         <img class="lb-img" alt="">
+        <video class="lb-video" controls playsinline></video>
         <div class="lb-nav lb-next">&#8250;</div>
         <div class="lb-strip is-hidden" aria-label="${OBR.t('galleryThumbnailsAria')}"></div>
       </div>`;
@@ -742,6 +797,7 @@
     autoSpeedEl = wrap.querySelector('.autospeed-in');
     lbEl = wrap.querySelector('.lb');
     lbImg = wrap.querySelector('.lb-img');
+    lbVideo = wrap.querySelector('.lb-video');
     lbCounter = wrap.querySelector('.lb-counter');
     lbStrip = wrap.querySelector('.lb-strip');
     lbSecsEl = wrap.querySelector('.lb-secs-in');
@@ -777,7 +833,16 @@
     wrap.querySelector('.lb-prev').addEventListener('click', (e) => { e.stopPropagation(); step(-1); });
     wrap.querySelector('.lb-next').addEventListener('click', (e) => { e.stopPropagation(); step(1); });
     lbEl.addEventListener('click', (e) => {
-      if (e.target !== lbImg && !lbStrip.contains(e.target) && !lbControls.contains(e.target)) closeLightbox();
+      // The video's native controls report the <video> itself as the target.
+      if (e.target !== lbImg && e.target !== lbVideo && !lbStrip.contains(e.target) && !lbControls.contains(e.target)) closeLightbox();
+    });
+    // A slideshow on a video slide moves on when the video ends. lbVideo plays only the current
+    // slide, so an `ended` is always the current one's; the slideshow may have stopped since.
+    lbVideo.addEventListener('ended', () => { if (slideOn && waitsForEnd(lightboxIndex)) advanceSlide(); });
+    // A video that will not load would hold the slideshow forever: give it the normal dwell.
+    lbVideo.addEventListener('error', () => {
+      if (!slideOn || !waitsForEnd(lightboxIndex) || !lbVideo.getAttribute('src')) return;
+      clearTimeout(slideTimer); slideTimer = setTimeout(advanceSlide, slideDwellMs());
     });
     lbEl.addEventListener('mousemove', revealChrome);         // show controls + filmstrip on activity, fade when idle
     lbStrip.addEventListener('mouseenter', pinChrome);        // keep visible while hovering the strip...
@@ -847,6 +912,9 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         if (!active || !built) return;
+        // A tile player going fullscreen resizes the viewport; a re-layout would rebuild its tile
+        // out from under it. Leaving fullscreen restores the size the layout was built for.
+        if (document.fullscreenElement) return;
         syncSizeSlider(); // the column ceiling (and the clamped count) move with the viewport
         if (!images.length) return;
         if (columnCount() !== renderedCols) relayoutActive(true);
@@ -858,7 +926,7 @@
     wrap.querySelector('.dl-zip').addEventListener('click', () => batchDownload(true));
     wrap.querySelector('.lb-dl').addEventListener('click', (e) => {
       e.stopPropagation();
-      if (lightboxIndex >= 0) { const im = images[lightboxIndex]; downloadOne(im.full || im.url, lightboxIndex); }
+      if (lightboxIndex >= 0) { const im = images[lightboxIndex]; downloadOne(im.full || im.url, lightboxIndex, im.video); }
     });
 
     applyStylesheet();
@@ -925,8 +993,8 @@
   // `downloads` is the permission NOT held at install, so the very first download anyone
   // makes is the one that meets the prompt — and therefore the likeliest to outlive its
   // worker. Retries on a dead channel for exactly that reason.
-  function downloadOne(url, i) {
-    const msg = { type: 'obr-download-one', url, filename: filenameFromUrl(url, i) };
+  function downloadOne(url, i, video) {
+    const msg = { type: 'obr-download-one', url, filename: filenameFromUrl(url, i, video) };
     return sendSW(msg).then(async (resp) => {
       if (!resp) {
         setStatus(OBR.t('galleryWaitingPermission'));
@@ -940,8 +1008,17 @@
   async function batchDownload(asZip) {
     if (busy) return;
     // Selection identity is the displayed thumbnail (im.url); download the full-res variant.
-    const items = images.filter((im) => selected.has(im.url));
+    let items = images.filter((im) => selected.has(im.url));
     if (!items.length) return;
+    // A ZIP holds pictures only: the worker hands every file back as one base64 message, and a
+    // video's megabytes would ride in it. Selected videos are left out, and the status says so.
+    const skipped = asZip ? items.filter((im) => im.video).length : 0;
+    const skipNote = skipped ? OBR.t('galleryZipVideosSkipped', [String(skipped)]) : '';
+    const withSkipped = (msg) => skipNote ? msg + ' · ' + skipNote : msg;
+    if (skipped) {
+      items = items.filter((im) => !im.video);
+      if (!items.length) { setStatus(skipNote); clearStatusIn(6000); return; }
+    }
     const urls = items.map((im) => im.full || im.url);
     busy = true;
     updateSelUI();
@@ -951,7 +1028,7 @@
         // Use each image's real index (not its position in the selected subset) so
         // fallback filenames (image-NNN) stay stable and meaningful. One permission
         // prompt covers the whole batch (later requests queue behind the first).
-        const sent = await Promise.all(items.map((im) => downloadOne(im.full || im.url, images.indexOf(im))));
+        const sent = await Promise.all(items.map((im) => downloadOne(im.full || im.url, images.indexOf(im), im.video)));
         const ok = sent.filter((r) => r && r.ok).length;
         setStatus(ok ? OBR.t('gallerySentCount', [String(ok)]) : OBR.t('galleryDownloadsPermissionNeeded'));
       } else {
@@ -965,18 +1042,18 @@
           setStatus(OBR.t('galleryWaitingPermission'));
           resp = await retryUntilAnswered(fetchMsg);
         }
-        if (resp && resp.denied) { setStatus(OBR.t('galleryImageFetchPermissionNeeded')); return; }
+        if (resp && resp.denied) { setStatus(withSkipped(OBR.t('galleryImageFetchPermissionNeeded'))); return; }
         const results = (resp && resp.results) || [];
         const ok = results.filter((r) => r && r.ok && r.b64);
         if (!ok.length) {
-          setStatus(OBR.t('galleryDownloadFailed'));
+          setStatus(withSkipped(OBR.t('galleryDownloadFailed')));
         } else {
           const names = uniquifyNames(ok.map((r, k) => filenameFromUrl(r.url, k)));
           const files = ok.map((r, k) => ({ name: names[k], bytes: b64ToBytes(r.b64) }));
           const zip = OBR._buildZip(files);
           OBR.saveBlob(new Blob([zip], { type: 'application/zip' }), 'images.zip');
           const failed = urls.length - ok.length;
-          setStatus(failed ? OBR.t('galleryDoneSavedFailed', [String(ok.length), String(failed)]) : OBR.t('galleryDoneSaved', [String(ok.length)]));
+          setStatus(withSkipped(failed ? OBR.t('galleryDoneSavedFailed', [String(ok.length), String(failed)]) : OBR.t('galleryDoneSaved', [String(ok.length)])));
         }
       }
     } catch (e) {
@@ -995,9 +1072,19 @@
     tile.className = 'tile' + (selected.has(im.url) ? ' sel' : '');
     tile.dataset.idx = i; // stable anchor so a relayout can restore scroll position
     tile.href = im.url;
-    tile.addEventListener('click', (e) => { e.preventDefault(); openLightbox(i); });
-    const img = document.createElement('img');
-    img.loading = 'lazy';
+    tile.addEventListener('click', (e) => {
+      if (tile.classList.contains('is-player')) return; // a player's clicks are its controls'
+      e.preventDefault(); openLightbox(i);
+    });
+    // A video tile is a still: its poster, else the first frame, until its badge makes it a
+    // player (playInTile). With a poster, nothing of the file loads until then.
+    const img = document.createElement(im.video ? 'video' : 'img');
+    if (im.video) {
+      img.muted = true;
+      img.playsInline = true;
+      img.preload = im.poster ? 'none' : 'metadata';
+      if (im.poster) img.poster = im.poster;
+    } else img.loading = 'lazy';
     if (im.w && im.h) { img.width = im.w; img.height = im.h; } // reserve the box before decode
     img.src = im.url;
     img.addEventListener('error', () => {
@@ -1012,13 +1099,28 @@
     // Ordered layout sizes each tile from the image's aspect ratio; a lazy/late image collected
     // with unknown dimensions (w/h = 0) used the fallback aspect, so patch its real size on decode
     // and re-justify just that row (bounded — once per unknown-size image, no earlier row moves).
-    img.addEventListener('load', () => {
-      if ((!im.w || !im.h) && img.naturalWidth && img.naturalHeight) {
-        im.w = img.naturalWidth; im.h = img.naturalHeight;
+    img.addEventListener(im.video ? 'loadedmetadata' : 'load', () => {
+      const nw = im.video ? img.videoWidth : img.naturalWidth, nh = im.video ? img.videoHeight : img.naturalHeight;
+      if ((!im.w || !im.h) && nw && nh) {
+        im.w = nw; im.h = nh;
         if (ordered && tile.parentElement && tile.parentElement.classList.contains('row')) justifyRow(tile.parentElement);
       }
     });
     tile.appendChild(img);
+    if (im.video) {
+      const badge = document.createElement('button');
+      badge.className = 'tile-play';
+      badge.title = OBR.t('galleryPlayHereTitle');
+      badge.innerHTML = PLAY_ICON;
+      badge.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); playInTile(tile, img); });
+      tile.appendChild(badge);
+      const open = document.createElement('button');
+      open.className = 'tile-ctl tile-open';
+      open.title = OBR.t('galleryOpenLargeTitle');
+      open.innerHTML = EXPAND_ICON;
+      open.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openLightbox(i); });
+      tile.appendChild(open);
+    }
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -1033,7 +1135,7 @@
     dl.className = 'tile-ctl tile-dl';
     dl.title = OBR.t('galleryDownload');
     dl.innerHTML = DL_ICON;
-    dl.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); downloadOne(im.full || im.url, i); });
+    dl.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); downloadOne(im.full || im.url, i, im.video); });
     tile.appendChild(dl);
 
     const hb = document.createElement('button');
@@ -1057,6 +1159,32 @@
       }
     }
     return tile;
+  }
+
+  // Turn a video tile into a player with the browser's own controls, playing with sound (the
+  // badge click is the gesture Chrome wants; a refused play retries muted). From then on its
+  // clicks belong to the controls: the tile drops its link, whose activation would otherwise
+  // navigate to the file, and its "open large" button reaches the big view instead.
+  let tileVideo = null; // the tile player that played last: only one plays at a time
+  function playInTile(tile, video) {
+    tile.classList.add('is-player');
+    tile.removeAttribute('href');
+    const badge = tile.querySelector('.tile-play');
+    if (badge) badge.remove();
+    video.controls = true;
+    video.muted = false;
+    video.preload = 'auto';
+    video.addEventListener('play', () => { if (tileVideo && tileVideo !== video) tileVideo.pause(); tileVideo = video; });
+    video.play().catch((e) => { if (e && e.name === 'NotAllowedError') { video.muted = true; video.play().catch(() => {}); } });
+    video.focus({ preventScroll: true }); // the badge that held focus is gone; Space should reach the player
+  }
+  // Pause the playing tile. Needed where the overlay is only hidden (close) or covered (the big
+  // view); a tile a re-layout removes from the page is paused by the browser.
+  function pauseTiles() { if (tileVideo) tileVideo.pause(); }
+  // Where tile i's player stopped, for the big view to pick up from (0 if it never played or ended).
+  function tileTime(i) {
+    const v = gridEl && gridEl.querySelector('.tile.is-player[data-idx="' + i + '"] video');
+    return v && !v.ended ? v.currentTime : 0;
   }
 
   function renderEmpty() {
@@ -1636,7 +1764,7 @@
     // open (async hydration, JS-driven galleries) — non-intrusive, no scrolling.
     if (!domObserver && typeof MutationObserver === 'function') {
       const containsImg = (n) =>
-        n.nodeType === 1 && (n.tagName === 'IMG' || (n.querySelector && n.querySelector('img')));
+        n.nodeType === 1 && (n.tagName === 'IMG' || n.tagName === 'VIDEO' || (n.querySelector && n.querySelector('img, video')));
       domObserver = new MutationObserver((muts) => {
         for (const m of muts) {
           for (const n of m.addedNodes) if (containsImg(n)) { scheduleMerge(); return; }
@@ -1837,11 +1965,16 @@
     lbStrip.style.display = 'flex';
     for (let idx = lbStrip.childElementCount; idx < images.length; idx++) {
       const im = images[idx];
-      const t = document.createElement('img');
+      // A video's thumb is its poster, else a still <video> showing the first frame.
+      const still = im.video && !im.poster;
+      const t = document.createElement(still ? 'video' : 'img');
       t.className = 'lb-thumb';
-      t.loading = 'lazy';            // off-screen thumbs stay undecoded
-      t.src = im.url;                // same small URL the grid tile already cached -> no new request
-      t.alt = OBR.t('galleryThumbnailAlt', [String(idx + 1)]);
+      if (still) { t.muted = true; t.preload = 'metadata'; t.setAttribute('aria-label', OBR.t('galleryThumbnailAlt', [String(idx + 1)])); }
+      else {
+        t.loading = 'lazy';          // off-screen thumbs stay undecoded
+        t.alt = OBR.t('galleryThumbnailAlt', [String(idx + 1)]);
+      }
+      t.src = im.video && im.poster ? im.poster : im.url; // same URL the grid tile already loaded -> no new request
       t.dataset.idx = idx;
       t.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(idx); });
       lbStrip.appendChild(t);
@@ -1872,18 +2005,26 @@
   function advanceSlide() {
     if (slideOn && lightboxIndex >= 0 && lightboxIndex < images.length - 1) openLightbox(lightboxIndex + 1, true);
   }
+  // A video slide that does not loop holds the slideshow until it ends (lbVideo's `ended`
+  // listener advances it); a looping one never ends, so it gets the dwell like a picture.
+  function waitsForEnd(i) { const im = images[i]; return !!im && !!im.video && !im.loop; }
   function scheduleSlide() {
     clearTimeout(slideTimer); slideTimer = 0;
     if (!slideOn || lightboxIndex < 0) return;
     if (lightboxIndex >= images.length - 1) { stopSlideshow(); return; } // reached the end -> auto-pause
     slideStartTs = Date.now();
+    if (waitsForEnd(lightboxIndex)) {
+      // Already over, or failed: it will not end (again), so it gets the dwell.
+      if (lbVideo.ended || lbVideo.error) slideTimer = setTimeout(advanceSlide, slideDwellMs());
+      return;
+    }
     slideTimer = setTimeout(advanceSlide, slideDwellMs());
   }
   // Speed changed mid-play: re-aim the CURRENT image's timer at the new dwell measured from when
   // the image started — so +/- responds now without resetting the clock (repeated taps can't stall
-  // it). A reduction below the elapsed time advances right away.
+  // it). A reduction below the elapsed time advances right away. A video waiting to end has no dwell.
   function applySlideSecsLive() {
-    if (!slideOn || lightboxIndex < 0 || lightboxIndex >= images.length - 1) return;
+    if (!slideOn || lightboxIndex < 0 || lightboxIndex >= images.length - 1 || waitsForEnd(lightboxIndex)) return;
     clearTimeout(slideTimer);
     const remaining = Math.max(0, slideDwellMs() - (Date.now() - slideStartTs));
     slideTimer = setTimeout(advanceSlide, remaining);
@@ -1939,8 +2080,9 @@
     stopAutoScroll(); // opening the lightbox is a manual interaction
     lightboxIndex = i;
     if (fitWidth && lbEl) lbEl.scrollTop = 0; // each page starts at the top in fit-width reading
-    lbImg.src = images[i].full || images[i].url;
-    lbImg.alt = OBR.t('galleryImageAlt', [String(i + 1)]);
+    const from = tileTime(i);
+    pauseTiles();
+    showLbMedia(images[i], i, from);
     lbCounter.textContent = OBR.t('galleryLightboxCounter', [String(i + 1), String(images.length)]);
     lbEl.classList.add('open');
     const multi = images.length > 1;                          // a slideshow needs >1 image
@@ -1953,9 +2095,52 @@
     if (!fromAuto) revealChrome(); // don't pop the controls/filmstrip up on every auto-advance
     if (slideOn) scheduleSlide();  // (re)arm the dwell after any navigation while playing
   }
+  // Put slide `im` in the big view: the picture, or the video with its native controls, started
+  // at `from` seconds (where its tile player stopped, else the beginning). The click (or key) that
+  // got here is the gesture Chrome wants before it plays sound; a slideshow advance may have
+  // none, so a refused play retries muted, and the controls can unmute it.
+  function showLbMedia(im, i, from) {
+    lbEl.classList.toggle('lb-is-video', !!im.video);
+    if (!im.video) {
+      stopLbVideo();
+      lbImg.src = im.full || im.url;
+      lbImg.alt = OBR.t('galleryImageAlt', [String(i + 1)]);
+      return;
+    }
+    lbVideo.loop = !!im.loop;
+    if (im.poster) lbVideo.poster = im.poster; else lbVideo.removeAttribute('poster');
+    lbVideo.setAttribute('aria-label', OBR.t('galleryVideoAlt', [String(i + 1)]));
+    // The same slide shown again (its filmstrip thumb, an arrow in a one-item gallery) keeps its place.
+    if (lbVideo.getAttribute('src') !== im.url) {
+      lbVideo.src = im.url;
+      lbVideo.currentTime = from || 0; // before the metadata loads, this sets where playback starts
+      if (lbAutoMuted) { lbVideo.muted = false; lbAutoMuted = false; } // a mute we chose ends with its video
+    }
+    const p = lbVideo.play();
+    if (p) p.catch((e) => {
+      if (e && e.name === 'NotAllowedError' && !lbVideo.muted && lightboxIndex === i) {
+        lbVideo.muted = true; lbAutoMuted = true;
+        lbVideo.play().catch(() => {});
+      }
+    });
+  }
+  let lbAutoMuted = false; // the big view's video was muted by a refused play, not by the user
+  // Pause and unload the big view's video, so leaving it (or the gallery, whose close only hides
+  // the overlay) stops the sound and the download.
+  function stopLbVideo() {
+    if (!lbVideo || !lbVideo.getAttribute('src')) return;
+    lbVideo.pause();
+    lbVideo.removeAttribute('src');
+    lbVideo.load();
+  }
+  function toggleLbVideo() {
+    if (lbVideo.paused) lbVideo.play().catch(() => {});
+    else lbVideo.pause();
+  }
   function closeLightbox() {
     const lastIdx = lightboxIndex; // remember where paging through the big view left off
     lbEl.classList.remove('open');
+    stopLbVideo();
     lightboxIndex = -1;
     clearTimeout(stripTimer);
     stopSlideshow();
@@ -2093,6 +2278,7 @@
     flushSize();              // persist a just-dragged size (column count) too
     stopWatching();
     clearCue();
+    pauseTiles(); // close only hides the overlay: a playing tile would keep its sound
     const lbIdx = lightboxIndex;
     closeLightbox();
     // Where the grid is, measured while it is still shown: the picture open in the big view,
@@ -2221,6 +2407,9 @@
     if (lightboxIndex >= 0) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeLightbox(); }
       else if (isFormFocused()) { /* editing the seconds field — leave caret/typing keys to it */ }
+      // Space plays/pauses a video, as in every player; on a picture it is "next". Taking it
+      // here also keeps the focused video's own Space handling from toggling it a second time.
+      else if (e.key === ' ' && images[lightboxIndex] && images[lightboxIndex].video) { e.preventDefault(); e.stopPropagation(); toggleLbVideo(); }
       else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); step(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(-1); }
       // F toggles fit-width reading (fill the width + scroll a tall page vs shrink-to-fit).
@@ -2239,6 +2428,12 @@
       e.preventDefault(); e.stopPropagation(); speedSetting.nudge(+20); // guard ctrl/meta so browser zoom still works
     } else if (scrollerEl && (e.key === '-' || e.key === '_') && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault(); e.stopPropagation(); speedSetting.nudge(-20);
+    } else if (e.key === ' ' && root && root.activeElement && root.activeElement.tagName === 'VIDEO') {
+      // A focused tile player owns Space, as in the big view. Taking it here (rather than letting
+      // it through) also stops the grid scrolling the player away while it keeps playing.
+      e.preventDefault(); e.stopPropagation();
+      const v = root.activeElement;
+      if (v.paused) v.play().catch(() => {}); else v.pause();
     } else if (scrollerEl && !isFormFocused()) {
       // The overlay scroll-locks the page and the grid scrolls inside its own (unfocused)
       // container, so PageUp/Down/Home/End/space/arrows have no native target — drive it.

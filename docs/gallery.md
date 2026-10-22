@@ -5,8 +5,8 @@
 > actually working on this area.
 
 Everything specific to image mode: how images are collected from a lazy page, the two
-layouts and why each exists, the lightbox, the avatar/noise filter, and the ZIP download
-path (the only network feature in the extension).
+layouts and why each exists, the lightbox, plain-source videos, the avatar/noise filter, and
+the ZIP download path (the only network feature in the extension).
 
 ## Lazy / progressive images
 
@@ -52,6 +52,52 @@ thumbnail filmstrip, a timed slideshow. The **⟷ Fit width** toggle (`F` key, `
 + options checkbox) fills a tall page to the WIDTH and scrolls it — for reading a single manga/comic/scan
 page — instead of shrinking the whole page to fit; the `.lb.lb-fit` class switches the chrome to
 `position:fixed` so it stays pinned while the image scrolls under it.
+
+## Videos — plain-source only
+
+A `<video>` whose source is a plain http(s) file (`videoSrc`: currentSrc, src, or a playable
+`<source src>`) becomes a tile. It is collected in the same document-order walk as the pictures
+(`eachGalleryMedia`), so the Ordered layout keeps it in sequence. A `blob:` source is a
+MediaSource stream that only the page's own element can attach (YouTube, X, Instagram), and a
+`data:` one would put the whole file into the hide patterns; both are skipped, as are iframe
+embeds, which the overlays keep out.
+
+- **Nothing autoplays in the grid.** A video tile is a still with a play badge: its poster
+  (`preload=none`, so nothing of the file loads), else its first frame (`preload=metadata`).
+  Clicking the tile elsewhere opens the big view.
+- **The badge plays it in place** (`playInTile`): the tile becomes a player with the browser's
+  own controls and sound. From then on its clicks belong to the controls, so the tile drops its
+  `href` (an `<a>`'s activation would otherwise navigate to the file, and a `preventDefault`
+  would cancel the controls too), and an "open large" button (`.tile-open`) reaches the big view.
+  Starting it focuses the player, and a focused tile player takes Space (play/pause) instead of
+  the grid scrolling it away. Its fullscreen resizes the viewport, so the resize re-layout is
+  skipped while anything is fullscreen; a rebuild would destroy the player mid-fullscreen.
+  One tile plays at a time (`tileVideo`). The big view, close and a re-layout stop it: the first
+  two pause it explicitly (`pauseTiles`), since the overlay is only covered or hidden, and the
+  browser pauses a tile that a re-layout removes. The big view starts where the tile stopped
+  (`tileTime`).
+- **Big view:** `.lb-video`, with native controls, replaces `.lb-img` (`showLbMedia`) and starts
+  from the beginning with sound; a refused play (no user gesture, as on a slideshow advance)
+  retries muted (`lbAutoMuted` unmutes the next video; a mute the user chose stays). It sits above
+  the prev/next click bands and stops short of the filmstrip, both of which would otherwise cover
+  its controls; Fit width does not apply to it, since filling the width would push its control bar
+  under the strip or off screen. The controls report the `<video>` as the click
+  target, so the outside-click close excludes it. Every exit (another slide, closing the big
+  view, closing the gallery, which only hides the overlay) pauses and unloads it (`stopLbVideo`).
+- **Space** plays/pauses on a video slide and is "next" on a picture; arrows stay prev/next.
+- **Slideshow:** a non-looping video holds its slide until `ended` (`waitsForEnd`), and
+  `applySlideSecsLive` skips such a slide, or a +/- press would fire an overdue dwell mid-video. A
+  looping video never ends, so it gets the dwell; so does one that fails to load.
+- **Not counted** by `imageCount()`: the toolbar's auto-pick and the reader's "Images · N" badge
+  see pictures only, so no page changes mode because of its videos. The gallery's own "N images"
+  count includes video tiles.
+- **Downloads:** a single video goes through `chrome.downloads` like a picture (no bytes through
+  the worker; a URL without an extension saves as `.mp4`). A ZIP leaves selected videos out and
+  says so (`galleryZipVideosSkipped`): the worker returns every file as base64 in one message,
+  and a video's megabytes would ride in it.
+- **Picture-only paths:** the hide menu offers a video only the URL scopes (`findImgFor` finds no
+  `<img>` for it, so "in this spot" is absent), and page-scroll sync on open/close ignores videos
+  (a close with a video tile on top restores the saved page spot).
 
 ## The page's scroll and the grid follow each other
 

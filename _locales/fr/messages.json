@@ -114,6 +114,7 @@
   "galleryDownloadFailed": { "message": "Échec du téléchargement" },
   "galleryDoneSavedFailed": { "message": "Terminé — $SAVED$ enregistrées, $FAILED$ échouées", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Terminé — $SAVED$ enregistrées", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "Vidéos ignorées : $COUNT$ — utilisez « Télécharger » pour les vidéos", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Sélectionner" },
   "galleryEmpty": { "message": "Aucune image trouvée pour l’instant. Faites défiler la galerie pour en charger plus, ou utilisez ⟳ Tout charger." },
   "galleryImageCount": { "message": "$COUNT$ images", "placeholders": { "count": { "content": "$1" } } },
@@ -127,6 +128,9 @@
   "galleryThumbnailAlt": { "message": "Miniature $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "Mettre en pause le diaporama (A)" },
   "galleryImageAlt": { "message": "Image $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "Vidéo $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "Lire ici" },
+  "galleryOpenLargeTitle": { "message": "Ouvrir en grand" },
 
   "ctxOpenTitle": { "message": "Ouvrir dans Open Book" },
   "ctxAuto": { "message": "Ouvrir maintenant : Choix intelligent" },

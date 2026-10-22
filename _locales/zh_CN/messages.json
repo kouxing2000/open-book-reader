@@ -114,6 +114,7 @@
   "galleryDownloadFailed": { "message": "下载失败" },
   "galleryDoneSavedFailed": { "message": "完成 — 已保存 $SAVED$ 张，失败 $FAILED$ 张", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "完成 — 已保存 $SAVED$ 张", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "已跳过 $COUNT$ 个视频 — 视频请用“下载”保存", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "选择" },
   "galleryEmpty": { "message": "尚未找到图片。滚动图库以加载更多，或使用 ⟳ 全部加载。" },
   "galleryImageCount": { "message": "$COUNT$ 张图片", "placeholders": { "count": { "content": "$1" } } },
@@ -127,6 +128,9 @@
   "galleryThumbnailAlt": { "message": "缩略图 $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "暂停幻灯片放映 (A)" },
   "galleryImageAlt": { "message": "图片 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "视频 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "在此播放" },
+  "galleryOpenLargeTitle": { "message": "放大查看" },
 
   "ctxOpenTitle": { "message": "在 Open Book 中打开" },
   "ctxAuto": { "message": "立即打开：智能选择" },

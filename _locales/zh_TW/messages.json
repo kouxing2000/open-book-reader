@@ -114,6 +114,7 @@
   "galleryDownloadFailed": { "message": "下載失敗" },
   "galleryDoneSavedFailed": { "message": "完成 — 已儲存 $SAVED$ 張，失敗 $FAILED$ 張", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "完成 — 已儲存 $SAVED$ 張", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "已略過 $COUNT$ 部影片 — 影片請用「下載」儲存", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "選取" },
   "galleryEmpty": { "message": "還沒找到圖片。捲動圖庫載入更多，或使用 ⟳ 全部載入。" },
   "galleryImageCount": { "message": "$COUNT$ 張圖片", "placeholders": { "count": { "content": "$1" } } },
@@ -127,6 +128,9 @@
   "galleryThumbnailAlt": { "message": "縮圖 $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "暫停投影播放 (A)" },
   "galleryImageAlt": { "message": "圖片 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "影片 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "在此播放" },
+  "galleryOpenLargeTitle": { "message": "放大檢視" },
 
   "ctxOpenTitle": { "message": "用 Open Book 開啟" },
   "ctxAuto": { "message": "立即開啟：智慧選擇" },

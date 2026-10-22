@@ -17,6 +17,7 @@ const TYPES = {
   '.js': 'text/javascript',
   '.png': 'image/png',
   '.svg': 'image/svg+xml', // without this an .svg fixture is served as text/plain and never renders
+  '.webm': 'video/webm',
 };
 
 http
@@ -35,8 +36,24 @@ http
     // ?delay=ms lets a fixture defer a response (used to test that the reader
     // re-paginates after an image finishes loading later than the first layout).
     const delay = Number(query.get('delay')) || 0;
+    // Byte ranges, as any real file host answers them: without them Chrome cannot seek a video.
     const send = () => {
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'text/plain' });
+      const type = TYPES[path.extname(file)] || 'text/plain';
+      const size = fs.statSync(file).size;
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+      if (range && (range[1] || range[2])) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+        if (start > end || start >= size) {
+          res.writeHead(416, { 'Content-Range': `bytes */${size}` });
+          res.end();
+          return;
+        }
+        res.writeHead(206, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
+        fs.createReadStream(file, { start, end }).pipe(res);
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': size });
       fs.createReadStream(file).pipe(res);
     };
     delay > 0 ? setTimeout(send, delay) : send();

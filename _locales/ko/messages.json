@@ -114,6 +114,7 @@
   "galleryDownloadFailed": { "message": "다운로드 실패" },
   "galleryDoneSavedFailed": { "message": "완료 — $SAVED$개 저장, $FAILED$개 실패", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "완료 — $SAVED$개 저장", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "동영상 $COUNT$개 건너뜀 — 동영상은 ‘다운로드’로 저장하세요", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "선택" },
   "galleryEmpty": { "message": "아직 이미지를 찾지 못했습니다. 갤러리를 스크롤해 더 불러오거나 ⟳ 모두 불러오기를 사용하세요." },
   "galleryImageCount": { "message": "이미지 $COUNT$장", "placeholders": { "count": { "content": "$1" } } },
@@ -127,6 +128,9 @@
   "galleryThumbnailAlt": { "message": "썸네일 $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "슬라이드쇼 일시정지 (A)" },
   "galleryImageAlt": { "message": "이미지 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "동영상 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "여기서 재생" },
+  "galleryOpenLargeTitle": { "message": "크게 보기" },
 
   "ctxOpenTitle": { "message": "Open Book으로 열기" },
   "ctxAuto": { "message": "지금 열기: 자동 선택" },

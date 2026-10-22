@@ -1473,6 +1473,211 @@ test.describe('gallery element-selector hide', () => {
   });
 });
 
+test.describe('gallery videos (plain-source <video>)', () => {
+  // gallery-video.html: p1, loop video, p2, clip video (poster), p3 — plus a blob: stream and a
+  // data: file the gallery must skip. clip.webm runs 6s.
+  test.beforeEach(async ({ page }) => {
+    await gotoFixture(page, 'gallery-video.html');
+    await injectGallery(page);
+  });
+
+  const lb = (page) => page.evaluate(() => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const v = r.querySelector('.lb-video');
+    return {
+      open: r.querySelector('.lb').classList.contains('open'),
+      isVideo: r.querySelector('.lb').classList.contains('lb-is-video'),
+      counter: r.querySelector('.lb-counter').textContent,
+      src: v.getAttribute('src'), paused: v.paused, controls: v.controls, time: v.currentTime,
+    };
+  });
+  // Off-centre: the centre of a video tile is its play badge, which plays it in place instead.
+  const openTile = async (page, idx) => {
+    const tile = page.locator(`#obr-gallery-host >> .tile[data-idx="${idx}"]`);
+    const box = await tile.boundingBox();
+    await tile.click({ position: { x: box.width * 0.2, y: box.height * 0.8 } });
+  };
+
+  test('collects plain-source videos in page order and skips blob: streams and data: files', async ({ page }) => {
+    await openGallery(page);
+    const kinds = await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      return [...r.querySelectorAll('.tile')].sort((a, b) => a.dataset.idx - b.dataset.idx)
+        .map((t) => t.querySelector('img, video').tagName + ':' + t.getAttribute('href').split('?')[1]);
+    });
+    expect(kinds).toEqual(['IMG:a', 'VIDEO:loop', 'IMG:b', 'VIDEO:clip', 'IMG:c']);
+    // The toolbar's auto-pick and the reader's badge still count pictures only.
+    expect(await page.evaluate(() => globalThis.OBR._imageCount())).toBe(3);
+  });
+
+  test('a video tile is a still with a play badge: nothing plays in the grid', async ({ page }) => {
+    await openGallery(page);
+    await page.waitForTimeout(600); // long enough for an autoplaying tile to have started
+    const tiles = await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      return [...r.querySelectorAll('.tile video')].map((v) => ({
+        paused: v.paused, muted: v.muted, preload: v.preload, poster: !!v.getAttribute('poster'),
+        badge: !!v.parentElement.querySelector('.tile-play'),
+      }));
+    });
+    expect(tiles).toEqual([
+      { paused: true, muted: true, preload: 'metadata', poster: false, badge: true },
+      { paused: true, muted: true, preload: 'none', poster: true, badge: true }, // a poster: nothing loads yet
+    ]);
+  });
+
+  test('a video tile plays in the big view with native controls, and clicking the video keeps it open', async ({ page }) => {
+    await openGallery(page);
+    await openTile(page, 1);
+    await expect.poll(() => lb(page).then((s) => s.time)).toBeGreaterThan(0);
+    const s = await lb(page);
+    expect(s).toMatchObject({ open: true, isVideo: true, controls: true, counter: '2 / 5' });
+    expect(s.src).toContain('clip.webm?loop');
+    // Native controls report the <video> as the click target; that must not read as "outside".
+    await clickInGallery(page, '.lb-video');
+    expect((await lb(page)).open).toBe(true);
+  });
+
+  test('Space plays and pauses a video slide; on a picture it still goes next', async ({ page }) => {
+    await openGallery(page);
+    await openTile(page, 1);
+    await expect.poll(() => lb(page).then((s) => s.paused)).toBe(false);
+    await page.keyboard.press(' ');
+    expect((await lb(page)).paused).toBe(true);
+    await page.keyboard.press(' ');
+    await expect.poll(() => lb(page).then((s) => s.paused)).toBe(false);
+    await page.keyboard.press('ArrowRight'); // to p2, a picture
+    expect((await lb(page)).counter).toBe('3 / 5');
+    await page.keyboard.press(' ');
+    expect((await lb(page)).counter).toBe('4 / 5');
+  });
+
+  test('leaving a video stops and unloads it: the next slide, and closing the big view', async ({ page }) => {
+    await openGallery(page);
+    await openTile(page, 1);
+    await expect.poll(() => lb(page).then((s) => s.paused)).toBe(false);
+    await page.keyboard.press('ArrowRight');
+    expect(await lb(page)).toMatchObject({ isVideo: false, src: null, paused: true });
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(() => lb(page).then((s) => s.paused)).toBe(false);
+    await page.keyboard.press('Escape');
+    expect(await lb(page)).toMatchObject({ open: false, src: null, paused: true });
+  });
+
+  test('a slideshow waits for a video to end, and a speed change does not cut it off', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ gallerySlideSeconds: 1 }));
+    await openGallery(page);
+    await openTile(page, 3); // the 6s clip, with p3 after it
+    await expect.poll(() => lb(page).then((s) => s.time)).toBeGreaterThan(0);
+    await page.evaluate(() => globalThis.OBR._gallerySlideshow(true));
+    await page.waitForTimeout(1400); // past the 1s dwell
+    expect((await lb(page)).counter).toBe('4 / 5');
+    // A dwell re-aimed from the slide's start would be overdue now and fire at once.
+    await page.keyboard.press('-');
+    await page.waitForTimeout(300);
+    expect((await lb(page)).counter).toBe('4 / 5');
+    // Run the clip to its end: the slideshow moves on.
+    await page.evaluate(() => {
+      const v = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.lb-video');
+      v.currentTime = v.duration - 0.2;
+    });
+    await expect.poll(() => lb(page).then((s) => s.counter)).toBe('5 / 5');
+  });
+
+  const tileVideo = (page, idx) => page.evaluate((i) => {
+    const t = document.getElementById('obr-gallery-host').shadowRoot.querySelector(`.tile[data-idx="${i}"]`);
+    const v = t.querySelector('video');
+    return { player: t.classList.contains('is-player'), href: t.getAttribute('href'), badge: !!t.querySelector('.tile-play'),
+      controls: v.controls, paused: v.paused, muted: v.muted, time: v.currentTime };
+  }, idx);
+
+  test('the play badge turns a tile into a player in the grid, whose clicks stay with it', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.time)).toBeGreaterThan(0);
+    // A player: native controls, sound on, no link left to navigate to the file, no badge.
+    expect(await tileVideo(page, 3)).toMatchObject({ player: true, href: null, badge: false, controls: true, muted: false, paused: false });
+    expect((await lb(page)).open).toBe(false);
+    // A click on the playing video is the player's (Chrome toggles play), never the big view.
+    await clickInGallery(page, '.tile[data-idx="3"] >> video');
+    expect((await lb(page)).open).toBe(false);
+    expect(page.url()).toContain('gallery-video.html');
+  });
+
+  test('Space pauses and resumes the tile player instead of scrolling the grid away from it', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
+    const scrollTop = () => page.evaluate(() => document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll').scrollTop);
+    const before = await scrollTop();
+    await page.keyboard.press(' ');
+    expect((await tileVideo(page, 3)).paused).toBe(true);
+    expect(await scrollTop()).toBe(before);
+    await page.keyboard.press(' ');
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
+  });
+
+  test('fit width leaves a video slide whole, its control bar clear of the thumbnail strip', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryFitWidth: true }));
+    await openGallery(page);
+    await openTile(page, 3);
+    await expect.poll(() => lb(page).then((s) => s.isVideo)).toBe(true);
+    const r = await page.evaluate(() => {
+      const root = document.getElementById('obr-gallery-host').shadowRoot;
+      return { fit: root.querySelector('.lb').classList.contains('lb-fit'),
+        bottom: root.querySelector('.lb-video').getBoundingClientRect().bottom, vh: innerHeight };
+    });
+    expect(r.fit).toBe(true);
+    expect(r.bottom).toBeLessThanOrEqual(r.vh - 200 + 1);
+  });
+
+  test('only one tile plays at a time', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="1"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
+    expect((await tileVideo(page, 1)).paused).toBe(true);
+  });
+
+  test('"open large" pauses the tile and the big view picks up where it stopped', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.time)).toBeGreaterThan(1);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-open');
+    const tile = await tileVideo(page, 3);
+    expect(tile.paused).toBe(true);
+    await expect.poll(() => lb(page).then((s) => s.paused)).toBe(false);
+    const big = await lb(page);
+    expect(big).toMatchObject({ open: true, isVideo: true, counter: '4 / 5' });
+    expect(big.time).toBeGreaterThanOrEqual(tile.time - 0.1);
+  });
+
+  test('closing the gallery pauses a playing tile', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
+    await page.keyboard.press('Escape');
+    expect((await galleryState(page)).hostDisplay).toBe('none');
+    expect((await tileVideo(page, 3)).paused).toBe(true);
+  });
+
+  test('ZIP leaves selected videos out and says so; a single video download keeps its own name', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status)).toContain('Videos skipped: 2');
+    const fetchMsg = (await sentMessages(page)).find((m) => m.type === 'obr-fetch-bytes');
+    expect(fetchMsg.urls).toHaveLength(3);
+    expect(fetchMsg.urls.every((u) => u.includes('photo-400.png'))).toBe(true);
+
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-dl');
+    const one = (await sentMessages(page)).find((m) => m.type === 'obr-download-one');
+    expect(one.url).toContain('clip.webm?clip');
+    expect(one.filename).toBe('clip.webm');
+  });
+});
+
 test.describe('ZIP download SSRF hardening (service-worker fetchBytesBase64)', () => {
   // The ZIP "download all" fetches page-supplied <img> URLs in the SW after an
   // on-demand <all_urls> grant. A hostile page can seed those URLs, so the fetch

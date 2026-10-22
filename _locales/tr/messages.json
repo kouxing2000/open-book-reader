@@ -114,6 +114,7 @@
   "galleryDownloadFailed": { "message": "İndirme başarısız" },
   "galleryDoneSavedFailed": { "message": "Bitti — $SAVED$ kaydedildi, $FAILED$ başarısız", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Bitti — $SAVED$ kaydedildi", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "Atlanan video: $COUNT$ — videolar için “İndir”i kullanın", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Seç" },
   "galleryEmpty": { "message": "Henüz resim bulunamadı. Daha fazlasını yüklemek için galeriyi kaydırın ya da ⟳ Tümünü yükle düğmesini kullanın." },
   "galleryImageCount": { "message": "$COUNT$ resim", "placeholders": { "count": { "content": "$1" } } },
@@ -127,6 +128,9 @@
   "galleryThumbnailAlt": { "message": "Küçük resim $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "Slayt gösterisini duraklat (A)" },
   "galleryImageAlt": { "message": "Resim $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "Video $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "Burada oynat" },
+  "galleryOpenLargeTitle": { "message": "Büyük aç" },
 
   "ctxOpenTitle": { "message": "Open Book ile aç" },
   "ctxAuto": { "message": "Şimdi aç: Akıllı seçim" },

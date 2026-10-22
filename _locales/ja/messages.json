@@ -114,6 +114,7 @@
   "galleryDownloadFailed": { "message": "ダウンロードに失敗しました" },
   "galleryDoneSavedFailed": { "message": "完了 — $SAVED$件保存、$FAILED$件失敗", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "完了 — $SAVED$件保存", "placeholders": { "saved": { "content": "$1" } } },
+  "galleryZipVideosSkipped": { "message": "動画 $COUNT$ 件をスキップ — 動画は「ダウンロード」で保存してください", "placeholders": { "count": { "content": "$1" } } },
   "gallerySelectTile": { "message": "選択" },
   "galleryEmpty": { "message": "まだ画像が見つかりません。ギャラリーをスクロールして読み込むか、⟳ すべて読み込む を使ってください。" },
   "galleryImageCount": { "message": "$COUNT$枚の画像", "placeholders": { "count": { "content": "$1" } } },
@@ -127,6 +128,9 @@
   "galleryThumbnailAlt": { "message": "サムネイル $NUM$", "placeholders": { "num": { "content": "$1" } } },
   "gallerySlideshowPauseTitle": { "message": "スライドショーを一時停止 (A)" },
   "galleryImageAlt": { "message": "画像 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryVideoAlt": { "message": "動画 $NUM$", "placeholders": { "num": { "content": "$1" } } },
+  "galleryPlayHereTitle": { "message": "ここで再生" },
+  "galleryOpenLargeTitle": { "message": "大きく表示" },
 
   "ctxOpenTitle": { "message": "Open Book で開く" },
   "ctxAuto": { "message": "今すぐ開く：おまかせ" },

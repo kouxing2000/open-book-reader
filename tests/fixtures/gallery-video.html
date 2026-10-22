@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clips and photos</title>
+</head>
+<body>
+  <!-- Pictures and plain-source videos interleaved, so the gallery's page order is checkable,
+       plus the two sources it must skip: a MediaSource stream (blob:) and an inline data: file.
+       The same files are reused under distinct query strings, since tiles de-duplicate by URL. -->
+  <h1>Clips and photos</h1>
+  <img id="p1" src="photo-400.png?a" width="400" height="300" alt="">
+  <video id="loop" src="clip.webm?loop" autoplay muted loop playsinline width="320" height="180"></video>
+  <img id="p2" src="photo-400.png?b" width="400" height="300" alt="">
+  <video id="clip" controls width="320" height="180" poster="photo-400.png?poster">
+    <source src="clip.webm?clip" type="video/webm">
+  </video>
+  <img id="p3" src="photo-400.png?c" width="400" height="300" alt="">
+  <video id="stream" width="320" height="180"></video>
+  <video id="inline" src="data:video/webm;base64,GkXfow==" width="320" height="180"></video>
+  <script>
+    document.getElementById('stream').src = URL.createObjectURL(new MediaSource());
+  </script>
+</body>
+</html>
