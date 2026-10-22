@@ -1177,9 +1177,23 @@
     video.controls = true;
     video.muted = false;
     video.preload = 'auto';
-    video.addEventListener('play', () => { if (tileVideo && tileVideo !== video) tileVideo.pause(); tileVideo = video; });
-    video.play().catch((e) => { if (e && e.name === 'NotAllowedError') { video.muted = true; video.play().catch(() => {}); } });
+    // Claimed now as well as on `play`: the event is queued while `paused` flips at once, so another
+    // tile, the big view or a close could otherwise act before this tile is the one they pause.
+    // The listener covers a resume from the player's own controls.
+    video.addEventListener('play', () => claimTile(video));
+    claimTile(video);
+    video.play().catch((e) => {
+      // Retry muted only while this is still the tile in play: a retry that lands after a close,
+      // the big view or another tile took over would start it again behind them.
+      if (e && e.name === 'NotAllowedError' && tileVideo === video && active && lightboxIndex < 0) {
+        video.muted = true; video.play().catch(() => {});
+      }
+    });
     video.focus({ preventScroll: true }); // the badge that held focus is gone; Space should reach the player
+  }
+  function claimTile(video) {
+    if (tileVideo && tileVideo !== video) tileVideo.pause();
+    tileVideo = video;
   }
   // Pause the playing tile. Needed where the overlay is only hidden (close) or covered (the big
   // view); a tile a re-layout removes from the page is paused by the browser.

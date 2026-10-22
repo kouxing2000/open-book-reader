@@ -1649,7 +1649,14 @@ test.describe('gallery videos (plain-source <video>)', () => {
     await openGallery(page);
     await clickInGallery(page, '.tile[data-idx="1"] >> .tile-play');
     await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
-    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');
+    // Start tile 3 and read tile 1 in the SAME task: a hand-over that waits for the queued `play`
+    // event cannot have run yet, so only one made at once passes. (Linux CI hit that gap.)
+    const firstPaused = await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      r.querySelector('.tile[data-idx="3"] .tile-play').click();
+      return r.querySelector('.tile[data-idx="1"] video').paused;
+    });
+    expect(firstPaused).toBe(true);
     await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
     expect((await tileVideo(page, 1)).paused).toBe(true);
   });
@@ -1673,6 +1680,21 @@ test.describe('gallery videos (plain-source <video>)', () => {
     await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
     await page.keyboard.press('Escape');
     expect((await galleryState(page)).hostDisplay).toBe('none');
+    expect((await tileVideo(page, 3)).paused).toBe(true);
+  });
+
+  test('a close right after starting a tile still pauses it', async ({ page }) => {
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="1"] >> .tile-play'); // a real click: lets later plays have sound
+    // Start tile 3 and close in the SAME task, before its queued `play` event can run.
+    const paused = await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      r.querySelector('.tile[data-idx="3"] .tile-play').click();
+      globalThis.OBR.closeGallery();
+      return r.querySelector('.tile[data-idx="3"] video').paused;
+    });
+    expect(paused).toBe(true);
+    await page.waitForTimeout(500); // nothing (a late event, a retried play) starts it again
     expect((await tileVideo(page, 3)).paused).toBe(true);
   });
 
