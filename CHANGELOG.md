@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-10-22
+
 - **Image mode on a forum thread shows the posted pictures, not everyone's avatars.** Avatars
   and emoticons that a forum loads only as you scroll used to fill the wall. They now go under
   the "N hidden" count with the other avatars, where Show brings any of them back. An image you
@@ -538,7 +540,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.14.1...HEAD
+[1.14.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.14.1
 [1.14.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.14.0
 [1.13.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.2
 [1.13.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.1
