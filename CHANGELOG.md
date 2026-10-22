@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-10-22
+
 - **Image mode now shows a page's videos.** A video that plays from a plain file appears as a
   tile among the pictures, in page order. Click its play button to watch it right in the grid
   with the browser's own controls, or open it large; Space plays and pauses. Streaming players
@@ -531,7 +533,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.13.2...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.14.0
 [1.13.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.2
 [1.13.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.1
 [1.13.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.0
