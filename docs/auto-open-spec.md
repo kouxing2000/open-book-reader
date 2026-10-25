@@ -149,6 +149,10 @@ Non-goals (explicitly rejected or deferred)
   forum; the set is in-memory, so there is no quota reason to strip the query (unlike
   `positionKey`). A full reload is a fresh decision — deliberate: re-navigating to a topic
   is a new reading intent.
+- An auto-open the user closes without turning a page saves no reading position and no
+  per-article time (`untouchedAutoOpen` in `reader.js`), so the list pages a Reader rule
+  opens do not push real positions out of the capped `obr_positions` store. Time read before
+  the first page turn is held (`heldMs`), not dropped, and is written once the user turns one.
 - **Background tabs**: if `document.hidden`, defer evaluation until the tab first becomes
   visible (no surprise state changes behind the user's back; also dodges timer throttling).
 - Nothing changes on sites without an auto rule: not a byte of extension JS runs there
@@ -552,8 +556,8 @@ On a real forum (e.g. any Discourse instance):
 - **A Reader or Gallery rule opens list pages too** — the user's pick wins (§2). A page
   neither content check can read opens on the last probe, about 5s after load, unless a text
   box has focus; a path-scoped rule (`site/t/*`) is the way to keep a site's index pages out,
-  and Esc suppresses a page. Every such open also writes a reading position on close, so a
-  heavy list-page session can push real positions out of the capped `obr_positions` map.
+  and Esc suppresses a page. An auto-open closed without a page turn writes no reading
+  position, so list pages do not crowd real positions out of the capped `obr_positions` map.
 - **Web Store review**: no manifest permission delta, but reviewer-visible behavior change on
   granted origins — mitigated by the privacy-tab update (§9) and the opt-in framing.
 - **Heuristic divergence** (sentinel image count vs gallery collection) — conservative

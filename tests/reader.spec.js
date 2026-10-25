@@ -2780,6 +2780,56 @@ test('vendored Readability exposes disableConditionalCleaning as a public option
   expect(r.disabledWeight).toBe(true);
 });
 
+test('an auto-open closed without a page turn saves no reading position', async ({ page }) => {
+  // A Reader rule auto-opens list pages too; each one that wrote a position would push a real
+  // one out of the capped store. Turning a page is what makes it reading.
+  const positions = () => page.evaluate(() => new Promise((res) => chrome.storage.local.get(
+    'obr_positions', (d) => res(Object.keys(d.obr_positions || {}).length))));
+  const openAuto = async () => {
+    await page.evaluate(() => OBR.open({ trigger: 'auto' }));
+    // A reopen's indicator still holds the last session's text until layout runs.
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
+  };
+  await page.evaluate(() => new Promise((res) => chrome.storage.local.set({ obr_positions: {} }, res)));
+
+  await openAuto();
+  await page.waitForTimeout(1200); // past the 400ms persist debounce, and over 1s of reading time
+  await page.evaluate(() => OBR.close());
+  await page.waitForTimeout(300);
+  expect(await positions()).toBe(0);
+
+  // Control: one page turn in the same kind of open does record.
+  await openAuto();
+  await page.keyboard.press('ArrowRight');
+  await page.evaluate(() => OBR.close());
+  await page.waitForTimeout(600);
+  expect(await positions()).toBe(1);
+});
+
+test('an auto-open that turns into reading keeps the time spent before its first page turn', async ({ page }) => {
+  // Hiding the tab flushes reading time; while the open is still untouched that time is held,
+  // not dropped, and goes out with the first flush after a page turn.
+  const storedMs = () => page.evaluate(() => new Promise((res) => chrome.storage.local.get(
+    'obr_positions', (d) => { const v = Object.values(d.obr_positions || {}); res(v.length ? v[0].ms || 0 : 0); })));
+  const visibility = (state) => page.evaluate((st) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => st });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, state);
+  await page.evaluate(() => new Promise((res) => chrome.storage.local.set({ obr_positions: {} }, res)));
+
+  await page.evaluate(() => OBR.open({ trigger: 'auto' }));
+  await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
+  await page.waitForTimeout(1500);
+  await visibility('hidden');
+  await visibility('visible');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => OBR.close());
+  await page.waitForTimeout(600);
+  expect(await storedMs()).toBeGreaterThanOrEqual(1400);
+});
+
 test('incognito leaves no reading trace on disk, but deliberate preferences still persist', async ({ page }) => {
   // The manifest declares no `incognito` key, so Chrome's default "spanning" mode gives normal
   // and incognito windows ONE worker and ONE chrome.storage. A content script can't tell which

@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   started typing in a text box. To keep a site's list pages closed, limit the rule to a path
   such as `example.com/t/*`, or use Smart pick, which still decides page by page and leaves
   list pages alone.
+- **An auto-opened page you close without turning a page no longer saves a reading
+  position or reading time**, so pages that opened by themselves do not push the articles you
+  were halfway through out of your saved positions. Time you read before your first page turn
+  is kept once you turn one.
 - **Save as PDF names the file after the article.** Chrome names a saved PDF after the tab's
   title, which on most sites carries the site name ("Article - Site"). While the print dialog
   is open, the tab now shows the article's title, and it gets its own title back when the

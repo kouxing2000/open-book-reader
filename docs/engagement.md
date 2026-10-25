@@ -69,7 +69,9 @@ impressions retire the colophon ask by itself; the stats page keeps appearing (r
 **Reading time** is active-time only: the clock pauses while the tab is hidden, each silent gap
 caps at 4 min (`READ_GAP_CAP`), flushed on close/pagehide/visibility-hidden into the article's
 `obr_positions` entry (`ms`, `fin` — merge-`update`, never replace-write) and the per-device
-`obr_lifetime` local totals. Storage: `obr_lifetime`/`obr_usage` LOCAL (chatty, per-device is
+`obr_lifetime` local totals. An auto-open writes no `obr_positions` time until a page is turned:
+what it flushed before then is held (`heldMs`) and goes out with the first flush after the turn,
+and an auto-open closed untouched drops it. Storage: `obr_lifetime`/`obr_usage` LOCAL (chatty, per-device is
 honest), `obr_engage` SYNC (outcomes must follow the user). Zero telemetry — everything stays in
 extension storage, consistent with the "collects nothing" disclosure. Rate links point at
 `OBR.STORE_REVIEWS_URL` (canonical store URL now lives in settings.js beside the print-QR's).

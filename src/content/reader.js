@@ -111,12 +111,16 @@
    * article WITHOUT the colophon page (finish detection needs the last CONTENT spread). */
   let readMs = 0, lastTick = 0;
   let priorMs = 0, priorFin = false;
+  let heldMs = 0; // per-article time an untouched auto-open has flushed but not written yet
   let engageState = null, lifetimeStats = null;
   let colophonEl = null, endMarkEl = null, articleWords = 0, articleTitle = '', contentColumns = 1;
   let colophonLight = false;  // the back cover of a short or one-spread piece: The End + Share only
   let hasArticle = false;     // false while the reader shows its "no article here" empty state
   let finishedThisOpen = false, colSeenThisOpen = false;
-  let openedByAuto = false;   // this session was sentinel-opened (tempers the ask moment)
+  // This session was sentinel-opened and the user has not chosen its content: it tempers the
+  // ask moment, and until a page is turned it writes no position or per-article time. Picking
+  // the content (picker, "use full page") clears it, so that session can ask like a manual one.
+  let openedByAuto = false;
   let flipSnapping = false;   // inside beginFlip's synchronous snap (see syncColophonView)
   const READ_GAP_CAP = 240000;        // ms of credit for one silent gap (no input events)
   const COLOPHON_MIN_WORDS = 300;     // short pieces get no colophon — the moment must be earned
@@ -1620,6 +1624,7 @@
       posKey = ''; // a one-shot manual pick: don't resume/persist the whole-page position
       restoreAnchor = null;
       navigated = false; // new content: no page of it has been turned yet
+      openedByAuto = false; // choosing the content is reading it, however the reader opened
       currentSpread = 0;
       renderContent(lastArticle);
       updatePickHint();
@@ -1792,6 +1797,7 @@
     posKey = OBR.positionKey ? OBR.positionKey() : '';
     restoreAnchor = null;
     navigated = false; // new content: no page of it has been turned yet
+    openedByAuto = false; // choosing the content is reading it, however the reader opened
     currentSpread = 0;
     renderContent(lastArticle);
     // renderContent zeroed the per-article time/finish state; re-fill it for the restored
@@ -1984,6 +1990,7 @@
     finishedThisOpen = false;
     priorMs = 0;
     priorFin = false;
+    heldMs = 0;
   }
 
   /* ------------------------------------------------------------ back-cover colophon
@@ -2015,12 +2022,13 @@
   function flushReadingTime() {
     tickRead();
     const ms = readMs;
-    if (ms < 1000) return;
+    if (ms < 1000 && !heldMs) return; // held time still goes out with a short last stretch
     readMs = 0;
     priorMs += ms;
     if (lifetimeStats) lifetimeStats.ms = (lifetimeStats.ms || 0) + ms;
-    if (posKey && OBR.addReadingTime) OBR.addReadingTime(posKey, ms);
-    if (OBR.bumpLifetime) OBR.bumpLifetime({ ms });
+    if (untouchedAutoOpen()) heldMs += ms;
+    else if (posKey && OBR.addReadingTime) { OBR.addReadingTime(posKey, ms + heldMs); heldMs = 0; }
+    if (OBR.bumpLifetime && ms) OBR.bumpLifetime({ ms });
   }
 
   function colophonAskVisible() {
@@ -2895,9 +2903,14 @@
     persistPosition();
   }
 
+  // An auto-open the user never paged through is not reading: it saves no position and no
+  // per-article time, so the list pages a Reader rule opens do not push real reading
+  // positions out of the capped store (OBR.POSITIONS_MAX).
+  function untouchedAutoOpen() { return openedByAuto && !navigated; }
+
   // Save the current reading position (debounced) so the reader can resume here.
   function persistPosition() {
-    if (!posKey || totalColumns < 1 || !OBR.savePosition) return;
+    if (!posKey || totalColumns < 1 || !OBR.savePosition || untouchedAutoOpen()) return;
     const f = (currentSpread * pagesPerSpread) / totalColumns;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => OBR.savePosition(posKey, f, undefined, pagePk), 400);
@@ -2909,7 +2922,7 @@
   // (resume would otherwise land a page early).
   function flushPosition() {
     clearTimeout(saveTimer);
-    if (active && posKey && totalColumns >= 1 && OBR.savePosition) {
+    if (active && posKey && totalColumns >= 1 && OBR.savePosition && !untouchedAutoOpen()) {
       OBR.savePosition(posKey, (currentSpread * pagesPerSpread) / totalColumns, undefined, pagePk);
     }
   }
@@ -3933,6 +3946,7 @@
     active = true;
     fitControls(); // first point where the bar has real widths to measure
     readMs = 0;
+    heldMs = 0;
     lastTick = Date.now();
     colSeenThisOpen = false;
     openedByAuto = trigger === 'auto';
@@ -4076,6 +4090,7 @@
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
     clearSpotlight();
     flushReadingTime();
+    heldMs = 0; // an open closed untouched keeps none of its per-article time
     // Only a turned page moves the page: untouched, the reader still shows what the page did
     // (or the saved position, which the next open defers to anyway), so it goes back as it was.
     let keys = null;
