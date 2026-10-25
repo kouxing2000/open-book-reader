@@ -154,7 +154,7 @@ test('a Reader rule opens a post kept in one <div> split by <br> on the first pr
   expect(s.probesDone).toBe(1);
 });
 
-test('the last-probe open skips a page where a text box has focus', async ({ page }) => {
+test('a page with nothing to detect stays closed while a text box has focus', async ({ page }) => {
   // A late overlay would take the keys of someone already typing (a reply box, a search box).
   await gotoFixture(page, 'forum-list.html');
   await page.evaluate(() => {
@@ -168,6 +168,76 @@ test('the last-probe open skips a page where a text box has focus', async ({ pag
   expect(s.outcome).toBe('typing');
   expect(s.probesDone).toBe(4);
   expect(await autoOpenMessages(page)).toEqual([]);
+});
+
+test('a page whose content shows does not open over a focused text box, and opens once it loses focus', async ({ page }) => {
+  // A search or reply page that focuses its box on load: opening there would hand the user's
+  // keys to the reader (Space turns pages, P prints, T changes the theme).
+  await gotoFixture(page, 'forum-topic.html');
+  await page.evaluate(() => {
+    const t = document.createElement('textarea');
+    document.body.appendChild(t);
+    t.focus();
+  });
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page, { delays: [0, 400, 800, 1200] }); // room for the blur below
+  // Blur after the first probe saw the focus: a later probe opens.
+  await page.evaluate(() => new Promise((resolve) => {
+    const iv = setInterval(() => {
+      if (OBR._sentinelState.probesDone < 1) return;
+      clearInterval(iv);
+      document.activeElement.blur();
+      resolve();
+    }, 5);
+  }));
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('opened');
+  expect(s.probesDone).toBeGreaterThan(1);
+});
+
+test('a page whose content shows stays closed while its text box keeps focus', async ({ page }) => {
+  await gotoFixture(page, 'forum-topic.html');
+  await page.evaluate(() => {
+    const t = document.createElement('textarea');
+    document.body.appendChild(t);
+    t.focus();
+  });
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('typing');
+  expect(s.probesDone).toBe(4);
+  expect(await autoOpenMessages(page)).toEqual([]);
+});
+
+test('a box focused inside a same-origin frame keeps the page closed; a focused cross-origin frame does not', async ({ page }) => {
+  // A same-origin frame can be a reply editor, so what has focus inside it counts. A
+  // cross-origin frame cannot be looked into, and the ones that take focus on load are ads and
+  // consent boxes, so it does not block the open.
+  // editor: 'textarea' | 'body' (a contenteditable body) | 'design' (designMode), focused inside.
+  const focusIn = async (src, editor) => {
+    await gotoFixture(page, 'forum-topic.html');
+    await page.evaluate((u) => new Promise((resolve) => {
+      const f = document.createElement('iframe');
+      f.onload = () => resolve();
+      if (u) f.src = u; else f.srcdoc = '<body><p>reply</p></body>';
+      document.body.appendChild(f);
+    }), src);
+    const frame = page.frames().find((fr) => fr !== page.mainFrame());
+    await frame.evaluate((kind) => {
+      if (kind === 'design') { document.designMode = 'on'; document.body.focus(); return; }
+      if (kind === 'body') { document.body.contentEditable = 'true'; document.body.focus(); return; }
+      document.body.appendChild(document.createElement('textarea')).focus();
+    }, editor);
+    await expect.poll(() => page.evaluate(() => document.activeElement.tagName)).toBe('IFRAME');
+    await seedSettings(page, AUTO_TEXT);
+    await injectSentinel(page, { delays: [0] });
+    return (await waitSentinelDone(page)).outcome;
+  };
+  expect(await focusIn(null, 'textarea')).toBe('typing');
+  expect(await focusIn(null, 'body')).toBe('typing');
+  expect(await focusIn(null, 'design')).toBe('typing');
+  expect(await focusIn('http://127.0.0.1:5099/forum-list.html', 'textarea')).toBe('opened');
 });
 
 test('the typing check holds even when the content shows up on the last probe', async ({ page }) => {

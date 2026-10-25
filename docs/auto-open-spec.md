@@ -23,8 +23,8 @@ visibility + no-live-overlay check → (1) `matchSiteRuleEx` must return a rule 
 opens its mode on every matching page, list pages included, with no veto: the content checks
 below only time the open (the first probe where either check passes, the prose check here
 counting with `_proseStats({divs:true})` so a post kept in one `<div>` split by `<br>` opens at
-once; else the last probe; any last-probe open is skipped while a text box has focus — outcome
-`typing`). **Smart pick**
+once; else the last probe; no probe opens while a text box has focus — outcome `typing`,
+retried until the last probe, where it is final). **Smart pick**
 goes on to (2) JSON-LD **list-type veto** (`CollectionPage`/`ItemList`/`SearchResultsPage`/`ProfilePage`,
 TOP-LEVEL nodes only — types nested under `itemListElement`/`item` never count, or Google's
 carousel markup on category pages would neuter the veto; exact `@type` equality only, else
@@ -107,9 +107,10 @@ Non-goals (explicitly rejected or deferred)
      The sentinel's `OBR._sentinelLoaded` guard makes this safe, and its normal ladder (§4)
      decides the immediate experience: a page that opens (any page under a Reader or Gallery
      rule; under Smart pick, the topic the user enabled from) auto-opens through the standard
-     path; one that does not (a list page under Smart pick; under any rule, a text box in
-     focus at the last probe, a suppressed page, an open overlay) shows a transient confirmation
-     chip — `Auto-open enabled for <host>` — once the probes exhaust. Under Smart pick,
+     path; one that does not (a list page under Smart pick; under a Reader or Gallery rule, a
+     text box in focus at the last probe; under any rule, a suppressed page, an open overlay)
+     shows a transient confirmation chip — `Auto-open enabled for <host>` — once the probes
+     exhaust. Under Smart pick,
      unconditionally opening here would be the exact false positive the ladder exists to
      prevent, while a silent no-op would read as breakage. (The enable flow sets a one-shot `OBR._justEnabled` flag ahead of
      `sentinel.js`, so ordinary registered loads never show the chip. Other already-open
@@ -195,10 +196,13 @@ directly).
      still opens, about 5s in. For this timing the prose check counts with
      `_proseStats({ divs: true })`: each `<div>`'s OWN text (text nodes and inline children,
      never a block child, a link or a form control) is a block too, so a forum post kept in
-     one `<div>` split by `<br>` opens at once instead of 5s late. Any last-probe open, even
-     one whose content just appeared, is skipped while a text box has focus (input, textarea, select, contenteditable, iframe):
-     by then the user may be typing, and the reader's keys would swallow it. Steps 2-3
-     below are Smart pick only, on the narrow count — the wide one passes list pages (a
+     one `<div>` split by `<br>` opens at once instead of 5s late. No probe opens while a text
+     box has focus (input, textarea, select, contenteditable, or one inside a same-origin frame,
+     including a designMode editor; a cross-origin frame cannot be looked into, and the ones that
+     take focus on load are ads and consent boxes, so it does not count): the user may be typing,
+     and the reader's keys would swallow it, or the overlay would cover the editor in use.
+     Earlier probes retry; on the last one the outcome `typing` is final. Steps 2-3 below are
+     Smart pick only, on the narrow count — the wide one passes list pages (a
      CJK footer notice in a `<div>` clears the 80-word anchor alone).
 2. **Declared page type — one-directional VETO** (schema.org JSON-LD `@type`; ~25 lines).
    Metadata is a *claim*, not a measurement, so under the strict bias (§2) it may only make
@@ -569,8 +573,9 @@ On a real forum (e.g. any Discourse instance):
   the manual click and keyboard shortcut remain one gesture away. Revisit only with real user
   feedback.
 - **A Reader or Gallery rule opens list pages too** — the user's pick wins (§2). A page
-  neither content check can read opens on the last probe, about 5s after load, unless a text
-  box has focus; a path-scoped rule (`site/t/*`) is the way to keep a site's index pages out,
+  neither content check can read opens on the last probe, about 5s after load; no page opens
+  while a text box has focus, so a site that focuses a box on load and keeps it there is never
+  auto-opened (a manual open away); a path-scoped rule (`site/t/*`) is the way to keep a site's index pages out,
   and Esc suppresses a page, including the addresses a scrolling list rewrites in place. An
   auto-open closed without a page turn writes no reading position, so list pages do not crowd
   real positions out of the capped `obr_positions` map.

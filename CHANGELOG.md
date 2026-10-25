@@ -15,17 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   open only pages that looked like an article (Reader) or an image set (Gallery), so on many
   pages it silently did nothing. Now every matching page opens in the mode you picked, list
   pages included. A page with no article or image set to detect yet opens after about five
-  seconds, so late content has time to appear, and that late open is skipped if you have
-  started typing in a text box. After you close a page that opened by itself, it stays closed
-  while it changes its address in place, as a list does when you scroll (`?page=2`) or a topic
-  does when its address follows the post you are reading; clicking into a topic still opens
-  that one. To keep a site's list pages closed, limit the rule to a
-  path such as `example.com/t/*`, or use Smart pick, which still decides page by page and
-  leaves list pages alone.
+  seconds, so late content has time to appear. Such a rule never opens a page while a text box
+  on it has focus, so it does not take over the keys you are typing; a page that keeps a box
+  focused for its first few seconds stays as it is (click the icon to read it). To keep a
+  site's list pages closed, limit the rule to a path such as `example.com/t/*`, or use Smart
+  pick, which still decides page by page and leaves list pages alone.
+- **A page you close after it opened by itself stays closed while it changes its address in
+  place**, as a list does when you scroll (`?page=2`) or a topic does when its address follows
+  the post you are reading. Clicking into a topic still opens that one.
 - **An auto-opened page you close without turning a page no longer saves a reading
-  position or reading time**, so pages that opened by themselves do not push the articles you
-  were halfway through out of your saved positions. Time you read before your first page turn
-  is kept once you turn one.
+  position or that page's reading time** (your overall reading total still counts it), so
+  pages that opened by themselves do not push the articles you were halfway through out of
+  your saved positions. Time you read before your first page turn is kept once you turn one.
 - **Save as PDF names the file after the article.** Chrome names a saved PDF after the tab's
   title, which on most sites carries the site name ("Article - Site"). While the print dialog
   is open, the tab now shows the article's title, and it gets its own title back when the

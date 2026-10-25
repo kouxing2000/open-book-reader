@@ -126,22 +126,31 @@
     return !!h && getComputedStyle(h).display !== 'none';
   }
 
-  // Focus sits where the user types: a text field, an editor, or a frame (old forum reply
-  // boxes are iframe editors). Shadow roots are followed to the element that holds focus.
-  function typingFocus() {
-    let el = document.activeElement;
+  // Focus sits where the user types: a text field or an editor. Shadow roots are followed to
+  // the element that holds focus, and a same-origin frame is looked into (old forum reply boxes
+  // are iframe editors: a contenteditable body or a designMode document). A cross-origin frame
+  // cannot be looked into, and the frames that take focus on load there are ads and consent
+  // boxes, so it does not count: it must not keep the page closed.
+  function typingFocus(doc = document) {
+    let el = doc.activeElement;
     while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
-    if (!el || el === document.body || el === document.documentElement) return false;
+    if (!el) return false;
     if (el.isContentEditable) return true;
+    if (el === doc.body || el === doc.documentElement) return false;
     const tag = el.tagName;
-    if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'IFRAME') return true;
+    if (tag === 'IFRAME' || tag === 'FRAME') {
+      let inner = null;
+      try { inner = el.contentDocument; } catch (e) { /* cross-origin */ }
+      return !!inner && typingFocus(inner);
+    }
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
     return tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|color|file|image|hidden)$/i.test(el.type || '');
   }
 
   // One full ladder pass. Returns { mode } on a pass; otherwise a string outcome —
   // terminal ('suppressed' | 'overlay-open' | 'no-rule' | 'stale') or retryable
-  // ('vetoed' | 'gate': content may still be rendering, the next probe re-checks), and on
-  // the last probe 'typing'. `isFinal` marks the last probe of the settle window.
+  // ('vetoed' | 'gate': content may still be rendering; 'typing': a text box has focus); the
+  // next probe re-checks, and the last probe's outcome is final. `isFinal` marks that probe.
   async function probe(token, isFinal) {
     // Step 0 — suppression & state.
     if (OBR._autoSuppressed.has(OBR._autoPageKey())) return 'suppressed';
@@ -163,10 +172,13 @@
     // Reader or Gallery: the user picked the view, so it opens on every page the rule
     // matches, list pages included, and no veto applies. The content checks only time it:
     // a page that renders late opens once its content shows ({ divs: true } also sees a post
-    // kept in one <div> split by <br>), and any page on the last probe — unless a text box has
-    // focus by then, where the reader's keys would swallow what the user types.
+    // kept in one <div> split by <br>), and any page on the last probe. Never while a text box
+    // has focus, on any probe: the reader would take the keys (what the user types would turn
+    // pages, print or change the theme), or cover the editor they are typing in. Earlier probes
+    // retry; on the last one it is final.
     if (rule.mode === 'text' || rule.mode === 'images') {
-      if (isFinal) return typingFocus() ? 'typing' : { mode: rule.mode };
+      if (typingFocus()) return 'typing';
+      if (isFinal) return { mode: rule.mode };
       return (imageGatePasses(minImgs) || proseOk({ divs: true })) ? { mode: rule.mode } : 'gate';
     }
     // Smart pick. Step 2 — metadata veto, before the gate on every probe.
@@ -231,7 +243,7 @@
         return;
       }
       if (res === 'suppressed' || res === 'overlay-open' || res === 'no-rule') return finish(res, '');
-      last = res; // 'vetoed' | 'gate' | 'typing' — content may still be rendering; next probe re-runs the full ladder
+      last = res; // 'vetoed' | 'gate' | 'typing' — the page may still change; next probe re-runs the full ladder
     }
     finish(last || 'gave-up', '');
   }
