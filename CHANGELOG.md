@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-10-25
+
 - **An auto-open rule set to Reader or Gallery now opens every page it matches.** It used to
   open only pages that looked like an article (Reader) or an image set (Gallery), so on many
   pages it silently did nothing. Now every matching page opens in the mode you picked, list
@@ -563,7 +565,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.14.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.0
 [1.14.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.14.1
 [1.14.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.14.0
 [1.13.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.13.2
