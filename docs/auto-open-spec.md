@@ -38,8 +38,9 @@ against fresh settings** (never trusts page state) → `invokeReader(…, {auto:
 `OBR.open({trigger:'auto'})` + the "Auto-opened" chip (`OBR._showAutoChip`, its own shadow host;
 Stop clears only the `auto` flag via `OBR.setRuleAuto`). A **user-initiated** `close()` (Esc/✕/
 toolbar) records `origin+pathname+search` (query matters: phpBB routes every topic through one
-pathname) into the shared in-page `OBR._autoSuppressed` set; internal closes (mode switch, cross-
-close) pass `{suppress:false}`. **Permissions: zero manifest delta** — per-origin
+pathname) into the shared in-page `OBR._autoSuppressed` set, and an in-place address rewrite
+(`replaceState`) carries it to the new address (§3.2); internal closes (mode switch, cross-close) pass
+`{suppress:false}`. **Permissions: zero manifest delta** — per-origin
 `permissions.request` subsets of the already-optional `<all_urls>`; `originsForRule` → `[]` means
 "can't auto-open" (load-bearing: one invalid pattern rejects the whole registration; valid-but-
 ungranted patterns register fine and silently never inject). The enable flow (context-menu
@@ -148,7 +149,17 @@ Non-goals (explicitly rejected or deferred)
   (`viewtopic.php?t=123`), so an Esc keyed on pathname alone would suppress the whole
   forum; the set is in-memory, so there is no quota reason to strip the query (unlike
   `positionKey`). A full reload is a fresh decision — deliberate: re-navigating to a topic
-  is a new reading intent.
+  is a new reading intent. An address rewritten in place (a list that loads more as you scroll
+  and swaps `?page=N` with `replaceState`) is the same page: when the Navigation API reports a
+  `replace` whose `from` address is recorded, the sentinel records the new address too, at the
+  moment of the rewrite (`currententrychange`, which reaches the isolated world). A `push` (a
+  click into a topic, also right after Back) and a `traverse` (back/forward) are judged on their
+  own. Not `history.length`: a push after Back replaces the forward entry without growing it.
+  Only the carry runs on that event; re-arming still waits for the route's DOM mutation, since a
+  probe at the push itself would read the previous page. Limits: a list that pushes an entry per
+  loaded page still reopens; a site that moves to other content with `replaceState` (a
+  `router.replace` tab switch, or a reader whose Next replaces the address) keeps it closed too,
+  a manual open away.
 - An auto-open the user closes without turning a page saves no reading position and no
   per-article time (`untouchedAutoOpen` in `reader.js`), so the list pages a Reader rule
   opens do not push real positions out of the capped `obr_positions` store. Time read before
@@ -545,6 +556,10 @@ On a real forum (e.g. any Discourse instance):
    site, with the add-rule field pre-filled with a best-guess path pattern (editable), Auto-open
    ticked, and the Per-site data section expanded + scrolled to + focused. On a phpBB-style
    `viewtopic.php?t=N` page the pattern keeps the script (`…/viewtopic.php*`).
+11. **Same page while it scrolls** — on an infinite-scroll list under a Reader rule, close the
+   auto-opened reader, scroll until the address changes (`?page=2`): it stays closed. Click a
+   topic: it opens. Back, then another topic: it opens. (Listens for `currententrychange` from the
+   isolated world, which the Playwright harness's main-world injection cannot cover.)
 
 ## 11. Risks
 
@@ -556,8 +571,9 @@ On a real forum (e.g. any Discourse instance):
 - **A Reader or Gallery rule opens list pages too** — the user's pick wins (§2). A page
   neither content check can read opens on the last probe, about 5s after load, unless a text
   box has focus; a path-scoped rule (`site/t/*`) is the way to keep a site's index pages out,
-  and Esc suppresses a page. An auto-open closed without a page turn writes no reading
-  position, so list pages do not crowd real positions out of the capped `obr_positions` map.
+  and Esc suppresses a page, including the addresses a scrolling list rewrites in place. An
+  auto-open closed without a page turn writes no reading position, so list pages do not crowd
+  real positions out of the capped `obr_positions` map.
 - **Web Store review**: no manifest permission delta, but reviewer-visible behavior change on
   granted origins — mitigated by the privacy-tab update (§9) and the opt-in framing.
 - **Heuristic divergence** (sentinel image count vs gallery collection) — conservative

@@ -16,9 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pages it silently did nothing. Now every matching page opens in the mode you picked, list
   pages included. A page with no article or image set to detect yet opens after about five
   seconds, so late content has time to appear, and that late open is skipped if you have
-  started typing in a text box. To keep a site's list pages closed, limit the rule to a path
-  such as `example.com/t/*`, or use Smart pick, which still decides page by page and leaves
-  list pages alone.
+  started typing in a text box. After you close a page that opened by itself, it stays closed
+  while it changes its address in place, as a list does when you scroll (`?page=2`) or a topic
+  does when its address follows the post you are reading; clicking into a topic still opens
+  that one. To keep a site's list pages closed, limit the rule to a
+  path such as `example.com/t/*`, or use Smart pick, which still decides page by page and
+  leaves list pages alone.
 - **An auto-opened page you close without turning a page no longer saves a reading
   position or reading time**, so pages that opened by themselves do not push the articles you
   were halfway through out of your saved positions. Time you read before your first page turn

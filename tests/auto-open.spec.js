@@ -261,8 +261,8 @@ test('suppression is per exact page (query included) and survives SPA navigation
 
   // The user dismisses reading mode here (what a user-initiated close() records), then
   // SPA-navigates to ANOTHER topic on the same pathname — phpBB-style ?t= routing. The
-  // sentinel re-arms off the URL compare (pushState is invisible to the isolated world;
-  // the DOM mutation is what trips the observer) and must open again: one Esc must not
+  // sentinel re-arms off the URL compare (the DOM mutation is what trips the observer)
+  // and must open again: one Esc must not
   // silence the whole forum.
   await page.evaluate(() => {
     OBR._autoSuppress();
@@ -280,6 +280,91 @@ test('suppression is per exact page (query included) and survives SPA navigation
   const s = await waitSentinelDone(page, 3);
   expect(s.outcome).toBe('suppressed');
   expect(await autoOpenMessages(page)).toHaveLength(2); // no third open
+});
+
+test('a page you closed stays closed while it rewrites its address as you scroll; a topic click still opens', async ({ page }) => {
+  // A list that loads more as you scroll swaps ?page=N in place (replaceState). Its footer
+  // notice passes the check that times a Reader open, so a rewritten page would reopen at its
+  // first probe: only the carried suppression keeps it closed.
+  await gotoFixture(page, 'forum-list.html');
+  await page.evaluate(() => {
+    const footer = document.createElement('div');
+    footer.textContent = '本站所有帖子仅代表作者个人观点，与本站立场无关。'.repeat(6);
+    document.body.appendChild(footer);
+  });
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  expect((await waitSentinelDone(page, 1)).outcome).toBe('opened');
+
+  const rewrite = (url, arm) => page.evaluate((u) => {
+    history.replaceState({}, '', u);
+    document.body.appendChild(document.createElement('div'));
+  }, url).then(() => waitSentinelDone(page, arm));
+  await page.evaluate(() => OBR._autoSuppress()); // the user closes it
+  expect((await rewrite('/forum-list.html?page=2', 2)).outcome).toBe('suppressed');
+  expect((await rewrite('/forum-list.html?page=3', 3)).outcome).toBe('suppressed');
+
+  // An in-page anchor adds a history entry but keeps the page; the next rewrite still carries.
+  await page.evaluate(() => new Promise((resolve) => {
+    window.addEventListener('hashchange', () => resolve(), { once: true });
+    location.hash = '#comments';
+  }));
+  expect((await rewrite('/forum-list.html?page=4', 4)).outcome).toBe('suppressed');
+
+  // A click into a topic adds a history entry: a new page, so it opens.
+  const topic = (t) => page.evaluate((u) => {
+    history.pushState({}, '', u);
+    const p = document.createElement('p');
+    p.textContent = 'word '.repeat(260);
+    document.body.appendChild(p);
+  }, `/forum-topic.html?t=${t}`);
+  await topic(9);
+  expect((await waitSentinelDone(page, 5)).outcome).toBe('opened');
+
+  // Back to the closed list, then another topic: after Back a push replaces the forward entry
+  // (history.length does not grow), yet it is a new page and opens.
+  await page.evaluate(() => history.back());
+  expect((await waitSentinelDone(page, 6)).outcome).toBe('suppressed');
+  await topic(10);
+  expect((await waitSentinelDone(page, 7)).outcome).toBe('opened');
+  expect(await autoOpenMessages(page)).toHaveLength(3);
+});
+
+test('a rewrite the sentinel never re-armed on still carries: Back to it stays closed', async ({ page }) => {
+  // The address is rewritten and a topic clicked before any re-arm could see the rewrite, so
+  // the carry has to happen at the rewrite itself.
+  await gotoFixture(page, 'forum-list.html');
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  expect((await waitSentinelDone(page, 1)).outcome).toBe('opened');
+  await page.evaluate(() => {
+    OBR._autoSuppress(); // the user closes it
+    history.replaceState({}, '', '/forum-list.html?page=2');
+    history.pushState({}, '', '/forum-topic.html?t=3');
+    const p = document.createElement('p');
+    p.textContent = 'word '.repeat(260);
+    document.body.appendChild(p);
+  });
+  expect((await waitSentinelDone(page, 2)).outcome).toBe('opened');
+  await page.evaluate(() => history.back());
+  expect((await waitSentinelDone(page, 3)).outcome).toBe('suppressed');
+});
+
+test('back to a page you never closed opens again: another history entry never inherits a closed page', async ({ page }) => {
+  await gotoFixture(page, 'forum-topic.html');
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  expect((await waitSentinelDone(page, 1)).outcome).toBe('opened');
+
+  // Into another topic, which the user closes; then Back, to an entry of its own.
+  await page.evaluate(() => {
+    history.pushState({}, '', '/forum-topic.html?t=2');
+    document.body.appendChild(document.createElement('div'));
+  });
+  expect((await waitSentinelDone(page, 2)).outcome).toBe('opened');
+  await page.evaluate(() => { OBR._autoSuppress(); history.back(); });
+  expect((await waitSentinelDone(page, 3)).outcome).toBe('opened');
+  expect(await autoOpenMessages(page)).toHaveLength(3);
 });
 
 test('a hash-only change does NOT re-arm the sentinel (settle window survives a scroll-spy)', async ({ page }) => {

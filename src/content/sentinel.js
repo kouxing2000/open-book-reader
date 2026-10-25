@@ -264,8 +264,22 @@
   }
   window.addEventListener('popstate', onUrlChange);
   window.addEventListener('hashchange', onUrlChange);
-  // The isolated world cannot see the page's pushState calls, so also compare the URL
-  // on DOM mutations, throttled — an SPA route change always mutates the document.
+  // A list that loads more as you scroll rewrites its address in place (replaceState, a
+  // 'replace' navigation): it is still the page the user closed, so a closed address hands its
+  // suppression to the new one at the moment of the rewrite. A click into a topic ('push', also
+  // right after Back) and back/forward ('traverse') are judged on their own. Only the carry runs
+  // here: re-arming at a push would probe the route before it renders.
+  if (globalThis.navigation) {
+    navigation.addEventListener('currententrychange', (e) => {
+      if (e.navigationType !== 'replace' || !e.from || !e.from.url) return;
+      const from = new URL(e.from.url);
+      if (OBR._autoSuppressed.has(from.origin + from.pathname + from.search)) {
+        OBR._autoSuppressed.add(OBR._autoPageKey());
+      }
+    });
+  }
+  // Re-arming waits for the route's render: the URL is compared on DOM mutations, throttled,
+  // since an SPA route change always mutates the document.
   let moPending = false;
   const mo = new MutationObserver(() => {
     if (moPending) return;
