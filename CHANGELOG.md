@@ -11,8 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.15.0] - 2026-10-25
-
 - **An auto-open rule set to Reader or Gallery now opens every page it matches.** It used to
   open only pages that looked like an article (Reader) or an image set (Gallery), so on many
   pages it silently did nothing. Now every matching page opens in the mode you picked, list
@@ -35,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dialog closes. Where the article's title itself keeps the site name, as many Chinese pages
   do, and the article opens with its own heading, that heading names the file and heads the
   printed page.
+
+## [1.15.0] - 2026-10-25
+
+- Tagged but never published: the release run's tests failed on a test-setup issue (a
+  scripted focus that a cross-origin frame cannot take on Linux). Its changes ship in 1.15.1.
 
 ## [1.14.1] - 2026-10-22
 

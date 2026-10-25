@@ -227,8 +227,11 @@ test('a box focused inside a same-origin frame keeps the page closed; a focused 
     await frame.evaluate((kind) => {
       if (kind === 'design') { document.designMode = 'on'; document.body.focus(); return; }
       if (kind === 'body') { document.body.contentEditable = 'true'; document.body.focus(); return; }
-      document.body.appendChild(document.createElement('textarea')).focus();
+      document.body.appendChild(document.createElement('textarea'));
     }, editor);
+    // A real click, not a scripted focus(): on Linux a cross-origin frame's script cannot pull
+    // focus to itself without a user gesture, so the page's activeElement would stay <body>.
+    if (editor === 'textarea') await frame.locator('textarea').click();
     await expect.poll(() => page.evaluate(() => document.activeElement.tagName)).toBe('IFRAME');
     await seedSettings(page, AUTO_TEXT);
     await injectSentinel(page, { delays: [0] });
