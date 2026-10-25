@@ -37,11 +37,18 @@ import path from 'node:path';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONTENT = path.resolve(HERE, '..', 'src', 'content');
-// Same order as background.js FILES (settings defines OBR; reader.style defines
-// OBR._readerCSS; reader needs DEFAULTS + Readability before it runs). zip.js is omitted
-// — the proxy has no ZIP-download path. turndown.js is kept so ⤓ Markdown can be checked
-// against real-site DOM.
-const FILES = ['settings.js', 'readability.js', 'reader.style.js', 'turndown.js', 'reader.js', 'gallery.js'];
+// background.js's FILES, read from the file so the order (settings defines OBR; reader.style
+// defines OBR._readerCSS; reader needs DEFAULTS + Readability before it runs) cannot drift.
+// zip.js is left out: the proxy has no ZIP-download path.
+const FILES = (() => {
+  const src = readFileSync(path.resolve(HERE, '..', 'src', 'background.js'), 'utf8');
+  const block = src.match(/const FILES = \[([\s\S]*?)\];/);
+  const files = block ? [...block[1].matchAll(/'src\/content\/([\w.-]+\.js)'/g)].map((m) => m[1]) : [];
+  if (!files.includes('settings.js') || !files.includes('reader.js')) {
+    throw new Error('manual-site-proxy: could not read the engine file list from src/background.js');
+  }
+  return files.filter((f) => f !== 'zip.js');
+})();
 
 // A real page has no `chrome.storage`, so without this the engine's settings,
 // site rules, and per-article reading position (resume) all silently no-op.

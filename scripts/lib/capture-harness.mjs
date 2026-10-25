@@ -20,11 +20,20 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '..', '..');
 const FIXTURES = path.join(ROOT, 'tests', 'fixtures');
-const CONTENT = path.join(ROOT, 'src', 'content');
 export const OUT = path.join(ROOT, 'store-assets');
 
-const CONTENT_FILES = ['settings.js', 'readability.js', 'reader.style.js', 'reader.js', 'zip.js', 'gallery.js']
-  .map((f) => path.join(CONTENT, f));
+// Read from background.js's own FILES array rather than copied: a copy drifts, and a capture
+// missing qrcode.js prints no QR while one missing notice.js has no paint-check banner.
+function engineFiles() {
+  const src = fs.readFileSync(path.join(ROOT, 'src', 'background.js'), 'utf8');
+  const block = src.match(/const FILES = \[([\s\S]*?)\];/);
+  const files = block ? [...block[1].matchAll(/'(src\/content\/[\w.-]+\.js)'/g)].map((m) => m[1]) : [];
+  if (!files.includes('src/content/settings.js') || !files.includes('src/content/reader.js')) {
+    throw new Error('capture-harness: could not read the engine file list from src/background.js');
+  }
+  return files.map((f) => path.join(ROOT, f));
+}
+const CONTENT_FILES = engineFiles();
 
 // chrome.storage.sync shim (localStorage-backed) for the injected main-world scripts.
 // Serialized into the page by addInitScript, so it must stay self-contained — no imports,
