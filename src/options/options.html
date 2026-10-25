@@ -142,7 +142,7 @@
         <li data-i18n-html="optGuideOpenRightClick"><b>Right-click</b> a page or image → <b>Open in Book Reader</b> → Smart pick / Reader / Gallery.</li>
         <li data-i18n-html="optGuideOpenKeyboard"><b>Keyboard:</b> <kbd>Alt</kbd>+<kbd>B</kbd> reader · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> gallery.</li>
       </ul>
-      <p class="why" data-i18n-html="optGuideOpenWhy">Want a site to always open one way? Right-click → <b>Configure Default</b>, or add a path/wildcard pattern under <b>Per-site rules</b> below. Want zero clicks? Right-click → <b>Auto-open on this site</b> — content pages there open by themselves, list pages never do, and <b>Esc</b> always closes.</p>
+      <p class="why" data-i18n-html="optGuideOpenWhy">Want a site to always open one way? Right-click → <b>Configure Default</b>, or add a path/wildcard pattern under <b>Per-site rules</b> below. Want zero clicks? Right-click → <b>Auto-open on this site</b> — on Smart pick, content pages there open by themselves and list pages never do; a site set to Reader or Gallery opens every page in that mode. <b>Esc</b> always closes.</p>
 
       <p data-i18n-html="optGuideReadTitle"><b>While reading (📖 reader)</b></p>
       <ul>
@@ -338,9 +338,10 @@
       <code>*.example.com/*</code> (all subdomains). When several match, the most specific
       wins. Applies to the toolbar icon and right-click menu;
       <b>Alt+B</b> / <b>Alt+Shift+B</b> always honor their own mode.
-      <b>Auto-open</b> goes one step further: matching pages that look like real content
-      (an article body, an image set) open in reading mode with no click at all — list and
-      search pages stay untouched, and <b>Esc</b> always closes. It asks once for
+      <b>Auto-open</b> goes one step further: matching pages open in reading mode with no
+      click at all. A Reader or Gallery rule opens every matching page in that mode; Smart
+      pick opens only pages that look like real content (an article body, an image set) and
+      leaves list and search pages alone. <b>Esc</b> always closes. It asks once for
       permission to run on that site.</span>
     </div>
     <div class="site-add">
@@ -350,7 +351,7 @@
         <option value="images" data-i18n="optModeGallery">Gallery</option>
         <option value="text" data-i18n="optModeReader">Reader</option>
       </select>
-      <label class="site-auto" data-i18n-title="optAutoHint" title="Open reading mode automatically on matching content pages (asks once for a site permission). List and search pages stay untouched."><input type="checkbox" id="siteAuto" /><span data-i18n="optAutoCol">Auto-open</span></label>
+      <label class="site-auto" data-i18n-title="optAutoHint" title="Open reading mode automatically on matching pages (asks once for a site permission). Reader and Gallery open every matching page; Smart pick leaves list and search pages untouched."><input type="checkbox" id="siteAuto" /><span data-i18n="optAutoCol">Auto-open</span></label>
       <button class="ghost" id="siteAddBtn" data-i18n="optAddRule">Add</button>
     </div>
     <div id="sites"></div>

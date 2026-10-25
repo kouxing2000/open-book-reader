@@ -10,16 +10,22 @@ its §10 items 5b/5c and the dashboard privacy-tab update (§9) gated that relea
 > AUTHORITATIVE for what the code does today. Sections 1-12 below are the original
 > design doc — still the reference for *why*, but written before implementation.
 
-**Auto-open — per-site, opt-in, strict** (`sentinel.js` + `background.js`; full spec:
+**Auto-open — per-site, opt-in, strict for Smart pick** (`sentinel.js` + `background.js`; full spec:
 §1-12 below). A `siteRules` entry may carry `auto: true`: the SW then keeps ONE
 registered content script (`syncSentinelRegistration()`, id `obr-sentinel`, `js:
 [settings.js, sentinel.js]`, `persistAcrossSessions`, matches = union of `originsForRule()` over
-auto rules filtered by `permissions.contains`) so content pages on that site (forum topics, manga
-chapters) open with zero clicks while list/search pages stay untouched. The sentinel runs a
-**strict-bias ladder** on every probe of a settle window (document_idle + ~1s/2.5s/5s, re-armed on
+auto rules filtered by `permissions.contains`) so pages on that site open with zero clicks: under a
+Reader or Gallery rule every matching page, under Smart pick only content pages (forum topics, manga
+chapters) while list/search pages stay untouched. The sentinel runs a
+**strict-bias ladder** (strict for Smart pick) on every probe of a settle window (document_idle + ~1s/2.5s/5s, re-armed on
 SPA URL change via popstate/hashchange + a MutationObserver href compare): (0) suppression set +
-visibility + no-live-overlay check → (1) `matchSiteRuleEx` must return a rule with `auto:true` →
-(2) JSON-LD **list-type veto** (`CollectionPage`/`ItemList`/`SearchResultsPage`/`ProfilePage`,
+visibility + no-live-overlay check → (1) `matchSiteRuleEx` must return a rule with `auto:true` → a **Reader or Gallery** rule
+opens its mode on every matching page, list pages included, with no veto: the content checks
+below only time the open (the first probe where either check passes, the prose check here
+counting with `_proseStats({divs:true})` so a post kept in one `<div>` split by `<br>` opens at
+once; else the last probe; any last-probe open is skipped while a text box has focus — outcome
+`typing`). **Smart pick**
+goes on to (2) JSON-LD **list-type veto** (`CollectionPage`/`ItemList`/`SearchResultsPage`/`ProfilePage`,
 TOP-LEVEL nodes only — types nested under `itemListElement`/`item` never count, or Google's
 carousel markup on category pages would neuter the veto; exact `@type` equality only, else
 `BreadcrumbList` — schema.org's ItemList subtype on every news article — vetoes the web; an
@@ -39,9 +45,9 @@ close) pass `{suppress:false}`. **Permissions: zero manifest delta** — per-ori
 ungranted patterns register fine and silently never inject). The enable flow (context-menu
 `obr-rule-auto` → permission popup with `reason=auto-open`, or the options checkbox) also
 `executeScript`s the sentinel into the CURRENT tab — registration only affects future document
-loads, the SPA gap — and re-arms with a one-shot flag: a qualifying page opens immediately, a
-non-qualifying one (enabled from a list page) shows an "Auto-open is on" confirmation chip instead
-of wrongly opening.
+loads, the SPA gap — and re-arms with a one-shot flag: a page that opens (any page under a Reader or
+Gallery rule, a qualifying one under Smart pick) opens through the normal path; one that does not
+(a list page under Smart pick, or a text box in focus) shows an "Auto-open is on" confirmation chip.
 
 ## 1. Problem
 
@@ -49,19 +55,22 @@ Reading a forum / manga / webtoon site means invoking the reader on *every* topi
 dozens of gestures per session. The extension already remembers per-site *how* to read
 (`siteRules` pick the mode, `obr_gallery` remembers layout, `obr_picks` remembers the content
 block), but never *that* the user reads there. Users want: on a site I chose, list pages stay
-untouched, content pages enter reading mode with zero clicks.
+untouched, content pages enter reading mode with zero clicks. (That is the Smart pick case; a
+site set to Reader or Gallery opens every matching page, §2.)
 
 ## 2. Goals / non-goals
 
 Goals
-- Per-site **opt-in** auto-open: on an enabled site, pages that pass a readability gate open
-  in the rule's mode automatically; pages that don't (forum indexes, search results) do nothing.
-- **Strict bias (product decision)**: a missed auto-open (false negative) is always
-  preferable to a wrong one (false positive) — a miss costs one manual click; a wrong open
-  costs trust in the feature. Every ambiguity in the gate resolves toward NOT opening, and
-  no signal may ever *lower* the content thresholds.
-- Zero config for the common case: the content heuristic discriminates list vs topic; path
-  globs remain the power-user override (already supported by `siteRules`).
+- Per-site **opt-in** auto-open. A **Reader or Gallery** rule opens that mode on every page
+  it matches: the user picked the view, and the extension never overrides it (product decision).
+  A **Smart pick** rule opens only pages that pass a readability gate; pages that don't (forum
+  indexes, search results) do nothing.
+- **Strict bias (product decision), for Smart pick**: a missed auto-open (false negative) is
+  always preferable to a wrong one (false positive) — a miss costs one manual click; a wrong
+  open costs trust in the feature. Every ambiguity in the gate resolves toward NOT opening,
+  and no signal may ever *lower* the content thresholds.
+- Zero config for the common case: under Smart pick the content heuristic discriminates list
+  vs topic; path globs remain the power-user override (already supported by `siteRules`).
 - Instant, obvious escape: Esc closes; a chip offers "stop auto-opening here"; a closed page
   is never re-opened in the same page session.
 - No install-time permission changes; no new data collection (story stays "fully local").
@@ -95,12 +104,13 @@ Non-goals (explicitly rejected or deferred)
      affects future document loads, so on an SPA forum the enabling tab would otherwise
      stay sentinel-less (no auto-open on the very next topic click) until a full reload.
      The sentinel's `OBR._sentinelLoaded` guard makes this safe, and its normal ladder (§4)
-     decides the immediate experience: a qualifying page (the topic the user enabled from)
-     auto-opens right away through the standard path; a non-qualifying page (enabled from a
-     list) shows a transient confirmation chip — `Auto-open enabled for <host>` — once the
-     probes exhaust, instead of wrongly opening. Unconditionally opening here would be the
-     exact false positive the ladder exists to prevent, while a silent no-op would read as
-     breakage. (The enable flow sets a one-shot `OBR._justEnabled` flag ahead of
+     decides the immediate experience: a page that opens (any page under a Reader or Gallery
+     rule; under Smart pick, the topic the user enabled from) auto-opens through the standard
+     path; one that does not (a list page under Smart pick; under any rule, a text box in
+     focus at the last probe, a suppressed page, an open overlay) shows a transient confirmation
+     chip — `Auto-open enabled for <host>` — once the probes exhaust. Under Smart pick,
+     unconditionally opening here would be the exact false positive the ladder exists to
+     prevent, while a silent no-op would read as breakage. (The enable flow sets a one-shot `OBR._justEnabled` flag ahead of
      `sentinel.js`, so ordinary registered loads never show the chip. Other already-open
      tabs of the site stay sentinel-less until their next reload — accepted for MVP; a
      `chrome.tabs.query({ url: originsForRule(...) })` sweep could cover them — it works
@@ -124,7 +134,9 @@ Non-goals (explicitly rejected or deferred)
 
 ### 3.2 Behavior on an enabled site
 - Page loads (or SPA-navigates) → the sentinel evaluates the decision ladder (§4). If it
-  passes, the page opens in the resolved mode **immediately** — no countdown.
+  passes, the page opens in the resolved mode **immediately** — no countdown. The one wait:
+  a Reader or Gallery page that neither content check can read opens on the last probe,
+  about 5s in.
 - On auto-open, the reader/gallery shows a transient **chip** (~6s, dismissible):
   `Auto-opened · Esc closes · [Stop auto-opening on this site]`.
   The stop button removes only the `auto` flag (the mode rule survives — "stop automating"
@@ -146,8 +158,9 @@ Non-goals (explicitly rejected or deferred)
 
 The **settle scheduler** wraps the whole ladder: forum posts and SPA content render late,
 so the sentinel probes at `document_idle`, then ~1s / 2.5s / 5s, and **each probe runs the
-full ladder below in order** — an open can only happen at the end of a fully-passed probe,
-so the veto always runs before any open. Stop probing early on open or on URL change; give
+full ladder below in order** — under Smart pick an open can only happen at the end of a
+fully-passed probe, so the veto always runs before any open (a Reader or Gallery rule has no
+veto, step 1). Stop probing early on open or on URL change; give
 up quietly after the last probe (no badge, no toast). The schedule re-arms on SPA URL
 change (popstate + hashchange listeners, plus a `location.href` compare piggybacked on a
 lightweight MutationObserver — the isolated world cannot see the page's `pushState` calls
@@ -160,6 +173,18 @@ directly).
    overlay mid-page, auto stays quiet until an SPA navigation re-arms the ladder.
 1. **Matching rule check** — `matchSiteRuleEx(location.href, siteRules)` (most-specific-wins,
    as today). No matching rule with `auto: true` → do nothing, ever.
+   - A **Reader (`text`) or Gallery (`images`) rule** ends the decision here: it opens its
+     own mode, and steps 2-3 never veto it. The two content checks of step 3 only decide
+     WHEN: the first probe where either passes (a late-rendering page opens once its content
+     shows), else the last probe of the settle window, so a page neither check can read
+     still opens, about 5s in. For this timing the prose check counts with
+     `_proseStats({ divs: true })`: each `<div>`'s OWN text (text nodes and inline children,
+     never a block child, a link or a form control) is a block too, so a forum post kept in
+     one `<div>` split by `<br>` opens at once instead of 5s late. Any last-probe open, even
+     one whose content just appeared, is skipped while a text box has focus (input, textarea, select, contenteditable, iframe):
+     by then the user may be typing, and the reader's keys would swallow it. Steps 2-3
+     below are Smart pick only, on the narrow count — the wide one passes list pages (a
+     CJK footer notice in a `<div>` clears the 80-word anchor alone).
 2. **Declared page type — one-directional VETO** (schema.org JSON-LD `@type`; ~25 lines).
    Metadata is a *claim*, not a measurement, so under the strict bias (§2) it may only make
    the gate STRICTER — it can veto an open, never enable one:
@@ -193,12 +218,12 @@ directly).
    - No metadata → neutral; the content gate decides (legacy forums must keep working).
    Note metadata cannot *accelerate* opening either: Readability needs the rendered DOM, so
    the settle window is bounded by content readiness regardless of what `<head>` declares.
-3. **Gate by the rule's mode** (the list-vs-topic discriminator):
-   - `text` → *prose gate*: `proseWords >= autoTextMinWords` (default 200, existing setting)
+3. **Content gate** (the list-vs-topic discriminator):
+   - *prose gate*: `proseWords >= autoTextMinWords` (default 200, existing setting)
      **AND** at least one single prose block `>= autoAnchorWords` (new, default 80).
      The anchor-block requirement is what rejects forum indexes whose long topic titles can
      accumulate 200 words of >=20-word `<li>` rows without containing one real paragraph.
-   - `images` → *image gate*: count of `<img>` that either has a **loaded natural size**
+   - *image gate*: count of `<img>` that either has a **loaded natural size**
      `>= 120px` on both sides, OR carries **lazy-load evidence** (a `data-*` lazy URL or
      `loading="lazy"`) AND a rendered layout box `>= 120px` on both sides; compared against
      `autoGalleryMin` (default 10, existing setting). The lazy+layout-box arm matters:
@@ -208,14 +233,16 @@ directly).
      counting. Still deliberately more conservative than the gallery's own 80px,
      avatar-filtered collection — divergence fails toward NOT opening, and the fallback is
      the user's normal click.
-   - `auto` → prose gate first (an article always wins, mirroring `_autoToggle`), else
-     image gate → gallery, else nothing. (An earlier draft let article-ish metadata break
+   - Smart pick resolves prose gate first (an article always wins, mirroring `_autoToggle`),
+     else image gate → gallery, else nothing. (An earlier draft let article-ish metadata break
      a text-vs-gallery "tie" — dropped: prose-first already resolves every case
      deterministically, so metadata keeps exactly one job, the veto.)
 
 Heuristic source of truth: the prose stats move from `reader.js` into `settings.js`
 (`OBR._proseStats()` → `{ words, maxBlock }`) so the sentinel, `_autoToggle`, and the
-suspect-extraction banner all share ONE implementation and always agree.
+suspect-extraction banner all share ONE implementation and always agree. Only the sentinel
+also asks for `{ divs: true }`, and only to time a Reader or Gallery rule's open; no decision
+uses it (`docs/audit/sweep-2026-09-04.md` A4-1 has the toolbar's reverse risk).
 `OBR._articleWordCount` remains as a thin alias (gallery + tests keep working).
 
 We do NOT vendor Mozilla's `isProbablyReaderable`: a second heuristic that occasionally
@@ -418,8 +445,10 @@ New `tests/auto-open.spec.js` (same harness pattern: inject `settings.js` + `sen
 with the storage shim + a captured `chrome.runtime.sendMessage`):
 - topic fixture + whole-site auto text rule → `obr-auto-open {mode:'text'}` within the
   settle window;
-- list fixture + same rule → no message after probes exhaust (via `_sentinelState`);
-- anchor-block guard: the long-titles list fixture → no message;
+- list fixture + a Smart pick rule → no message after probes exhaust (via `_sentinelState`);
+  under the text rule it opens on the last probe, and not at all while a textarea has focus;
+- anchor-block guard: the long-titles list fixture under a Smart pick rule → no message
+  (under a Reader rule the same page opens on the last probe);
 - path rule `host/t/*` fires on `/t/...` and not on `/forum/...`; most-specific-wins with a
   competing whole-site rule;
 - image rule on an image-heavy fixture → `{mode:'images'}`; `auto` mode resolves text-first;
@@ -428,7 +457,7 @@ with the storage shim + a captured `chrome.runtime.sendMessage`):
   string); an internal `{suppress:false}` close records nothing. (These share the set
   between two in-page script tags — they do NOT prove registered-script/executeScript
   isolated-world sharing; that's documented behavior, manual-verified via §10 item 3.);
-- enable path: sentinel injected with the one-shot `OBR._justEnabled` flag on the list
+- enable path (Smart pick rule): sentinel injected with the one-shot `OBR._justEnabled` flag on the list
   fixture → confirmation chip renders, no `obr-auto-open` message;
 - hidden document defers evaluation until visible.
 
@@ -473,9 +502,11 @@ On a real forum (e.g. any Discourse instance):
 1. Enable via context menu on a topic page → permission prompt → opens immediately; then
    WITHOUT reloading, SPA-navigate to another topic → auto-opens (current-tab sentinel
    injection, §3.1 step 3).
-1b. Enable via context menu on a LIST page → no open; the confirmation chip shows instead;
-   the next topic click auto-opens.
-2. Navigate list → topic → list: list pages never open; topics open; SPA navigation included.
+1b. Under Smart pick, enable via context menu on a LIST page → no open; the confirmation chip
+   shows instead; the next topic click auto-opens. (Under a Reader or Gallery rule the list page
+   opens.)
+2. Under a Smart pick rule, navigate list → topic → list: list pages never open; topics open;
+   SPA navigation included. Under a Reader rule the list pages open too, on the last probe.
 3. Esc on an auto-opened topic → navigate away and SPA-back → stays closed (this passing is
    also the registered-script/executeScript shared-isolated-world verification, §5.2); full
    reload → opens again. On a query-routed forum (phpBB-style `viewtopic.php?t=N`): Esc on
@@ -515,8 +546,14 @@ On a real forum (e.g. any Discourse instance):
 
 - **False-positive open on a list page** → anchor-block gate + list-type metadata veto +
   per-site opt-in + chip + suppression; residual risk accepted (one Esc, self-healing).
-- **Missed opens on short posts** — the deliberate cost of the strict bias (§2); the manual
-  click and keyboard shortcut remain one gesture away. Revisit only with real user feedback.
+- **Missed opens on short posts** (Smart pick) — the deliberate cost of the strict bias (§2);
+  the manual click and keyboard shortcut remain one gesture away. Revisit only with real user
+  feedback.
+- **A Reader or Gallery rule opens list pages too** — the user's pick wins (§2). A page
+  neither content check can read opens on the last probe, about 5s after load, unless a text
+  box has focus; a path-scoped rule (`site/t/*`) is the way to keep a site's index pages out,
+  and Esc suppresses a page. Every such open also writes a reading position on close, so a
+  heavy list-page session can push real positions out of the capped `obr_positions` map.
 - **Web Store review**: no manifest permission delta, but reviewer-visible behavior change on
   granted origins — mitigated by the privacy-tab update (§9) and the opt-in framing.
 - **Heuristic divergence** (sentinel image count vs gallery collection) — conservative

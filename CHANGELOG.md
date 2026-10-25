@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **An auto-open rule set to Reader or Gallery now opens every page it matches.** It used to
+  open only pages that looked like an article (Reader) or an image set (Gallery), so on many
+  pages it silently did nothing. Now every matching page opens in the mode you picked, list
+  pages included. A page with no article or image set to detect yet opens after about five
+  seconds, so late content has time to appear, and that late open is skipped if you have
+  started typing in a text box. To keep a site's list pages closed, limit the rule to a path
+  such as `example.com/t/*`, or use Smart pick, which still decides page by page and leaves
+  list pages alone.
+
 ## [1.14.1] - 2026-10-22
 
 - **Image mode on a forum thread shows the posted pictures, not everyone's avatars.** Avatars

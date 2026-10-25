@@ -7,9 +7,11 @@
  * the enable flow (registration only affects future document loads).
  *
  * It watches the page, runs the decision ladder (suppression/state → rule → metadata
- * veto → content gate) over a short settle window, and on a fully-passed probe asks the
- * SW to inject the engine and open the rule's mode. Strict bias: every ambiguity
- * resolves toward NOT opening — a miss costs one manual click, a wrong open costs trust.
+ * veto → content gate) over a short settle window, and when a probe passes asks the
+ * SW to inject the engine and open the rule's mode. A Reader or Gallery rule is the
+ * user's own choice and opens on every page it matches; only Smart pick judges the page,
+ * and there every ambiguity resolves toward NOT opening — a miss costs one manual click,
+ * a wrong open costs trust.
  * It only READS the page; the one thing it ever adds is the enable-time confirmation
  * chip (its own shadow host, via OBR._showAutoChip).
  */
@@ -23,8 +25,8 @@
   OBR._autoSuppressed = OBR._autoSuppressed || new Set();
 
   // Probe schedule (ms after arm): forum posts and SPA content render late, so retry a
-  // few times — veto first, then gate, every probe — then give up quietly (no badge, no
-  // toast). Overridable before injection for tests (OBR._sentinelDelays).
+  // few times — Smart pick re-runs veto then gate on every probe — then give up quietly
+  // (no badge, no toast). Overridable before injection for tests (OBR._sentinelDelays).
   const DELAYS = OBR._sentinelDelays || [0, 1000, 2500, 5000];
 
   // Exact schema.org @type strings. A top-level list-ish node VETOES the open; a
@@ -124,10 +126,23 @@
     return !!h && getComputedStyle(h).display !== 'none';
   }
 
+  // Focus sits where the user types: a text field, an editor, or a frame (old forum reply
+  // boxes are iframe editors). Shadow roots are followed to the element that holds focus.
+  function typingFocus() {
+    let el = document.activeElement;
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
+    if (!el || el === document.body || el === document.documentElement) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'IFRAME') return true;
+    return tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|color|file|image|hidden)$/i.test(el.type || '');
+  }
+
   // One full ladder pass. Returns { mode } on a pass; otherwise a string outcome —
   // terminal ('suppressed' | 'overlay-open' | 'no-rule' | 'stale') or retryable
-  // ('vetoed' | 'gate': content may still be rendering, the next probe re-checks).
-  async function probe(token) {
+  // ('vetoed' | 'gate': content may still be rendering, the next probe re-checks), and on
+  // the last probe 'typing'. `isFinal` marks the last probe of the settle window.
+  async function probe(token, isFinal) {
     // Step 0 — suppression & state.
     if (OBR._autoSuppressed.has(OBR._autoPageKey())) return 'suppressed';
     if (hostVisible('obr-host') || hostVisible('obr-gallery-host')) return 'overlay-open';
@@ -136,22 +151,28 @@
     if (token !== armToken) return 'stale';
     const rule = OBR.matchSiteRuleEx(location.href, settings.siteRules);
     if (!rule || rule.auto !== true) return 'no-rule';
-    // Step 2 — metadata veto, before the gate on every probe.
-    if (metadataVerdict() === 'veto') return 'vetoed';
-    // Step 3 — content gate by the rule's mode. A 0 ("off") threshold falls back to the
-    // default: for the TOOLBAR auto-pick 0 disables a signal, but the sentinel opening
-    // with no gate at all would auto-open every page — never.
+    // A 0 ("off") threshold falls back to the default: for the TOOLBAR auto-pick 0
+    // disables a signal, but here it would make every page pass the content checks.
     const minWords = settings.autoTextMinWords > 0 ? settings.autoTextMinWords : OBR.DEFAULTS.autoTextMinWords;
     const anchor = settings.autoAnchorWords > 0 ? settings.autoAnchorWords : OBR.DEFAULTS.autoAnchorWords;
     const minImgs = settings.autoGalleryMin > 0 ? settings.autoGalleryMin : OBR.DEFAULTS.autoGalleryMin;
-    const proseOk = () => {
-      const st = OBR._proseStats();
+    const proseOk = (opts) => {
+      const st = OBR._proseStats(opts);
       return st.words >= minWords && st.maxBlock >= anchor;
     };
-    let mode = null;
-    if (rule.mode === 'text') mode = proseOk() ? 'text' : null;
-    else if (rule.mode === 'images') mode = imageGatePasses(minImgs) ? 'images' : null;
-    else mode = proseOk() ? 'text' : (imageGatePasses(minImgs) ? 'images' : null); // 'auto': article wins
+    // Reader or Gallery: the user picked the view, so it opens on every page the rule
+    // matches, list pages included, and no veto applies. The content checks only time it:
+    // a page that renders late opens once its content shows ({ divs: true } also sees a post
+    // kept in one <div> split by <br>), and any page on the last probe — unless a text box has
+    // focus by then, where the reader's keys would swallow what the user types.
+    if (rule.mode === 'text' || rule.mode === 'images') {
+      if (isFinal) return typingFocus() ? 'typing' : { mode: rule.mode };
+      return (imageGatePasses(minImgs) || proseOk({ divs: true })) ? { mode: rule.mode } : 'gate';
+    }
+    // Smart pick. Step 2 — metadata veto, before the gate on every probe.
+    if (metadataVerdict() === 'veto') return 'vetoed';
+    // Step 3 — content gate: an article wins, else an image set, else nothing.
+    const mode = proseOk() ? 'text' : (imageGatePasses(minImgs) ? 'images' : null);
     return mode ? { mode } : 'gate';
   }
 
@@ -169,9 +190,9 @@
     state.outcome = outcome;
     state.mode = mode || '';
     if (justEnabled) {
-      // The user just enabled auto-open from this page and it did NOT qualify (a list
-      // page, most likely): confirm the switch flipped instead of silently doing
-      // nothing — but never by wrongly opening.
+      // The user just enabled auto-open from this page and it did not open (a list page
+      // under Smart pick, or a text box in focus at the last probe): confirm the switch
+      // flipped instead of silently doing nothing — but never by wrongly opening.
       justEnabled = false;
       if (outcome !== 'opened') {
         try { OBR._showAutoChip('enabled', OBR.normalizeHost(location.href)); } catch (e) { /* */ }
@@ -201,7 +222,7 @@
       await whenVisible();
       if (token !== armToken) return;
       let res;
-      try { res = await probe(token); } catch (e) { res = 'gate'; }
+      try { res = await probe(token, i === DELAYS.length - 1); } catch (e) { res = 'gate'; }
       if (token !== armToken || res === 'stale') return;
       state.probesDone = i + 1;
       if (res && typeof res === 'object') {
@@ -210,7 +231,7 @@
         return;
       }
       if (res === 'suppressed' || res === 'overlay-open' || res === 'no-rule') return finish(res, '');
-      last = res; // 'vetoed' | 'gate' — content may still be rendering; next probe re-runs the full ladder
+      last = res; // 'vetoed' | 'gate' | 'typing' — content may still be rendering; next probe re-runs the full ladder
     }
     finish(last || 'gave-up', '');
   }

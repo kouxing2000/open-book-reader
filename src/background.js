@@ -618,8 +618,8 @@ function setSiteRule(host, mode, opts, then) {
 /* --------------------------------------------------------- auto-open sentinel
  * Per-site auto-open (docs/auto-open-spec.md): rules carrying `auto: true` get a tiny
  * REGISTERED content script (the sentinel) on their granted origins, which runs the
- * strict decision ladder on each page load / SPA navigation and messages back here to
- * open. Registration is DECLARATIVE state in Chrome — this block keeps it in sync with
+ * decision ladder on each page load / SPA navigation and messages back here to open.
+ * Registration is DECLARATIVE state in Chrome — this block keeps it in sync with
  * the settings + the granted permissions. */
 const SENTINEL_ID = 'obr-sentinel';
 const SENTINEL_FILES = ['src/content/settings.js', 'src/content/sentinel.js'];

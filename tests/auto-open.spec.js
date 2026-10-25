@@ -30,13 +30,14 @@ test('auto-opens a forum topic page (prose + anchor block pass)', async ({ page 
   const s = await waitSentinelDone(page);
   expect(s.outcome).toBe('opened');
   expect(s.mode).toBe('text');
+  expect(s.probesDone).toBe(1); // the prose check saw the post, so no waiting for the last probe
   expect(await autoOpenMessages(page)).toEqual([{ type: 'obr-auto-open', mode: 'text' }]);
 });
 
-test('a forum index of long topic titles never opens (the anchor-block gate)', async ({ page }) => {
+test('Smart pick never opens a forum index of long topic titles (the anchor-block gate)', async ({ page }) => {
   // 12 rows × ~22 words each pass a naive 200-word total, but no block reaches 80.
   await gotoFixture(page, 'forum-list.html');
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await injectSentinel(page);
   const s = await waitSentinelDone(page);
   expect(s.outcome).not.toBe('opened');
@@ -82,6 +83,7 @@ test('an images rule opens a lazy manga chapter with nothing decoded yet', async
   const s = await waitSentinelDone(page);
   expect(s.outcome).toBe('opened');
   expect(s.mode).toBe('images');
+  expect(s.probesDone).toBe(1); // the image check saw the placeholders on the first probe
   expect(await autoOpenMessages(page)).toEqual([{ type: 'obr-auto-open', mode: 'images' }]);
 });
 
@@ -105,11 +107,108 @@ test('an auto-mode rule resolves text-first (an article always wins)', async ({ 
   expect(s.mode).toBe('text'); // prose wins over a passing image gate
 });
 
+/* ------------------------------------------- Reader / Gallery: the user's pick */
+
+test('a Reader rule opens a list page too, once the settle window ends', async ({ page }) => {
+  // The page passes no content check, so nothing says it has finished rendering: the
+  // open waits for the last probe instead of firing on a half-built page.
+  await gotoFixture(page, 'forum-list.html');
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('opened');
+  expect(s.mode).toBe('text');
+  expect(s.probesDone).toBe(4);
+  expect(await autoOpenMessages(page)).toEqual([{ type: 'obr-auto-open', mode: 'text' }]);
+});
+
+test('a Reader rule opens a picture page on the first probe', async ({ page }) => {
+  await gotoFixture(page, 'manga-lazy.html');
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('opened');
+  expect(s.mode).toBe('text'); // the rule's mode, never the gallery the page looks like
+  expect(s.probesDone).toBe(1);
+});
+
+test('a Gallery rule opens a page that declares itself a list (no veto)', async ({ page }) => {
+  await gotoFixture(page, 'meta-collection-pinned.html');
+  await seedSettings(page, AUTO_IMAGES);
+  await injectSentinel(page);
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('opened');
+  expect(s.mode).toBe('images');
+  expect(await autoOpenMessages(page)).toEqual([{ type: 'obr-auto-open', mode: 'images' }]);
+});
+
+test('a Reader rule opens a post kept in one <div> split by <br> on the first probe', async ({ page }) => {
+  // No <p> anywhere: only the <div>-aware count sees the post, and without it the open
+  // would wait for the last probe.
+  await gotoFixture(page, 'forum-div-post.html');
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('opened');
+  expect(s.mode).toBe('text');
+  expect(s.probesDone).toBe(1);
+});
+
+test('the last-probe open skips a page where a text box has focus', async ({ page }) => {
+  // A late overlay would take the keys of someone already typing (a reply box, a search box).
+  await gotoFixture(page, 'forum-list.html');
+  await page.evaluate(() => {
+    const t = document.createElement('textarea');
+    document.body.appendChild(t);
+    t.focus();
+  });
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page);
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('typing');
+  expect(s.probesDone).toBe(4);
+  expect(await autoOpenMessages(page)).toEqual([]);
+});
+
+test('the typing check holds even when the content shows up on the last probe', async ({ page }) => {
+  // A one-probe schedule makes the first probe the last: the post passes the prose check,
+  // and the focused box must still win.
+  await gotoFixture(page, 'forum-topic.html');
+  await page.evaluate(() => {
+    const t = document.createElement('textarea');
+    document.body.appendChild(t);
+    t.focus();
+  });
+  await seedSettings(page, AUTO_TEXT);
+  await injectSentinel(page, { delays: [0] });
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).toBe('typing');
+  expect(await autoOpenMessages(page)).toEqual([]);
+});
+
+test('Smart pick keeps the narrow count: a CJK footer notice in a <div> does not make an index an article', async ({ page }) => {
+  // Read as a <div>'s own text, the notice alone clears the 80-word anchor (one word per CJK
+  // character) on top of the index's 200 words of titles. Only Reader/Gallery timing may
+  // use that wide count.
+  await gotoFixture(page, 'forum-list.html');
+  await page.evaluate(() => {
+    const footer = document.createElement('div');
+    footer.className = 'footer-notice';
+    footer.textContent = '本站所有帖子仅代表作者个人观点，与本站立场无关。'.repeat(6);
+    document.body.appendChild(footer);
+  });
+  await seedSettings(page, AUTO_AUTO);
+  await injectSentinel(page);
+  const s = await waitSentinelDone(page);
+  expect(s.outcome).not.toBe('opened');
+  expect(await autoOpenMessages(page)).toEqual([]);
+});
+
 /* ------------------------------------------------------------- metadata veto */
 
 test('a declared CollectionPage vetoes a gate-passing index (pinned-announcement hole)', async ({ page }) => {
   await gotoFixture(page, 'meta-collection-pinned.html');
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await injectSentinel(page);
   const s = await waitSentinelDone(page);
   expect(s.outcome).toBe('vetoed');
@@ -118,7 +217,7 @@ test('a declared CollectionPage vetoes a gate-passing index (pinned-announcement
 
 test('carousel Articles nested under itemListElement do NOT suspend the veto', async ({ page }) => {
   await gotoFixture(page, 'meta-carousel-list.html');
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await injectSentinel(page);
   const s = await waitSentinelDone(page);
   expect(s.outcome).toBe('vetoed');
@@ -127,7 +226,7 @@ test('carousel Articles nested under itemListElement do NOT suspend the veto', a
 
 test('og:type=article plays no role — the list veto holds', async ({ page }) => {
   await gotoFixture(page, 'meta-og-sloppy.html');
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await injectSentinel(page);
   const s = await waitSentinelDone(page);
   expect(s.outcome).toBe('vetoed');
@@ -136,7 +235,7 @@ test('og:type=article plays no role — the list veto holds', async ({ page }) =
 
 test('NewsArticle + BreadcrumbList MUST open (exact-@type matching, @graph, arrays)', async ({ page }) => {
   await gotoFixture(page, 'meta-news-breadcrumb.html');
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await injectSentinel(page);
   const s = await waitSentinelDone(page);
   expect(s.outcome).toBe('opened');
@@ -145,7 +244,7 @@ test('NewsArticle + BreadcrumbList MUST open (exact-@type matching, @graph, arra
 
 test('a short post declaring DiscussionForumPosting stays closed — claims never lower the bar', async ({ page }) => {
   await gotoFixture(page, 'meta-short-post.html');
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await injectSentinel(page);
   const s = await waitSentinelDone(page);
   expect(s.outcome).not.toBe('opened');
@@ -244,7 +343,7 @@ test('a hidden tab defers probing until it becomes visible', async ({ page }) =>
 
 test('the enable flow shows a confirmation chip when the enabling page does not qualify', async ({ page }) => {
   await gotoFixture(page, 'forum-list.html'); // the user enabled from a LIST page
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await page.evaluate(() => { (globalThis.OBR = globalThis.OBR || {})._justEnabled = true; });
   await injectSentinel(page);
   const s = await waitSentinelDone(page);
@@ -260,7 +359,7 @@ test('the enable flow shows a confirmation chip when the enabling page does not 
 
 test('an ordinary (registered) load never shows the confirmation chip', async ({ page }) => {
   await gotoFixture(page, 'forum-list.html');
-  await seedSettings(page, AUTO_TEXT);
+  await seedSettings(page, AUTO_AUTO);
   await injectSentinel(page); // no _justEnabled flag
   await waitSentinelDone(page);
   expect(await page.evaluate(() => !!document.getElementById('obr-auto-chip-host'))).toBe(false);

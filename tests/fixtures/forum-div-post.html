@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>周末爬山记 (synthetic test fixture)</title>
+</head>
+<body>
+<!-- A forum topic page from an older template: the post is ONE <div> whose lines are split
+     by <br>, with no <p> anywhere, so the narrow prose count reads 0 words. A quote of an
+     earlier post sits in a nested <div>, and the navigation is links. Only the post's own
+     text should count as its anchor block. -->
+<div id="header"><a href="/">首页</a> | <a href="/board">户外版</a> | <a href="/search">搜索</a> | <a href="/login">登录</a></div>
+<div id="main">
+  <table class="thread">
+    <tr>
+      <th class="author">walker</th>
+      <td class="post">
+        <h4>[原创] 周末爬山记</h4>
+        <div class="post-body" id="post-1">
+          <div class="quote">引用楼上：这条线下雨天千万别去，石阶很滑。</div>
+          周六一早我们六点出发，坐第一班车到山脚，天刚亮，雾还没有散开。<br />
+          前半段是石阶，走得不快，路边的竹林里一直有鸟在叫，空气凉凉的，带着泥土和青草的味道。<br />
+          到半山腰的凉亭歇了一会儿，喝了点热水，吃了两个包子，看见云从山谷里慢慢升上来，像有人在下面烧水。<br />
+          后半段没有台阶了，全是碎石和树根，有一段要手脚并用往上爬，同行的朋友第一次走这条线，说腿一直在抖。<br />
+          中午到了山顶，风很大，云一下子全散开，远处的村子、田地和河都露了出来，大家都不说话，就站着看了很久。<br />
+          下山换了另一条路，绕过一片茶园，问了采茶的阿姨怎么走，她还送了我们一小包新茶。<br />
+          回到山脚已经是下午四点，脚底磨出了一个泡，但是一点都不后悔，下次想挑个秋天再来一次。<br />
+          <a href="/photos/1">相册</a>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <th class="author">reader2</th>
+      <td class="post"><div class="post-body" id="post-2">谢谢分享，收藏了。</div></td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>

@@ -1349,7 +1349,8 @@
   /* ---------------------------------------------------------- prose heuristics
    * "Article-ness" signals shared by the toolbar auto-mode (gallery.js _autoToggle),
    * the reader's suspect-extraction banner, AND the auto-open sentinel — ONE
-   * implementation so the three verdicts always agree. (Lived in reader.js
+   * implementation, so the three verdicts always agree; the sentinel alone also asks
+   * for { divs: true }, to time a Reader or Gallery rule's open (see _proseStats). (Lived in reader.js
    * originally; moved here because the sentinel loads only settings.js+sentinel.js.)
    * DOM access is strictly call-time — see the load-time constraint at the top.
    *
@@ -1374,18 +1375,45 @@
     return (t.match(CJK_RE) || []).length + (t.replace(CJK_RE, ' ').match(/\S+/g) || []).length;
   };
 
+  // A <div>'s own running text: its text nodes and inline children, never a block child
+  // (counted on its own turn), a link (a list of topic titles is links, a post is not) or
+  // a form control (a jump-to-board <select> is a list too). Case-blind: SVG tags are lowercase.
+  const OWN_TEXT_SKIP = /^(A|DIV|P|LI|UL|OL|DL|BLOCKQUOTE|TABLE|SECTION|ARTICLE|ASIDE|NAV|HEADER|FOOTER|MAIN|FORM|FIGURE|PRE|H[1-6]|SCRIPT|STYLE|NOSCRIPT|TEMPLATE|SELECT|OPTION|TEXTAREA|BUTTON|LABEL|DATALIST|SVG)$/i;
+  function ownText(el) {
+    let s = '';
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) s += n.data + ' ';
+      else if (n.nodeType === 1 && !OWN_TEXT_SKIP.test(n.tagName)) s += ownText(n) + ' ';
+    }
+    return s;
+  }
+
   // { words, maxBlock }: total words in substantial prose leaf blocks, and the word
   // count of the single largest leaf block (the auto-open "anchor block" — a forum
   // index can total 200 words of long topic titles, but only a real post carries one
   // substantial paragraph).
-  OBR._proseStats = function () {
+  // opts.divs also counts each <div>'s own text as a block, for forums whose posts are a
+  // <div> split by <br>. Only the auto-open sentinel asks for it, and only to time a
+  // Reader or Gallery rule's open. Every DECISION keeps the narrow count — the toolbar's
+  // pick and the sentinel's Smart pick — because the wide one passes list pages (a CJK
+  // footer notice in a <div> clears the 80-word anchor alone) and could flip an image page
+  // near the 200-word line from gallery to reader (docs/audit/sweep-2026-09-04.md A4-1).
+  OBR._proseStats = function (opts) {
     let words = 0, maxBlock = 0;
-    document.querySelectorAll('p, blockquote, li').forEach((el) => {
-      if (el.querySelector('p, blockquote, li')) return; // leaf blocks only — no nesting double-count
-      const w = OBR._countWords(el.textContent);
+    const add = (w) => {
       if (w > maxBlock) maxBlock = w;
       if (w >= MIN_PARA_WORDS) words += w;
+    };
+    document.querySelectorAll('p, blockquote, li').forEach((el) => {
+      if (el.querySelector('p, blockquote, li')) return; // leaf blocks only — no nesting double-count
+      add(OBR._countWords(el.textContent));
     });
+    if (opts && opts.divs) {
+      document.querySelectorAll('div').forEach((el) => {
+        if (el.closest('p, blockquote, li')) return; // already inside a block counted above
+        add(OBR._countWords(ownText(el)));
+      });
+    }
     return { words, maxBlock };
   };
 
@@ -1442,7 +1470,7 @@
   // Transient auto-open status chip, in its OWN tiny shadow host so it rides above
   // either engine's overlay — and can exist with no engine at all (the enable-time
   // confirmation, §3.1 of docs/auto-open-spec.md). kind: 'opened' (auto-opened; carries
-  // the Stop button) | 'enabled' (auto-open armed but this page didn't qualify) |
+  // the Stop button) | 'enabled' (auto-open armed but this page did not open) |
   // 'stopped' (feedback after Stop). Best-effort UI: never throws into an open().
   // Shared bottom-chip shell (the auto-open chip and the engagement chip must look like
   // one family — same position, same skin).

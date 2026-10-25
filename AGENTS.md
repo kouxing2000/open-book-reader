@@ -100,13 +100,17 @@ each, CJK-aware) off the live DOM, so it's cheap and robust.
 counts no other element, so an article whose body copy sits in `<div>`s (older CMS templates;
 `paulgraham.com` uses `<font>` in tables) reports ZERO prose words while a reader sees a long
 article. Measured live and pinned by `tests/fixtures/div-paragraph-article.html`. The sentinel's
-ladder reads the same count and inherits the same blindness. **Do NOT "fix" this by adding `div`
+Smart pick reads the same count and inherits the same blindness. A Reader or Gallery rule
+is not gated at all (it opens every page it matches); its timing alone uses
+`_proseStats({ divs: true })`, which also reads a `<div>`'s own non-link text, so a forum post split
+by `<br>` opens at once. That wide count passes list pages (a CJK footer notice in a `<div>` clears
+the 80-word anchor alone), so no decision may use it. **Do NOT "fix" this by adding `div`
 to the selector without measuring the reverse risk first** — the gallery branch also needs
 `imageCount() >= autoGalleryMin`, and across the 42-site sweep no real article met both, so the
 measured incidence of the bug is zero. Meanwhile `qiita.com` sits at 156 prose words with 17 tiles,
 correctly a gallery today and close enough to the 200-word line that counting `div` text could push
-it over; the sweep records no `div`-counted total, so how close is unmeasured. A widened rule would
-also make the pre-gesture sentinel scan every `div` on every page load. See
+it over; the sweep records no `div`-counted total, so how close is unmeasured. (The sentinel's own
+`div` scan runs only on sites with an auto-open rule, at most once per probe.) See
 `docs/audit/sweep-2026-09-04.md` A4-1.
 
 **Two modes, one namespace**: `reader.js` → `OBR.open/close/toggle` (`#obr-host`); `gallery.js` →
@@ -385,7 +389,8 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
   `chrome.tabs.query`. Adding `tabs` broadens permissions for nothing and is a Web Store review flag.
 
 - Prose counting (`OBR._proseStats`/`_countWords`) lives in **settings.js**, shared by the reader,
-  the gallery's `_autoToggle`, AND the sentinel — one implementation so the verdicts agree. It
+  the gallery's `_autoToggle`, AND the sentinel — one implementation so the verdicts agree (the
+  sentinel's `{ divs: true }` only times a Reader/Gallery open; see the known limit). It
   touches the DOM at call time only: settings.js is `importScripts`'d into the SW, where a
   top-level DOM access would kill worker registration.
 

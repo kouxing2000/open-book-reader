@@ -72,12 +72,13 @@ avatars and other repeated noise. The engine is injected **only when invoked** �
 runs against any page otherwise (the one exception is opt-in, below). Styles use
 Constructable Stylesheets inside a Shadow DOM, so strict-CSP sites can't block or interfere.
 
-**Per-site auto-open (opt-in):** right-click → *Auto-open on this site*, and content pages
-there — forum topics, manga chapters, articles — open in reading mode with zero clicks,
-while list and search pages stay untouched. `Esc` always closes (and remembers that page for
-the session), a chip offers one-click stop, and the decision ladder is deliberately strict:
-when unsure, it does nothing (design + rationale in `docs/auto-open-spec.md`). Enabling asks
-once for a permission scoped to that site only.
+**Per-site auto-open (opt-in):** right-click → *Auto-open on this site*, and pages there open
+in reading mode with zero clicks. On Smart pick (what a site with no default view gets), only
+content pages — forum topics, manga chapters, articles — open, and list and search pages stay
+untouched: the decision ladder is deliberately strict, and when unsure it does nothing. A site
+set to Reader or Gallery opens every matching page in that mode. `Esc` always closes (and remembers that page for
+the session), and a chip offers one-click stop (design + rationale in
+`docs/auto-open-spec.md`). Enabling asks once for a permission scoped to that site only.
 
 ## Permissions
 
