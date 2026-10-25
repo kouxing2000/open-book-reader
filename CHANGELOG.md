@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   started typing in a text box. To keep a site's list pages closed, limit the rule to a path
   such as `example.com/t/*`, or use Smart pick, which still decides page by page and leaves
   list pages alone.
+- **Save as PDF names the file after the article.** Chrome names a saved PDF after the tab's
+  title, which on most sites carries the site name ("Article - Site"). While the print dialog
+  is open, the tab now shows the article's title, and it gets its own title back when the
+  dialog closes. Where the article's title itself keeps the site name, as many Chinese pages
+  do, and the article opens with its own heading, that heading names the file and heads the
+  printed page.
 
 ## [1.14.1] - 2026-10-22
 

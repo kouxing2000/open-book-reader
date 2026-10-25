@@ -684,7 +684,7 @@
   function printReader() {
     if (printing) return; // a print is already in flight; let the modal dialog finish first
     printing = true;
-    const title = (lastArticle && lastArticle.title) || document.title;
+    const title = (lastArticle && (lastArticle.headingTitle || lastArticle.title)) || document.title;
     const byline = (lastArticle && lastArticle.byline) || '';
     const content = lastArticle && lastArticle.content ? lastArticle.content : '';
     // Full URL so the saved/printed copy links back to the exact article (query
@@ -725,11 +725,18 @@
     const win = iframe.contentWindow;
     const doc = win && (iframe.contentDocument || win.document);
 
+    // Chrome names a saved PDF after the TOP page's title and ignores the print iframe's, so a
+    // tab titled "Article - Site" saves under that. Show the article's title while the dialog
+    // is open, and put the page's back afterwards unless the page has retitled itself since.
+    // Compare against what the tab read back (shownTitle), never the raw title: the getter
+    // collapses whitespace, so a title with a double space would never match and stay put.
+    let pageTitle = null, shownTitle = null;
     let done = false, timer = 0;
     const cleanup = () => {
       if (done) return;
       done = true; printing = false;
       clearTimeout(timer);
+      if (pageTitle !== null && document.title === shownTitle) document.title = pageTitle;
       try { iframe.remove(); } catch (e) {}
     };
     if (!doc) { cleanup(); return; }
@@ -756,6 +763,9 @@
       // (which would blank the preview / fail the save), and clear it once afterprint wins.
       try { win.addEventListener('afterprint', cleanup); } catch (e) {}
       timer = setTimeout(cleanup, 600000);
+      if (title && document.title !== title) {
+        pageTitle = document.title; document.title = title; shownTitle = document.title;
+      }
       try { win.focus(); win.print(); } catch (e) { cleanup(); }
     };
 
@@ -1876,6 +1886,16 @@
     before.setStart(doc.body, 0);
     before.setEndBefore(h);
     if (before.toString().trim()) return article; // text comes first: a section heading, not the title
+    // A heading that matched the title's FIRST part, when no other part is longer, is the title
+    // without the site name ("标题 - 站名"): print names the saved PDF after it. A later or
+    // shorter part is as likely a channel or kicker ("读书频道", "Opinion"), so it is left alone.
+    // The tag cannot tell them apart: Readability turns every h1 in the body into an h2.
+    const heading = h.textContent.replace(/\s+/g, ' ').trim();
+    const parts = article.title.split(TITLE_SEPS).map(titleKey).filter(Boolean);
+    const hk = titleKey(heading);
+    if (parts.length > 1 && hk === parts[0] && parts.every((k) => k.length <= hk.length)) {
+      article.headingTitle = heading;
+    }
     h.remove();
     article.content = doc.body.innerHTML;
     return article;

@@ -1678,6 +1678,93 @@ test('printReader prints the landing-site host beside a QR that still opens the 
   expect(r.qr).toBe(r.storeQr);
 });
 
+// Chrome proposes the saved PDF's file name from the TOP page's title, never the print
+// iframe's, so the page carries the article's title for exactly as long as the dialog is open.
+// The spaced case: document.title collapses whitespace on read, so a raw-title comparison
+// would never match and the article's title would stay on the tab.
+for (const ogTitle of [null, 'The Art of  Slow\nReading ']) {
+  test(`printReader titles the page after the article while the print dialog is open${ogTitle ? ' (spaced title)' : ''}`, async ({ page }) => {
+    if (ogTitle) {
+      await page.evaluate((t) => {
+        const m = document.createElement('meta');
+        m.setAttribute('property', 'og:title');
+        m.setAttribute('content', t);
+        document.head.appendChild(m);
+      }, ogTitle);
+    }
+    await openReader(page);
+    const r = await page.evaluate(async () => {
+      const OBR = globalThis.OBR;
+      document.title = 'Some page - Example Site';
+      const de = document.documentElement, append = de.appendChild;
+      let frame = null, duringPrint = null;
+      const printed = new Promise((resolve) => {
+        de.appendChild = function (n) {
+          const ret = append.call(this, n);
+          if (n.tagName === 'IFRAME') {
+            frame = n;
+            n.contentWindow.print = () => { duringPrint = document.title; resolve(); };
+          }
+          return ret;
+        };
+      });
+      try { OBR.printReader(); } finally { de.appendChild = append; }
+      await printed;
+      const rawTitle = frame.contentDocument.querySelector('h1').textContent;
+      const articleTitle = rawTitle.replace(/\s+/g, ' ').trim();
+      frame.contentWindow.dispatchEvent(new Event('afterprint'));
+      return { duringPrint, rawTitle, articleTitle, after: document.title };
+    });
+    if (ogTitle) expect(r.rawTitle).toContain('  '); // the spaced og:title is the one in use
+    expect(r.articleTitle).toBe('The Art of Slow Reading');
+    expect(r.duringPrint).toBe(r.articleTitle);
+    expect(r.after).toBe('Some page - Example Site');
+  });
+}
+
+test('a Chinese page whose title keeps the site name prints, and names its PDF, under the heading', async ({ page }) => {
+  // 「慢读这件事 - 每日快讯」: Readability keeps the site name on a CJK title, and the body repeats
+  // the article's own heading, which is the title without it.
+  await gotoFixture(page, 'cjk-title-echo.html');
+  await injectReader(page);
+  await openReader(page);
+  const r = await page.evaluate(async () => {
+    const de = document.documentElement, append = de.appendChild;
+    let frame = null, duringPrint = null;
+    const printed = new Promise((resolve) => {
+      de.appendChild = function (n) {
+        const ret = append.call(this, n);
+        if (n.tagName === 'IFRAME') {
+          frame = n;
+          n.contentWindow.print = () => { duringPrint = document.title; resolve(); };
+        }
+        return ret;
+      };
+    });
+    try { globalThis.OBR.printReader(); } finally { de.appendChild = append; }
+    await printed;
+    const h1 = frame.contentDocument.querySelector('h1').textContent;
+    frame.contentWindow.dispatchEvent(new Event('afterprint'));
+    return { duringPrint, h1, after: document.title };
+  });
+  expect(r.h1).toBe('慢读这件事');
+  expect(r.duringPrint).toBe('慢读这件事');
+  expect(r.after).toBe('慢读这件事 - 每日快讯');
+});
+
+test('only the title\'s leading part stands in for it; a channel or kicker heading does not', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const echo = (title, content) => globalThis.OBR._dropTitleEcho({ title, content }).headingTitle || null;
+    return {
+      lead: echo('如何慢读_读书频道_每日快讯', '<h2>如何慢读</h2><p>正文</p>'),
+      channel: echo('如何慢读_读书频道_每日快讯', '<h2>读书频道</h2><p>正文</p>'),
+      kicker: echo('Opinion | Why slow reading matters', '<h2>Opinion</h2><p>Body.</p>'),
+      whole: echo('慢读这件事', '<h2>慢读这件事</h2><p>正文</p>'),
+    };
+  });
+  expect(r).toEqual({ lead: '如何慢读', channel: null, kicker: null, whole: null });
+});
+
 test('saveSettings persists only changed keys (default changes still apply)', async ({ page }) => {
   await openReader(page);
   await clickReaderAction(page, 'font+'); // changes only fontSize

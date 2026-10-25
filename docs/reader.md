@@ -229,9 +229,15 @@ dark/sepia theme — paper wants white) and deliberately drops ALL `column-*`/`t
 machinery so the browser paginates onto paper instead of printing one clipped spread. It renders into an
 **off-screen** iframe written via `about:blank` + `document.write` — NOT `srcdoc`, because `about:srcdoc`
 is `frame-src`-blocked on strict-CSP sites (GitHub, many news sites) → blank print; the CSS is also
-applied via `adoptedStyleSheets` to dodge strict `style-src`. Fully local, **no new permission**; the
-`<title>` becomes the default PDF filename; a footer shows the full source URL unless the
-`printSourceUrl` setting is turned off (Options page). A second, optional **branding footer**
+applied via `adoptedStyleSheets` to dodge strict `style-src`. Fully local, **no new permission**.
+Chrome names the saved PDF after the TOP page's title and ignores the iframe's `<title>`, so
+`printReader` shows the article's title in the tab while the dialog is open and puts the page's back
+on `afterprint` (unless the page retitled itself meanwhile). The title it uses is
+`headingTitle` when `dropTitleEcho` found the body's heading equal to the leading part of a title
+that keeps the site name ("标题 - 站名") and no other part is longer; else the article's title. A
+later or shorter part is as likely a channel or kicker, and the tag cannot tell them apart, because
+Readability turns every body h1 into an h2. A footer shows the full source URL unless
+the `printSourceUrl` setting is turned off (Options page). A second, optional **branding footer**
 (`printBranding`, default on) appends a small "Open Book Reader" line + a **QR code to the Chrome
 Web Store listing** (`STORE_URL` — the same public URL as the README / landing "Add to Chrome"
 button, so no new exposure) so a shared PDF sends readers to install — a growth hook, still fully
