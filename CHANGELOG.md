@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.2] - 2026-10-26
+
+- **Turning pages over a video no longer copies it.** The page-turn animation used to copy every
+  video, audio clip and embedded document on the page, and each copy loaded its media by
+  itself, so one turn on a page with three videos could start dozens of players. The copies
+  now show the video's poster or a blank box of the same size. This targets a reported crash
+  of the whole page when turning back and forth over a playing video.
+- **A playing video pauses when a page turn carries it out of view**, and stays paused when
+  you come back until you press play. Closing the reader pauses video and audio. Audio keeps
+  playing while you turn pages, and a muted clip or a video in picture-in-picture is left
+  alone.
+
 ## [1.15.1] - 2026-10-25
 
 - **An auto-open rule set to Reader or Gallery now opens every page it matches.** It used to
@@ -570,7 +582,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.15.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.15.2...HEAD
+[1.15.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.2
 [1.15.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.1
 [1.15.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.0
 [1.14.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.14.1
