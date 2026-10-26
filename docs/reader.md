@@ -181,6 +181,17 @@ somewhere else in the article: the long-running "the flip sometimes takes the wr
   > without them**, `40x1400` once `width: auto` is dropped. An attribute-based version looks like a
   > root-cause fix, tests green on "the attributes were written", and leaves the bug fully in place.
 
+**Media in the snapshot is inert.** A cloned `<video>`/`<audio>` is a NEW player that fetches,
+buffers and decodes its source by itself, and a curl turn copies the snapshot ~20 times, so
+`buildFlipSnapshot()` strips every `src`, `<source>` and `<track>` from it after pinning: the panels
+show the poster, or a black box, at the pinned size. It must be `removeAttribute`: `src = ''` is
+still a src and runs the load algorithm. The strip lands before Chromium's resource selection,
+which runs as a later task and finds nothing to load, so neither the detached snapshot nor its
+copies ever create a player. An `<object>`/`<embed>` copy would be a whole nested document (Readability
+keeps one naming YouTube or Vimeo), so each is replaced by an empty inline-block of the live one's
+measured size. The live strip's players are never touched, so a playing video keeps playing under
+the turn. Pinned by the `copies no live media player` test.
+
 Both are then **verified rather than assumed**. `flipOverlayValid()` asks the narrow question — do
 the columns this turn ANIMATES carry the same content in both flows? — because a divergence past the
 last animated column cannot be put on screen, and treating it as a wrong page costs the animation for
@@ -192,7 +203,7 @@ the panels depend on, tested directly. When the answer is no, `abortFlipOverlay(
 and lets the (already-correct) instant jump stand — a missing animation is a far smaller bug than a
 wrong page, but it is not free either. This one guard is the whole safety net for anything still
 carrying a load-dependent box that the pin does not cover, which is cheaper than growing per-element
-machinery — and `mediaCensus().unpinned` counts exactly those: `object`, `embed`, `canvas`, `audio`.
+machinery — and `mediaCensus().unpinned` counts exactly those: `canvas`, `audio`.
 (Not `iframe` or `form` — `sanitizeContentHTML` strips both, so they can never be in the flow.)
 
 > **Two ways to write this guard that LOOK right and detect nothing. Both were written, and both

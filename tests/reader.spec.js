@@ -560,6 +560,50 @@ test('a turn clone pins its media to the live boxes, so it paginates identically
   expect(r.desyncs).toBe(0);              // and the engine agrees nothing drifted
 });
 
+// A cloned <video>/<audio> is a whole new media player — it fetches, buffers and decodes its
+// source by itself — and a cloned <object>/<embed> is a whole nested document. A curl turn copies
+// the strip ~20 times, so a turn that keeps them starts ~20 of each per element. Every one in the
+// turn must be inert; the reader's own must keep playing.
+test('a page turn copies no live media player or embedded document', async ({ page }) => {
+  await gotoFixture(page, 'video-article.html');
+  await injectReader(page);
+  await page.evaluate((ms) => globalThis.OBR.saveSettings({ pageTurn: 'curl', transitionMs: ms }), TURN_MS);
+  await openReader(page);
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press('ArrowRight');
+  // A clone that kept its source starts resource selection a task later, then fetches:
+  // give it time to, inside the turn's window.
+  await page.waitForTimeout(250);
+  const r = await page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const live = root.querySelector('.obr-pages:not(.obr-leaf-pages)');
+    const layer = root.querySelector('.obr-flip-layer');
+    const clones = layer ? [...layer.querySelectorAll('video, audio')] : [];
+    const sourced = (m) => !!(m.getAttribute('src') || m.querySelector('source'));
+    return {
+      layers: root.querySelectorAll('.obr-flip-layer').length,
+      clones: clones.length,
+      live: clones.filter((m) => sourced(m) || m.currentSrc || m.networkState !== m.NETWORK_EMPTY).length,
+      media: live.querySelectorAll('video, audio').length,
+      mediaSourced: [...live.querySelectorAll('video, audio')].filter(sourced).length,
+      embeds: live.querySelectorAll('embed, object').length,
+      clonedEmbeds: layer ? layer.querySelectorAll('embed, object').length : -1,
+      desyncs: globalThis.OBR._diagReader().flipDesyncs,
+    };
+  });
+
+  expect(r.layers).toBe(1);                 // the turn is still animating...
+  expect(r.desyncs).toBe(0);                // ...and its stand-in boxes paginate exactly like the live strip
+  expect(r.media).toBe(5);                  // the fixture's four videos and one audio all survive extraction
+  expect(r.embeds).toBe(1);                 // and so does its YouTube-named <embed>
+  expect(r.clones).toBeGreaterThanOrEqual(r.media * 2); // a curl turn really does copy them, many times over
+  expect(r.live).toBe(0);                   // and not one copy is a player
+  expect(r.clonedEmbeds).toBe(0);           // nor a nested document
+  expect(r.mediaSourced).toBe(r.media);     // the reader's own players keep their sources
+});
+
 // The guard of last resort, driven through the only thing that reproduces a re-paginating
 // clone: a snapshot whose media collapse (OBR._pinPass seam, same shape as OBR._fitPass —
 // and note it pins to ZERO rather than skipping, because a merely un-pinned clone re-fetches

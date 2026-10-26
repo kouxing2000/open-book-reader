@@ -3159,13 +3159,13 @@
     let failed = 0;
     for (let i = 0; i < imgs.length; i++) if (imgs[i].complete && !imgs[i].naturalWidth) failed++;
     // `unpinned` is the count that can actually explain a desync now: replaced elements whose
-    // box depends on load state, which buildFlipSnapshot does NOT pin and sanitizeContentHTML
-    // does NOT strip. (It strips script/style/noscript/iframe/form, so those cannot appear —
-    // an earlier draft of this line listed iframe, which could never have counted one.)
+    // box depends on load state, which buildFlipSnapshot neither pins nor replaces with a sized
+    // box, and sanitizeContentHTML does NOT strip. (It strips script/style/noscript/iframe/form,
+    // so those cannot appear.)
     return {
       imgs: imgs.length, failed: failed,
       vids: pagesEl.querySelectorAll('video').length,
-      unpinned: pagesEl.querySelectorAll('object, embed, canvas, audio').length,
+      unpinned: pagesEl.querySelectorAll('canvas, audio').length,
     };
   }
 
@@ -3315,12 +3315,12 @@
    * the tree cannot change mid-turn) but would re-measure for all 19. */
   let flipSnapshot = null;
   function buildFlipSnapshot() {
-    const media = pagesEl.querySelectorAll('img, video');
-    const boxes = [];
-    for (let i = 0; i < media.length; i++) {
-      const r = media[i].getBoundingClientRect();
-      boxes.push({ w: r.width, h: r.height });
-    }
+    const measure = (els) => Array.from(els, (el) => {
+      const r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height };
+    });
+    const boxes = measure(pagesEl.querySelectorAll('img, video'));
+    const embedBoxes = measure(pagesEl.querySelectorAll('object, embed'));
     const snap = pagesEl.cloneNode(true);
     snap.classList.add('obr-leaf-pages');      // keep .obr-pages too (it carries the styling)
     snap.style.transition = 'none';
@@ -3339,6 +3339,27 @@
       cloned[i].style.width = (collapse ? 0 : boxes[i].w) + 'px';
       cloned[i].style.height = (collapse ? 0 : boxes[i].h) + 'px';
     }
+    // A cloned <video>/<audio> is a NEW media player: it fetches, buffers and decodes its source
+    // on its own, and a curl turn makes ~20 copies of this snapshot, so every turn would start
+    // ~20 extra players per element in the article, each decoding the same video.
+    // Strip every source so the panels hold inert boxes: the poster if there is one, else black.
+    // The box is unchanged — a video is pinned above, and audio controls keep their own height.
+    // removeAttribute, never src = '': an empty src is still a src, and runs the load algorithm.
+    for (const m of snap.querySelectorAll('video, audio')) {
+      m.removeAttribute('src');
+      m.querySelectorAll('source, track').forEach((s) => s.remove());
+      if (m.tagName === 'VIDEO') m.style.background = '#000';
+    }
+    // An <object>/<embed> copy is worse: a whole nested document each (Readability keeps one
+    // that names YouTube or Vimeo), so it becomes an empty box of the size the live one draws.
+    // The snapshot is detached, so nothing in it has loaded yet. An inner fallback <embed> is
+    // replaced after its <object> already was, inside the discarded subtree: harmless.
+    snap.querySelectorAll('object, embed').forEach((el, i) => {
+      const box = document.createElement('span');
+      box.style.cssText = 'display: inline-block; background: #000; width: '
+        + embedBoxes[i].w + 'px; height: ' + embedBoxes[i].h + 'px';
+      el.replaceWith(box);
+    });
     return snap;
   }
 
