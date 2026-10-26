@@ -192,7 +192,8 @@ npx playwright install chromium                # first run only
   `chrome.downloads` works and the SW fetches cross-origin via `host_permissions`.
 - `reader.spec.js` — text engine: extraction, Shadow render, pagination, flipping, Home/End, theme,
   font size, progress/resume, page-scroll sync on open/close, close/toggle, settings persistence,
-  the double-injection guard, the picture viewer, long pictures cut into strips.
+  the double-injection guard, the picture viewer, long pictures cut into strips, video and audio
+  under page turns (inert turn clones, pause on turn/close, fullscreen keys).
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
   (stubbed SW), plain-source videos (still tiles, the in-grid player, big-view playback, Space, slideshow, ZIP skip), mode switching, page-scroll sync on open/close and the open cue, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
   by real archive parsers.

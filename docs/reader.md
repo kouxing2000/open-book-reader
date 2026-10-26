@@ -80,6 +80,39 @@ same spread. The rules, each pinned in `reader.spec.js` / `reader-touch.spec.js`
   the document keydown handler only takes Esc and leaves every other key to the viewer's native
   scrolling.
 
+**Video and audio in an article play in place, and a video plays only on the spread you see.**
+`applySpread()` ends in `pauseHiddenVideos()`, so every route to a new spread (turn, Home/End, a
+relayout's re-anchor) pauses a playing `<video>` whose column is no longer on the spread; coming
+back, it stays paused until the user presses play. A capture-phase `play` listener on `.obr-pages`
+does the same for a video that autoplays WITH sound off-spread (allowed once the page has had a
+user gesture), which would otherwise play unseen until the first turn; media events do not bubble,
+but they pass a capture listener. It acts on `autoplay` videos only: any other play is the user's
+(a media key, the browser's media controls) and plays on until the next turn. `pauseHiddenVideos()` measures only a playing video, so idle ones
+cost one `querySelectorAll` per spread change.
+- **Two kinds are never paused** (`leaveAlone`). A muted autoplay clip (`autoplay` + `muted`, the
+  GIF-style loop, often with no controls): Chrome already plays it only while it is visible,
+  pausing and resuming it as it leaves and re-enters view, and the strip's clipping counts. A
+  `pause()` from script cancels that for good, so pausing one froze it with nothing to click.
+  Pinned by the `muted autoplay clip` test, which passes on Chrome's behaviour alone. And a video
+  in picture-in-picture, which is on screen in its own window wherever its page is.
+- **`<audio>` is left playing** on purpose: listening while reading on is what an audio player is
+  for. `close()` pauses video and audio both, because closing only hides the host and a hidden
+  player plays on with no control left to stop it (each open re-renders, so nothing stays paused).
+
+Three rules keep the feature from fighting the player, each pinned in `reader.spec.js`:
+- **A click on a player with controls is the player's**: `video[controls]`/`audio` sit in the click
+  handler's exempt list with links and buttons, or a click on one in an edge band would turn the page
+  AND pause it. A controls-less clip ignores clicks, so the edge band over it still turns.
+- **A fullscreen video owns the keyboard**: the keydown handler returns while
+  `root.fullscreenElement` is set, so arrows seek, Space plays and Esc leaves fullscreen instead of
+  turning (and pausing) behind the video.
+- **No relayout while a reader video is fullscreen**: the window resize that fullscreen causes would
+  re-paginate the strip at full-screen size and can leave the reader on another spread. The check
+  runs when the resize debounce fires, not at the event, so it holds whichever of the resize and the
+  fullscreen-state change lands first. `pauseHiddenVideos()` also does nothing while fullscreen,
+  for the late-media relayout that can still run. The test stubs the fullscreen state, since
+  headless never resizes the window on fullscreen.
+
 **A turn past either end is answered, never dropped** (`bumpEdge`, reached from `flip()` for keys,
 edge clicks and taps alike). The book nudges about 10px the way the turn would have gone, and the
 footer comes up with the indicator reading "End of article" / "Start of article" ahead of the page

@@ -604,6 +604,198 @@ test('a page turn copies no live media player or embedded document', async ({ pa
   expect(r.mediaSourced).toBe(r.media);     // the reader's own players keep their sources
 });
 
+// The reader's media players, by document order:
+// [film, <source> video, audio, GIF-style clip, video autoplaying with sound].
+const LIVE = "document.getElementById('obr-host').shadowRoot.querySelector('.obr-pages:not(.obr-leaf-pages)')";
+function mediaState(page) {
+  return page.evaluate((LIVE) => [...eval(LIVE).querySelectorAll('video, audio')].map((m) => !m.paused), LIVE);
+}
+function playMedia(page, idx) {
+  return page.evaluate(([LIVE, idx]) => Promise.all(idx.map((i) => {
+    const m = eval(LIVE).querySelectorAll('video, audio')[i];
+    m.muted = true; // muted play needs no user gesture
+    return m.play();
+  })), [LIVE, idx]);
+}
+// Which media are wholly inside the visible spread.
+function mediaOnScreen(page) {
+  return page.evaluate((LIVE) => {
+    const vp = document.getElementById('obr-host').shadowRoot.querySelector('.obr-viewport').getBoundingClientRect();
+    return [...eval(LIVE).querySelectorAll('video, audio')]
+      .map((m) => { const r = m.getBoundingClientRect(); return r.left >= vp.left && r.right <= vp.right; });
+  }, LIVE);
+}
+function indicator(page) {
+  return page.evaluate(() => document.getElementById('obr-host').shadowRoot.querySelector('.obr-indicator').textContent);
+}
+async function openVideoArticle(page) {
+  await gotoFixture(page, 'video-article.html');
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' })); // turns land at once, so boxes are final
+  await openReader(page);
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForTimeout(150);
+}
+// Turn forward until the GIF-style clip (media index 3) is on screen; returns how many turns.
+async function turnToClip(page) {
+  for (let n = 1; n <= 12; n++) {
+    await page.keyboard.press('ArrowRight');
+    if ((await mediaOnScreen(page))[3]) return n;
+  }
+  throw new Error('the clip never came on screen');
+}
+
+test('a turn pauses a playing video it carries off the spread, never one still on it, and never audio', async ({ page }) => {
+  await openVideoArticle(page);
+  expect(await indicator(page)).toMatch(/^1–2 /);
+  expect((await mediaOnScreen(page)).slice(0, 3)).toEqual([true, false, false]); // only the film is on the first spread
+
+  await playMedia(page, [0, 2]);
+  await page.keyboard.press('Home');            // re-applies the spread it is already on
+  expect((await mediaState(page)).slice(0, 3)).toEqual([true, false, true]); // a video still on screen plays on
+
+  await page.keyboard.press('ArrowRight');
+  expect((await mediaState(page)).slice(0, 3)).toEqual([false, false, true]); // the film left the spread; audio plays on
+
+  await page.keyboard.press('ArrowLeft');
+  expect((await mediaState(page)).slice(0, 3)).toEqual([false, false, true]); // a video the user started does not restart
+
+  await page.keyboard.press('Escape');           // the host is only hidden on close
+  expect((await mediaState(page)).some(Boolean)).toBe(false);
+});
+
+test('a muted autoplay clip is left to the browser, which plays it only while it is on screen', async ({ page }) => {
+  await openVideoArticle(page);
+  const clipPlays = async () => (await mediaState(page))[3];
+  expect((await mediaOnScreen(page))[3]).toBe(false);
+  await expect.poll(() => page.evaluate((LIVE) => eval(LIVE).querySelectorAll('video')[2].readyState, LIVE)).toBeGreaterThanOrEqual(3);
+  await page.waitForTimeout(200);
+  expect(await clipPlays()).toBe(false);        // loaded, but held back off screen
+
+  await turnToClip(page);
+  await expect.poll(clipPlays).toBe(true);      // on screen: it loops, as the page meant
+
+  await page.keyboard.press('ArrowRight');
+  expect((await mediaOnScreen(page))[3]).toBe(false);
+  await expect.poll(clipPlays).toBe(false);     // turned past: held back again
+
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(clipPlays).toBe(true);      // and back: a clip with no controls never stays frozen
+});
+
+test('a video autoplaying with sound off the spread is paused the moment it starts', async ({ page }) => {
+  // Record every play event in the reader's shadow root (media events do not leave it), so the
+  // test knows the autoplay was really attempted rather than passing on a video that never tried.
+  await page.addInitScript(() => {
+    const attach = Element.prototype.attachShadow;
+    window.__plays = [];
+    Element.prototype.attachShadow = function (init) {
+      const r = attach.call(this, init);
+      r.addEventListener('play', (e) => window.__plays.push(e.target.getAttribute('src')), true);
+      return r;
+    };
+  });
+  await gotoFixture(page, 'video-article.html');
+  await injectReader(page);
+  await page.keyboard.press('Shift');           // a user gesture: Chrome now lets the page autoplay with sound
+  await openReader(page);
+  await expect.poll(() => page.evaluate(() => window.__plays.some((u) => u.endsWith('/clip.webm?talk')))).toBe(true);
+  const talk = await page.evaluate((LIVE) => {
+    const v = eval(LIVE).querySelectorAll('video')[3];
+    return { muted: v.muted, paused: v.paused };
+  }, LIVE);
+  expect((await mediaOnScreen(page))[4]).toBe(false);
+  expect(talk.muted).toBe(false);               // not one the browser holds back by itself
+  expect(talk.paused).toBe(true);               // it started, and the reader stopped it
+});
+
+test('a click on a player with controls is the player\'s, but the edge band over a bare clip still turns', async ({ page }) => {
+  await openVideoArticle(page);
+  const vw = page.viewportSize().width;
+  const band = (box) => { // a point inside both the box and an edge band, or null
+    const left = [box.x, Math.min(box.x + box.width, vw * 0.28)], right = [Math.max(box.x, vw * 0.72), box.x + box.width];
+    const [a, b] = left[1] - left[0] > 8 ? left : right[1] - right[0] > 8 ? right : [NaN, NaN];
+    return Number.isNaN(a) ? null : { x: Math.round((a + b) / 2), y: Math.round(box.y + box.height / 3) };
+  };
+
+  const film = await page.locator('#obr-host .obr-pages video').first().boundingBox();
+  const at = band(film);
+  expect(at).not.toBeNull();
+  const before = await indicator(page);
+  await page.mouse.click(at.x, at.y);
+  // The player waits out a possible double-click (fullscreen) before it toggles playback.
+  await expect.poll(async () => (await mediaState(page))[0]).toBe(true); // the click reached the player
+  expect(await indicator(page)).toBe(before);   // and turned no page
+
+  await turnToClip(page);
+  const clip = await page.locator('#obr-host .obr-pages video').nth(2).boundingBox();
+  const at2 = band(clip);
+  expect(at2).not.toBeNull();
+  const onClip = await indicator(page);
+  await page.mouse.click(at2.x, at2.y);
+  await expect.poll(() => indicator(page)).not.toBe(onClip); // a bare clip ignores clicks: the band turns
+});
+
+test('a video the user keeps playing off the spread plays on: picture-in-picture, a media key', async ({ page }) => {
+  await openVideoArticle(page);
+  await playMedia(page, [0]);
+  await page.keyboard.press('Shift');           // a fresh user gesture, which picture-in-picture needs
+  const pip = await page.evaluate((LIVE) => eval(LIVE).querySelector('video').requestPictureInPicture()
+    .then(() => 'ok', (e) => e.name + ': ' + e.message), LIVE);
+  expect(pip).toBe('ok');
+  await page.keyboard.press('ArrowRight');
+  expect((await mediaOnScreen(page))[0]).toBe(false);
+  expect((await mediaState(page))[0]).toBe(true); // in its own window, it is still on screen
+
+  await page.evaluate(() => document.exitPictureInPicture());
+  await page.keyboard.press('ArrowRight');      // now a turn does pause it
+  expect((await mediaState(page))[0]).toBe(false);
+  await playMedia(page, [0]);                   // stands in for a media key: a play that is not autoplay
+  await page.waitForTimeout(100);
+  expect((await mediaState(page))[0]).toBe(true); // the user's to keep, until the next turn
+});
+
+test('while a video is fullscreen the keys are its own and the reader stays on its spread', async ({ page }) => {
+  await openVideoArticle(page);
+  await playMedia(page, [0]);
+  // Headless never resizes the window on fullscreen, and here a requestFullscreen called from a
+  // button inside the reader's shadow root was refused ("TypeError: not granted"). So the
+  // fullscreen STATE is stood in for — the video, as the reader's shadow root and the document
+  // report it while it is fullscreen — and the resize is driven by hand.
+  const fullscreen = (on) => page.evaluate((on) => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const v = root.querySelector('.obr-pages video');
+    const real = (globalThis.__fsReal = globalThis.__fsReal || new Map());
+    for (const [proto, el] of [[ShadowRoot.prototype, v], [Document.prototype, root.host]]) {
+      if (on) {
+        real.set(proto, Object.getOwnPropertyDescriptor(proto, 'fullscreenElement'));
+        Object.defineProperty(proto, 'fullscreenElement', { configurable: true, get: () => el });
+      } else Object.defineProperty(proto, 'fullscreenElement', real.get(proto));
+    }
+  }, on);
+  await fullscreen(true);
+  const before = await indicator(page);
+  // The box layout() sizes the strip to: it changes with the window, so it moves on any relayout.
+  const strip = () => page.evaluate(() => {
+    const p = document.getElementById('obr-host').shadowRoot.querySelector('.obr-pages');
+    return p.style.width + ' x ' + p.style.height;
+  });
+  const box = await strip();
+
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(300);               // past the resize debounce
+  expect(await indicator(page)).toBe(before);   // no turn behind the video
+  expect(await strip()).toBe(box);              // and no re-pagination at the fullscreen size
+  expect((await mediaState(page))[0]).toBe(true); // so nothing paused it
+
+  await fullscreen(false);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(300);
+  expect(await indicator(page)).toBe(before);   // back on the same spread
+  expect((await mediaState(page))[0]).toBe(true); // still playing
+});
+
 // The guard of last resort, driven through the only thing that reproduces a re-paginating
 // clone: a snapshot whose media collapse (OBR._pinPass seam, same shape as OBR._fitPass —
 // and note it pins to ZERO rather than skipping, because a merely un-pinned clone re-fetches

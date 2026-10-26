@@ -255,6 +255,15 @@
     metaEl = overlay.querySelector('.obr-doc-meta');
     viewportEl = overlay.querySelector('.obr-viewport');
     pagesEl = overlay.querySelector('.obr-pages');
+    // A video autoplaying WITH sound (allowed once the page has had a user gesture) on a spread
+    // the reader is not showing would play unseen until the next turn — Chrome only holds back
+    // muted ones. Autoplay only: any other play is the user's, from a media key or the browser's
+    // media controls, and is theirs to keep. Media events do not bubble, but they do pass a
+    // capture listener.
+    pagesEl.addEventListener('play', (e) => {
+      const v = e.target;
+      if (active && v.tagName === 'VIDEO' && v.autoplay && !root.fullscreenElement && !leaveAlone(v) && offSpread(v)) v.pause();
+    }, true);
     paperEl = overlay.querySelector('.obr-paper');
     indicatorEl = overlay.querySelector('.obr-indicator');
     progressFillEl = overlay.querySelector('.obr-progress-fill');
@@ -281,7 +290,9 @@
       const linked = pictureAt(e.target);
       const modified = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
       if (linked && linkedImage(linked.at) && !modified) e.preventDefault();
-      else if (e.target.closest('a, button, input, label, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
+      // A player with controls takes its own clicks; a controls-less clip ignores clicks, so the
+      // edge band over it still turns the page.
+      else if (e.target.closest('a, button, input, label, video[controls], audio, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
       // The content is in an open shadow root; window.getSelection() can't see selections inside
       // it, so use shadowRoot.getSelection() (Chrome) and fall back to the document selection.
       const sel = root.getSelection ? root.getSelection() : (globalThis.getSelection && getSelection());
@@ -2901,6 +2912,25 @@
     if (!placedByPage && currentSpread >= Math.max(0, Math.ceil(contentColumns / pagesPerSpread) - 1)) noteFinish();
     syncColophonView();
     persistPosition();
+    pauseHiddenVideos();
+  }
+
+  // A video off the visible spread is paused, or it plays on, sound and all, behind pages it is
+  // no longer on; coming back, it stays paused until the user presses play. Audio is left
+  // playing: listening while reading on is what an audio player is for. Nothing is paused while
+  // a video is fullscreen — it is the one thing on screen. Only a playing video is measured, so
+  // idle ones cost one query per spread change.
+  // Two kinds are never the reader's to pause. A muted autoplay clip (a GIF-style loop, often with
+  // no controls): Chrome plays it only while it is visible, pausing and resuming it as it leaves
+  // and re-enters view, and a pause() from here would cancel that for good and freeze it. And a
+  // video in picture-in-picture: it is on screen, in its own window, wherever its page is.
+  const leaveAlone = (v) => (v.autoplay && v.muted) || v === root.pictureInPictureElement;
+  const offSpread = (v) => Math.floor(colOfEl(v) / pagesPerSpread) !== currentSpread;
+  function pauseHiddenVideos() {
+    if (!pagesEl || root.fullscreenElement) return;
+    for (const v of pagesEl.querySelectorAll('video')) {
+      if (!v.paused && !leaveAlone(v) && offSpread(v)) v.pause();
+    }
   }
 
   // An auto-open the user never paged through is not reading: it saves no position and no
@@ -4109,6 +4139,8 @@
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
+    // The host is only hidden, and a hidden player keeps playing with nothing left to stop it.
+    if (pagesEl) pagesEl.querySelectorAll('video, audio').forEach((m) => m.pause());
     clearSpotlight();
     flushReadingTime();
     heldMs = 0; // an open closed untouched keeps none of its per-article time
@@ -4171,7 +4203,11 @@
     clearTimeout(resizeTimer);
     closePop(); // its right offset was measured against the old bar
     refitZoom(); // a rotated phone can turn a fitted picture into a long one, or back
-    resizeTimer = setTimeout(() => { if (!pickerActive) { fitControls(); layout(true); } }, 150);
+    // A reader video going fullscreen resizes the window. Re-paginating behind it at that size
+    // can move the reader to another spread; leaving fullscreen restores the size the layout was
+    // built for. Read when the debounce fires, not at the event, so the guard holds whichever of
+    // the resize and the fullscreen-state change lands first.
+    resizeTimer = setTimeout(() => { if (!pickerActive && !root.fullscreenElement) { fitControls(); layout(true); } }, 150);
   });
 
   document.addEventListener('keydown', (e) => {
@@ -4181,6 +4217,9 @@
     // chrome.* it reaches — tickRead, savePosition — now throws. Retiring the overlay is what
     // stops all of them at once; guarding them one by one would never end.
     if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown);
+    // A fullscreen video owns the keyboard: arrows seek it, Space plays it, Esc leaves fullscreen.
+    // Turning pages hidden behind it would also pause it.
+    if (root.fullscreenElement) return;
     tickRead(); // keyboard activity keeps the reading clock's gaps small
     // The open picture viewer takes the keyboard: Esc closes it, and every other key is left to
     // the viewer, which holds focus and so scrolls on arrows, space and PgUp/PgDn natively.
