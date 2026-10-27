@@ -444,8 +444,8 @@ test('Always open this site asks for that site only, named from the address, not
   expect(await page.locator('#ask-status').textContent()).toContain('Waiting for your answer');
 });
 
-// Allow, as the permission page reports it: the worker writes the auto-open rule, the page sees
-// the site's grant on its next re-ping and hands the article over as a shared open.
+// Allow saves the rule in the permission page before reporting. The share page sees the site's
+// grant on its next re-ping and hands the article over as a shared open.
 test('once this site is allowed, auto-open is on there and the article opens in reading mode', async ({ context, page, extensionId, serviceWorker }) => {
   await serviceWorker.evaluate(() => {
     globalThis.__granted = false;
@@ -464,7 +464,10 @@ test('once this site is allowed, auto-open is on there and the article opens in 
   const perm = await popup;
   await perm.waitForLoadState();
   await serviceWorker.evaluate(() => { globalThis.__granted = true; });
-  await perm.evaluate(() => new Promise((res) => chrome.runtime.sendMessage({ type: 'obr-perms-result' }, () => res())));
+  await perm.evaluate(() => {
+    chrome.permissions.request = (_need, callback) => callback(true);
+  });
+  await perm.locator('#allow').click();
   await expect.poll(() => serviceWorker.evaluate(() => new Promise((res) =>
     chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || [])
       .filter((r) => r.match === 'example.com').map((r) => ({ match: r.match, auto: r.auto }))))))).toEqual([{ match: 'example.com', auto: true }]);

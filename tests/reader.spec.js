@@ -2494,6 +2494,49 @@ test.describe('content override', () => {
     expect(r.acts).toEqual(['Reload page', 'Dismiss']);
   });
 
+  test('retiring an orphaned reader with Pick active releases its picker and page input', async ({ page }) => {
+    await gotoArticle(page);
+    await page.addInitScript(() => {
+      globalThis.chrome = globalThis.chrome || {};
+      chrome.runtime = Object.assign({}, chrome.runtime, { id: 'test-extension-id' });
+    });
+    await page.reload();
+    await injectReader(page);
+    await openReader(page);
+    await page.evaluate(() => {
+      const button = document.createElement('button');
+      button.id = 'after-retire';
+      button.textContent = 'Page control';
+      button.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:1';
+      button.addEventListener('click', () => { window.__pageClicks = (window.__pageClicks || 0) + 1; });
+      document.body.appendChild(button);
+      document.getElementById('obr-host').shadowRoot.querySelector('[data-act="pick"]').click();
+    });
+    await expect(page.locator('#obr-pick-host .obr-pickbar')).toBeVisible();
+    expect(await page.evaluate(() => OBR._diagReader().active)).toBe(true);
+
+    await page.evaluate(() => { delete chrome.runtime.id; });
+    await expect.poll(() => page.evaluate(() => OBR._diagReader().active), { timeout: 10_000 }).toBe(false);
+    await expect(page.locator('#obr-notice')).toBeAttached({ timeout: 10_000 });
+    const retired = await page.evaluate(() => ({
+      readerPresent: !!document.getElementById('obr-host'),
+      pickerPresent: !!document.getElementById('obr-pick-host'),
+      overflow: document.documentElement.style.overflow,
+      active: OBR._diagReader().active,
+    }));
+    await page.keyboard.press('Escape');
+    const afterEscape = await page.evaluate(() => ({
+      readerPresent: !!document.getElementById('obr-host'),
+      pickerPresent: !!document.getElementById('obr-pick-host'),
+      overflow: document.documentElement.style.overflow,
+      active: OBR._diagReader().active,
+    }));
+    const released = { readerPresent: false, pickerPresent: false, overflow: '', active: false };
+    expect({ retired, afterEscape }).toEqual({ retired: released, afterEscape: released });
+    await page.locator('#after-retire').click();
+    expect(await page.evaluate(() => window.__pageClicks)).toBe(1);
+  });
+
   // The regression that made the cure worse than the disease: the one-shot flag guarded the
   // TEARDOWN as well as the banner, so a second overlay reaching _ctxLost was never retired —
   // and the click and keydown guards then swallowed every way of closing it, on a page whose

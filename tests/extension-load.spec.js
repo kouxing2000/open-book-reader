@@ -2,6 +2,11 @@
  * service worker registers and Chrome parses the manifest we ship. */
 
 import { test, expect } from './fixtures.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gotoArticle, injectReader, openReader } from './helpers.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 test('background service worker registers with a valid extension id', async ({ extensionId }) => {
   expect(extensionId).toMatch(/^[a-p]{32}$/); // Chrome extension IDs are 32 chars, a-p
@@ -668,4 +673,302 @@ test('an orphaned engine gets the "reload this page" state, not another dead cli
   });
   expect(out.text).toBe('!');
   expect(out.title).toContain('Reload this page');
+});
+
+test('core settings: enabling auto-open preserves an open reader’s incognito protection', async ({ page, serviceWorker }) => {
+  await gotoArticle(page);
+  await injectReader(page);
+  await page.evaluate(() => { OBR._incognito = true; });
+  await openReader(page);
+  expect(await page.evaluate(() => OBR._diagReader().active)).toBe(true);
+
+  // Replay the worker's actual injection instructions in the harness's page world. Only
+  // Chrome's scripting boundary is replaced: the injected files and sentinel run unchanged.
+  const injections = await serviceWorker.evaluate(async () => {
+    const instructions = [];
+    const real = chrome.scripting.executeScript;
+    chrome.scripting.executeScript = async (spec) => {
+      instructions.push(spec.files ? { files: spec.files } : { func: spec.func.toString(), args: spec.args || [] });
+      return [];
+    };
+    try { await injectSentinelNow(1); } finally { chrome.scripting.executeScript = real; }
+    return instructions;
+  });
+  await page.evaluate(() => {
+    window.__workerMessages = [];
+    chrome.runtime = { sendMessage(msg, cb) { window.__workerMessages.push(msg); if (cb) cb(); } };
+  });
+  for (const instruction of injections) {
+    if (instruction.files) {
+      for (const file of instruction.files) await page.addScriptTag({ path: path.join(ROOT, file) });
+    } else {
+      await page.evaluate(({ func, args }) => (0, eval)('(' + func + ')')(...args), instruction);
+    }
+  }
+  await expect.poll(() => page.evaluate(() => OBR._sentinelState?.outcome)).toBe('overlay-open');
+  expect(await page.evaluate(() => window.__workerMessages)).toEqual([]);
+  expect(await page.evaluate(() => OBR._incognito)).toBe(true);
+
+  await page.keyboard.press('End');
+  await page.evaluate(() => OBR.close());
+  const stored = await page.evaluate(() => new Promise((resolve) => chrome.storage.local.get(
+    ['obr_positions', 'obr_lifetime', 'obr_usage'], resolve)));
+  expect(stored).toEqual({});
+  expect(await page.evaluate(() => OBR.saveSettings({ theme: 'dark' }))).toBe(true);
+});
+
+test('core settings: overlapping worker rule and preference writes retain every change', async ({ serviceWorker }) => {
+  const out = await serviceWorker.evaluate(async () => {
+    await new Promise((resolve) => chrome.storage.sync.set({ obr_settings: { fontSize: 18 } }, resolve));
+    const realGet = chrome.storage.sync.get;
+    chrome.storage.sync.get = function (keys, callback) {
+      return realGet.call(this, keys, (data) => setTimeout(() => callback(data), 25));
+    };
+    try {
+      await Promise.all([
+        new Promise((resolve) => setSiteRule('first.test', 'text', null, resolve)),
+        new Promise((resolve) => setSiteRule('second.test', 'images', null, resolve)),
+        new Promise((resolve) => OBR.storeAutoRule('third.test', resolve)),
+        OBR.saveSettings({ theme: 'dark' }),
+      ]);
+      return await new Promise((resolve) => realGet.call(chrome.storage.sync, 'obr_settings',
+        (data) => resolve(data.obr_settings)));
+    } finally { chrome.storage.sync.get = realGet; }
+  });
+  expect(out.fontSize).toBe(18);
+  expect(out.theme).toBe('dark');
+  expect(out.siteRules).toEqual([
+    { match: 'first.test', mode: 'text' },
+    { match: 'second.test', mode: 'images' },
+    { match: 'third.test', mode: 'auto', auto: true },
+  ]);
+});
+
+test('core settings: a failed stop write retains the rule and its permission', async ({ serviceWorker }) => {
+  const out = await serviceWorker.evaluate(async () => {
+    await new Promise((resolve) => chrome.storage.sync.set({ obr_settings: {
+      siteRules: [{ match: 'stopme.test', mode: 'text', auto: true }],
+    } }, resolve));
+    const realSet = chrome.storage.sync.set;
+    const realRemove = chrome.permissions.remove;
+    const removed = [];
+    chrome.storage.sync.set = function (items, callback) {
+      const oversized = { ...items, obr_settings: { ...items.obr_settings, padding: 'x'.repeat(9000) } };
+      return realSet.call(this, oversized, callback); // real Chrome quota failure and lastError
+    };
+    chrome.permissions.remove = (need, callback) => { removed.push(need); if (callback) callback(true); };
+    try {
+      const ok = await new Promise((resolve) => stopAutoOpen('https://stopme.test/article', resolve));
+      const settings = await new Promise((resolve) => chrome.storage.sync.get('obr_settings',
+        (data) => resolve(data.obr_settings)));
+      return { ok, settings, removed };
+    } finally {
+      chrome.storage.sync.set = realSet;
+      chrome.permissions.remove = realRemove;
+    }
+  });
+  expect(out.ok).toBe(false);
+  expect(out.removed).toEqual([]);
+  expect(out.settings.siteRules).toEqual([{ match: 'stopme.test', mode: 'text', auto: true }]);
+});
+
+test('core settings: an unrelated preference save migrates legacy rules without baking defaults', async ({ serviceWorker }) => {
+  const out = await serviceWorker.evaluate(async () => {
+    await new Promise((resolve) => chrome.storage.sync.set({ obr_settings: {
+      fontSize: 18, sites: { 'legacy.test': { mode: 'images' } },
+    } }, resolve));
+    const before = (await OBR.loadSettings()).siteRules;
+    const saved = await OBR.saveSettings({ theme: 'dark' });
+    const after = await new Promise((resolve) => chrome.storage.sync.get('obr_settings',
+      (data) => resolve(data.obr_settings)));
+    const cleared = await OBR.saveSettings({ siteRules: [] });
+    return { before, saved, after, cleared, remaining: (await OBR.loadSettings()).siteRules };
+  });
+  expect(out.before).toEqual([{ match: 'legacy.test', mode: 'images' }]);
+  expect(out.saved).toBe(true);
+  expect(out.after).toEqual({
+    fontSize: 18, theme: 'dark', siteRules: [{ match: 'legacy.test', mode: 'images' }],
+  });
+  expect(out.cleared).toBe(true);
+  expect(out.remaining).toEqual([]);
+});
+
+test('core settings: a failed read cannot replace settings and does not poison the next save', async ({ serviceWorker }) => {
+  const out = await serviceWorker.evaluate(async () => {
+    await new Promise((resolve) => chrome.storage.sync.set({ obr_settings: { fontSize: 18 } }, resolve));
+    const realGet = chrome.storage.sync.get;
+    const realSet = chrome.storage.sync.set;
+    chrome.storage.sync.get = function (_keys, callback) {
+      // Supply a real callback-scoped lastError without changing the settings item.
+      return realSet.call(chrome.storage.sync, { readFailure: 'x'.repeat(9000) }, () => callback(undefined));
+    };
+    let failed;
+    try { failed = await OBR.saveSettings({ theme: 'dark' }); }
+    finally { chrome.storage.sync.get = realGet; }
+    const saved = await OBR.saveSettings({ columns: 3 });
+    const settings = await new Promise((resolve) => realGet.call(chrome.storage.sync, 'obr_settings',
+      (data) => resolve(data.obr_settings)));
+    return { failed, saved, settings };
+  });
+  expect(out.failed).toBe(false);
+  expect(out.saved).toBe(true);
+  expect(out.settings).toMatchObject({ fontSize: 18, columns: 3 });
+  expect(out.settings.theme).toBeUndefined();
+});
+
+test('core settings: Smart pick reads the auto-open flag after an overlapping enable commits', async ({ serviceWorker }) => {
+  const rules = await serviceWorker.evaluate(async () => {
+    await new Promise((resolve) => chrome.storage.sync.set({ obr_settings: { siteRules: [] } }, resolve));
+    const realGet = chrome.storage.sync.get;
+    const realSet = chrome.storage.sync.set;
+    let pending = 0;
+    chrome.storage.sync.get = function (keys, callback) {
+      pending++;
+      return realGet.call(this, keys, (data) => setTimeout(() => {
+        try { callback(data); } finally { pending--; }
+      }, 25));
+    };
+    chrome.storage.sync.set = function (items, callback) {
+      pending++;
+      return realSet.call(this, items, () => {
+        try { if (callback) callback(); } finally { pending--; }
+      });
+    };
+    try {
+      await Promise.all([
+        new Promise((resolve) => OBR.storeAutoRule('shared.test', resolve)),
+        configureDefault('shared.test', 'auto'),
+      ]);
+      while (pending) await new Promise((resolve) => setTimeout(resolve, 0));
+      return await new Promise((resolve) => realGet.call(chrome.storage.sync, 'obr_settings',
+        (data) => resolve(data.obr_settings.siteRules)));
+    } finally {
+      chrome.storage.sync.get = realGet;
+      chrome.storage.sync.set = realSet;
+    }
+  });
+  expect(rules).toEqual([{ match: 'shared.test', mode: 'auto', auto: true }]);
+});
+
+test('core settings: the permission page keeps a failed auto-open save available to retry', async ({ page, extensionId }) => {
+  const origins = '*://retry.test/*,*://www.retry.test/*';
+  await page.goto(`chrome-extension://${extensionId}/src/permission.html?reason=auto-open&host=retry.test&origins=${encodeURIComponent(origins)}`);
+  const saveError = await page.evaluate(() => {
+    window.__permissionReports = [];
+    window.__closeCount = 0;
+    window.close = () => { window.__closeCount++; };
+    chrome.permissions.request = (_need, callback) => callback(true);
+    chrome.runtime.sendMessage = (msg, callback) => { window.__permissionReports.push(msg); if (callback) callback(); };
+    const realSet = chrome.storage.sync.set;
+    chrome.storage.sync.set = function (items, callback) {
+      return realSet.call(this, { ...items, obr_settings: { ...items.obr_settings, padding: 'x'.repeat(9000) } }, callback);
+    };
+    return chrome.i18n.getMessage('optSaveFailed');
+  });
+  await page.locator('#allow').click();
+  await expect(page.locator('#why')).toHaveText(saveError);
+  expect(await page.evaluate(() => window.__permissionReports)).toEqual([]);
+  expect(await page.evaluate(() => window.__closeCount)).toBe(0);
+  await expect(page.locator('#allow')).toBeEnabled();
+});
+
+for (const action of ['cancel', 'close', 'retry']) {
+  test(`core settings: after a failed popup save, ${action} does not turn the grant into an unsaved rule`, async ({ context, serviceWorker }) => {
+    await serviceWorker.evaluate(async () => {
+      await new Promise((resolve) => chrome.storage.sync.set({ obr_settings: { siteRules: [] } }, resolve));
+      globalThis.__grantHeld = false;
+      globalThis.__workerRuleWrites = 0;
+      globalThis.__sentinelInjections = 0;
+      const realStore = OBR.storeAutoRule;
+      OBR.storeAutoRule = (...args) => { globalThis.__workerRuleWrites++; return realStore(...args); };
+      chrome.permissions.contains = (_need, callback) => callback
+        ? callback(globalThis.__grantHeld) : Promise.resolve(globalThis.__grantHeld);
+      chrome.scripting.executeScript = async () => { globalThis.__sentinelInjections++; return []; };
+      enableAutoOpen('popup.test', { id: 1 });
+    });
+    let popup;
+    await expect.poll(() => {
+      popup = context.pages().find((candidate) => candidate.url().includes('/src/permission.html?'));
+      return !!popup;
+    }).toBe(true);
+    await popup.waitForLoadState('domcontentloaded');
+    await expect(popup.locator('#allow')).toBeVisible();
+    const saveError = await popup.evaluate(() => {
+      chrome.permissions.request = (_need, callback) => callback(true);
+      const realSet = chrome.storage.sync.set;
+      window.__restoreSaving = () => { chrome.storage.sync.set = realSet; };
+      chrome.storage.sync.set = function (items, callback) {
+        return realSet.call(this, { ...items, obr_settings: { ...items.obr_settings, padding: 'x'.repeat(9000) } }, callback);
+      };
+      return chrome.i18n.getMessage('optSaveFailed');
+    });
+    await serviceWorker.evaluate(() => { globalThis.__grantHeld = true; });
+    await popup.locator('#allow').click();
+    await expect(popup.locator('#why')).toHaveText(saveError);
+    expect(await serviceWorker.evaluate(() => permWaiters.length)).toBe(1);
+
+    if (action === 'close') await popup.close();
+    else {
+      if (action === 'retry') await popup.evaluate(() => window.__restoreSaving());
+      await popup.locator(action === 'retry' ? '#allow' : '#cancel').click();
+      await expect.poll(() => popup.isClosed()).toBe(true);
+    }
+    await expect.poll(() => serviceWorker.evaluate(() => permWaiters.length)).toBe(0);
+    const out = await serviceWorker.evaluate(async () => {
+      await OBR._settingsWriteChain;
+      await syncSentinelRegistration();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const rules = await new Promise((resolve) => chrome.storage.sync.get('obr_settings',
+        (data) => resolve(data.obr_settings.siteRules)));
+      return {
+        rules, grantHeld: globalThis.__grantHeld,
+        workerRuleWrites: globalThis.__workerRuleWrites,
+        injections: globalThis.__sentinelInjections,
+      };
+    });
+    expect(out.grantHeld).toBe(true);
+    if (action === 'retry') {
+      expect(out.rules).toEqual([{ match: 'popup.test', mode: 'auto', auto: true }]);
+      expect(out.injections).toBeGreaterThan(0);
+    } else {
+      expect(out.rules).toEqual([]);
+      expect(out.injections).toBe(0);
+    }
+    expect(out.workerRuleWrites).toBe(0);
+  });
+}
+
+test('core settings: a ZIP popup’s broad grant completes a queued auto-open request', async ({ context, serviceWorker }) => {
+  await serviceWorker.evaluate(async () => {
+    await new Promise((resolve) => chrome.storage.sync.set({ obr_settings: { siteRules: [] } }, resolve));
+    globalThis.__grantHeld = false;
+    globalThis.__sentinelInjections = 0;
+    chrome.permissions.contains = (_need, callback) => callback
+      ? callback(globalThis.__grantHeld) : Promise.resolve(globalThis.__grantHeld);
+    chrome.scripting.executeScript = async () => { globalThis.__sentinelInjections++; return []; };
+    requestPerm({ origins: ['*://images.test/*'] }, () => {});
+    enableAutoOpen('queued.test', { id: 1 });
+  });
+  let popup;
+  await expect.poll(() => {
+    popup = context.pages().find((candidate) => candidate.url().includes('/src/permission.html?'));
+    return !!popup;
+  }).toBe(true);
+  await expect(popup.locator('#allowAll')).toBeVisible();
+  expect(await serviceWorker.evaluate(() => permWaiters.length)).toBe(2);
+  await popup.evaluate(() => { chrome.permissions.request = (_need, callback) => callback(true); });
+  await serviceWorker.evaluate(() => { globalThis.__grantHeld = true; });
+  await popup.locator('#allowAll').click();
+  await expect.poll(() => popup.isClosed()).toBe(true);
+  await expect.poll(() => serviceWorker.evaluate(() => permWaiters.length)).toBe(0);
+  const out = await serviceWorker.evaluate(async () => {
+    await OBR._settingsWriteChain;
+    await syncSentinelRegistration();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rules = await new Promise((resolve) => chrome.storage.sync.get('obr_settings',
+      (data) => resolve(data.obr_settings.siteRules)));
+    return { rules, injections: globalThis.__sentinelInjections };
+  });
+  expect(out.rules).toEqual([{ match: 'queued.test', mode: 'auto', auto: true }]);
+  expect(out.injections).toBeGreaterThan(0);
 });

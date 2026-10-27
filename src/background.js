@@ -601,17 +601,14 @@ function createMenus() {
 // object). OBR.upsertSiteRule folds in any legacy `sites` map and does the add/replace/
 // remove — the same shared helper the read (loadSettings) and save paths use.
 // `opts.auto` (optional) sets/clears the auto-open flag; absent preserves it.
-// `then` (optional) runs after the write commits.
+// `then` (optional) receives whether the write committed.
 function setSiteRule(host, mode, opts, then) {
   if (!host) return;
-  chrome.storage.sync.get('obr_settings', (data) => {
-    void chrome.runtime.lastError;
-    const raw = (data && data.obr_settings) || {};
+  return OBR.updateSettings((raw) => {
     OBR.upsertSiteRule(raw, host, mode, opts);
-    chrome.storage.sync.set({ obr_settings: raw }, () => {
-      void chrome.runtime.lastError;
-      if (then) then();
-    });
+  }).then((saved) => {
+    if (then) then(saved);
+    return saved;
   });
 }
 
@@ -703,20 +700,33 @@ async function injectSentinelNow(tabId) {
 // "Auto-open on this site", from the context menu or the share page: ensure the origin permission
 // (via the permission popup when not yet granted — its click is the genuine gesture
 // permissions.request needs), flag the rule, sync registration, arm the current tab (if any).
-// The permission page writes the rule too, on its own Allow (OBR.storeAutoRule), since this
-// worker may not outlive the prompt. Returns false when the host cannot form a match pattern.
+// A held grant permits a direct rule write. The popup for this host owns its rule write,
+// since this worker may not outlive it. A request queued behind another prompt writes here
+// when that prompt grants its access too; the other page cannot commit this host's rule.
+// Returns false when the host cannot form a match pattern.
 function enableAutoOpen(host, tab, ask = requestPerm) {
   const origins = OBR.originsForRule(host);
   if (!origins.length) return false; // host can't form a match pattern — options page explains this case
-  const finish = () => OBR.storeAutoRule(host, async () => {
+  const finish = async (saved) => {
+    if (!saved) return;
     await syncSentinelRegistration(); // storage.onChanged also fires, but be explicit + ordered
     injectSentinelNow(tab && tab.id);
-  });
+  };
   try {
     chrome.permissions.contains({ origins }, (has) => {
       void chrome.runtime.lastError;
-      if (has) return finish();
-      ask({ origins, reason: 'auto-open', host }, (granted) => { if (granted) finish(); });
+      if (has) return void OBR.storeAutoRule(host, finish);
+      ask({ origins, reason: 'auto-open', host }, (granted, prompted) => {
+        if (!granted) return;
+        if (!(prompted && prompted.reason === 'auto-open' && prompted.host === host)) {
+          return void OBR.storeAutoRule(host, finish);
+        }
+        chrome.storage.sync.get(OBR.STORAGE_KEY, (data) => {
+          if (chrome.runtime.lastError) return;
+          const raw = OBR.migrateSiteRules((data && data[OBR.STORAGE_KEY]) || {});
+          finish(raw.siteRules.some((rule) => rule && rule.match === host && rule.auto === true));
+        });
+      });
     });
   } catch (e) {
     console.warn('[OpenBookReader] auto-open enable failed:', e && e.message ? e.message : e);
@@ -748,12 +758,10 @@ chrome.permissions.onRemoved.addListener(() => { syncSentinelRegistration(); });
 // turned off precisely; the storage write re-syncs registration + rebuilds the menu.
 function stopAutoOpen(src, done) {
   const finish = (ok) => { if (done) { try { done(ok); } catch (e) { /* receiver gone */ } } };
-  chrome.storage.sync.get('obr_settings', (data) => {
-    void chrome.runtime.lastError;
-    const raw = (data && data.obr_settings) || {};
-    OBR.migrateSiteRules(raw);
+  let release = [];
+  return OBR.updateSettings((raw) => {
     const rule = OBR.matchSiteRuleEx(src, raw.siteRules);
-    if (!(rule && rule.auto)) return finish(false);
+    if (!(rule && rule.auto)) return false;
     const next = OBR.setRuleAuto(raw.siteRules, rule.match, false);
     // Give the site permission back on exactly the same terms as the options checkbox, so
     // WHERE you turn auto-open off doesn't change what happens to the grant. `remove` needs
@@ -761,16 +769,15 @@ function stopAutoOpen(src, done) {
     // here: unlike the options page there's nothing to report to. Note it DOES change
     // bookkeeping even when it cannot change access — under a covering broad grant the per-site
     // entries disappear from permissions.getAll() while access itself remains (observed).
-    const release = OBR.releasableOrigins(rule, next);
+    release = OBR.releasableOrigins(rule, next);
     raw.siteRules = next;
-    chrome.storage.sync.set({ obr_settings: raw }, () => {
-      void chrome.runtime.lastError;
-      if (release.length) {
-        try { chrome.permissions.remove({ origins: release }, () => { void chrome.runtime.lastError; }); }
-        catch (e) { /* permissions unavailable — the flag is cleared either way */ }
-      }
-      finish(true);
-    });
+  }).then((saved) => {
+    if (saved && release.length) {
+      try { chrome.permissions.remove({ origins: release }, () => { void chrome.runtime.lastError; }); }
+      catch (e) { /* permissions unavailable — the saved rule remains stopped */ }
+    }
+    finish(saved);
+    return saved;
   });
 }
 
@@ -780,14 +787,10 @@ function stopAutoOpen(src, done) {
 // no-op {mode:'auto'}), keep it at mode 'auto' when auto-open is on.
 function configureDefault(host, mode) {
   if (!host) return;
-  if (mode !== 'auto') return setSiteRule(host, mode);
-  chrome.storage.sync.get('obr_settings', (data) => {
-    void chrome.runtime.lastError;
-    const raw = (data && data.obr_settings) || {};
-    OBR.migrateSiteRules(raw);
-    const prev = (raw.siteRules || []).find((r) => r && r.match === host);
-    const act = OBR._configureDefaultAction(prev, 'auto');
-    setSiteRule(host, act.clear ? null : act.mode);
+  return OBR.updateSettings((raw) => {
+    const prev = raw.siteRules.find((r) => r && r.match === host);
+    const act = OBR._configureDefaultAction(prev, mode);
+    OBR.upsertSiteRule(raw, host, act.clear ? null : act.mode);
   });
 }
 
@@ -1134,7 +1137,7 @@ function permsFor(msg, ownHost) {
 }
 
 let permWindowId = null;
-const permWaiters = []; // { need, cb }; cb(granted) runs once the prompt resolves
+const permWaiters = []; // { need, cb }; cb(granted, promptedNeed) runs once the prompt resolves
 
 /* Surviving the prompt: the PAGE holds the request, the worker holds nothing.
  *
@@ -1209,11 +1212,12 @@ function requestSharePerm(need, cb) {
   // Take the replaced asks off the queue now, so an ask arriving while the window closes (a ZIP
   // from another tab) opens its own window instead of being settled with them.
   const replaced = permWaiters.splice(0);
+  const prompted = replaced[0].need;
   permWindowId = null;
   chrome.windows.remove(stale, () => {
     void chrome.runtime.lastError;
     // Each replaced ask ends as whatever Chrome holds now (no grant: a no).
-    replaced.forEach((w) => chrome.permissions.contains(permsOnly(w.need), (has) => w.cb(!!has)));
+    replaced.forEach((w) => chrome.permissions.contains(permsOnly(w.need), (has) => w.cb(!!has, prompted)));
     requestPerm(need, cb);
   });
 }
@@ -1224,11 +1228,13 @@ function requestSharePerm(need, cb) {
 // chrome.permissions.contains per waiter rather than trusting a single granted bit,
 // because waiters may need different permissions and the popup only asked for the
 // first one's. contains is authoritative here — permissions.request commits the grant
-// before its callback (and thus before either event) fires.
+// before its callback (and thus before either event) fires. Each callback also receives the
+// first popup's need: only that page can have committed an auto-open rule on Allow.
 function resolveWaiters() {
   permWindowId = null;
+  const prompted = permWaiters[0] && permWaiters[0].need;
   permWaiters.splice(0).forEach(({ need, cb }) =>
-    chrome.permissions.contains(permsOnly(need), (has) => cb(!!has))
+    chrome.permissions.contains(permsOnly(need), (has) => cb(!!has, prompted))
   );
 }
 

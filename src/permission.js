@@ -47,7 +47,12 @@
     // access Chrome just granted.
     const OBR = globalThis.OBR;
     if (granted && reason === 'auto-open' && host && OBR && OBR.storeAutoRule &&
-        OBR.originsForRule(host).join(',') === origins.join(',')) return void OBR.storeAutoRule(host, report);
+        OBR.originsForRule(host).join(',') === origins.join(',')) {
+      return void OBR.storeAutoRule(host, (saved) => {
+        if (saved) report();
+        else document.getElementById('why').textContent = msg('optSaveFailed', "Couldn't save — try again");
+      });
+    }
     report();
   }
 

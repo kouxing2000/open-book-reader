@@ -2184,11 +2184,10 @@
   /* -------------------------------------------------- open / close */
   // opts.trigger === 'auto': opened by the auto-open sentinel (no gesture) — show the
   // transient "Auto-opened" chip with its escape hatch.
-  // Same re-entrancy guard as reader.js open(): `active` is only set after the settings /
-  // per-site layout pref / hidden-pattern awaits, so a second trigger inside that window used to
-  // start a rival open. Here it would double-build and double-collect rather than cancel (the
-  // gallery has no openGen), which is just as bad. First trigger wins; extras are ignored.
+  // First trigger wins within one mode. A close or a switch to the reader invalidates the
+  // generation, so a delayed storage read cannot finish an open the user has left behind.
   let opening = false;
+  let openGen = 0;
   async function open(opts) {
     // Door 0: never BUILD into a dead world. background.js dispatches even after its probe
     // detects the orphan (it only records the failure), so a trigger after the banner would
@@ -2197,27 +2196,33 @@
     if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown);
     if (active || opening) return;
     opening = true;
-    try { await openInner(opts); } finally { opening = false; }
+    try {
+      if (OBR.close) OBR.close({ suppress: false });
+      await openInner(opts);
+    } finally { opening = false; }
   }
 
   async function openInner(opts) {
     if (active) return;
+    const gen = ++openGen;
     const trigger = opts && opts.trigger;
     const t = OBR._timer ? OBR._timer('[OBR gallery]') : null; // local debug timing (see settings.js)
     settings = await OBR.loadSettings();
+    if (gen !== openGen) return;
     // Per-site layout memory: a host reopens in the layout (+ column count) you left it in. Wall
     // is the default; a site only opens Ordered if it was remembered that way.
     galleryHost = OBR.normalizeHost ? OBR.normalizeHost(location.href) : '';
     let pref = null;
     try { pref = OBR.loadGalleryPref ? await OBR.loadGalleryPref(galleryHost) : null; } catch (e) { pref = null; }
+    if (gen !== openGen) return;
     ordered = pref ? !!pref.ordered : false;
     if (pref && typeof pref.cols === 'number') settings[ordered ? 'galleryOrderedCols' : 'galleryColumns'] = pref.cols;
     fitWidth = !!settings.galleryFitWidth;
     // Per-site image filter (hidden patterns). Fresh filter state each open.
     revealHidden = false; lastHide = null;
     await loadImageFilter();
+    if (gen !== openGen) return;
     if (t) t.mark('settings'); // settings + per-site layout/filter storage reads
-    if (OBR.close) OBR.close({ suppress: false }); // ensure the text reader isn't also showing (defensive — not a user dismissal)
     build();
     applyStylesheet();
     updateLayoutToggle();  // reflect the resolved layout on the Wall/Ordered switch
@@ -2282,6 +2287,7 @@
   /* Close without touching chrome.*: the normal close() flushes three settings through
    * chrome.storage, which is exactly what is broken here. */
   function hardTeardown() {
+    openGen++;
     active = false;
     clearInterval(ctxTimer);
     try { stopAutoScroll(); } catch (e) { /* */ }
@@ -2298,6 +2304,7 @@
   }
 
   function close(opts) {
+    openGen++; // invalidate pending reads even before the gallery becomes active
     if (!active) return;
     clearInterval(ctxTimer);
     if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();

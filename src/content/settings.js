@@ -223,8 +223,11 @@
    * durable on-disk trace of private browsing. Reads still work (resuming from a position saved
    * earlier in a normal window creates no new trace), and DELIBERATE preference writes (theme,
    * font, saved picks, dismissing the rating ask) still persist — the user chose those. Only the
-   * automatic "here is what you were reading" bookkeeping is suppressed. */
-  OBR._incognito = false;
+   * automatic "here is what you were reading" bookkeeping is suppressed.
+   * Keep a value already set: enabling auto-open reinjects this file into a tab whose reader is
+   * open, and no dispatch follows to set the flag again, so resetting it here re-enables those
+   * writes for a private reader. */
+  OBR._incognito = OBR._incognito === true;
   const skipPassiveWrite = () => OBR._incognito === true;
   // Exported so passive writers OUTSIDE this file (e.g. the reader's colophon-impression
   // counter) gate on the same predicate instead of re-testing the flag by hand.
@@ -854,13 +857,12 @@
   // worker, and the permission page on its own Allow. The page is the one that cannot miss it:
   // the worker that asked routinely dies while the prompt is up, and its callback with it.
   OBR.storeAutoRule = function (host, done) {
-    chrome.storage.sync.get('obr_settings', (data) => {
-      void chrome.runtime.lastError;
-      const raw = (data && data.obr_settings) || {};
-      OBR.migrateSiteRules(raw);
+    return OBR.updateSettings((raw) => {
       const prev = raw.siteRules.find((r) => r && r.match === host);
       OBR.upsertSiteRule(raw, host, (prev && prev.mode) || 'auto', { auto: true });
-      chrome.storage.sync.set({ obr_settings: raw }, () => { void chrome.runtime.lastError; if (done) done(); });
+    }).then((saved) => {
+      if (done) done(saved);
+      return saved;
     });
   };
 
@@ -891,30 +893,21 @@
     });
   };
 
-  // Serialize setting writes so two near-simultaneous saves can't interleave their
-  // read-modify-write and drop each other's keys (e.g. the gallery's debounced column-width
-  // and slideshow-seconds persists landing together). Each save waits for the previous to
-  // commit before it reads. Mirrors the savePosition saveChain above. (Cross-PROCESS — two
-  // tabs at once — is still best-effort; chrome.storage offers no lock.)
-  let settingsChain = Promise.resolve();
-
-  // Persist ONLY the keys the user explicitly changes. Merging into the RAW saved
-  // object (not DEFAULTS-merged) means unset keys keep falling back to DEFAULTS at
-  // load time — so changing a default later actually takes effect. (Merging the
-  // full object used to "bake in" the defaults-of-the-day and block future changes.)
-  OBR.saveSettings = function (partial) {
+  // One queue per script realm, retained when settings.js is reinjected into a live page.
+  // Each synchronous mutation reads fresh RAW state, migrates it, and confirms its write.
+  // Returning false aborts without writing. Separate tabs remain best-effort: their queues
+  // do not share a realm, and chrome.storage offers no cross-context transaction.
+  OBR._settingsWriteChain = OBR._settingsWriteChain || Promise.resolve();
+  OBR.updateSettings = function (mutate) {
     const run = () => new Promise((resolve) => {
       try {
         chrome.storage.sync.get(OBR.STORAGE_KEY, (data) => {
-          const savedRaw = (data && data[OBR.STORAGE_KEY]) || {};
-          const nextRaw = Object.assign({}, savedRaw, partial);
-          delete nextRaw.sites; // purge the legacy host-map once anything is written (see OBR.migrateSiteRules)
           try {
-            // Resolve TRUE only on a confirmed write; FALSE on lastError (quota/throttle) or a
-            // throw, so the Options page can show an error instead of a false "Saved ✓" (mirrors
-            // OBR.savePick). No caller reads a settings object back — every call site ignores it.
-            chrome.storage.sync.set({ [OBR.STORAGE_KEY]: nextRaw },
-              () => resolve(!(globalThis.chrome && chrome.runtime && chrome.runtime.lastError)));
+            if (chrome.runtime && chrome.runtime.lastError) return resolve(false);
+            const raw = OBR.migrateSiteRules(Object.assign({}, (data && data[OBR.STORAGE_KEY]) || {}));
+            if (mutate(raw) === false) return resolve(false);
+            chrome.storage.sync.set({ [OBR.STORAGE_KEY]: raw },
+              () => resolve(!(chrome.runtime && chrome.runtime.lastError)));
           } catch (e) {
             resolve(false);
           }
@@ -923,9 +916,13 @@
         resolve(false);
       }
     });
-    settingsChain = settingsChain.then(run, run); // chain through failures too
-    return settingsChain;
+    OBR._settingsWriteChain = OBR._settingsWriteChain.then(run, run);
+    return OBR._settingsWriteChain;
   };
+
+  // Persist only explicit changes over raw saved state, so unset keys still follow DEFAULTS.
+  // Migration precedes the partial update, allowing siteRules:[] to deliberately clear rules.
+  OBR.saveSettings = (partial) => OBR.updateSettings((raw) => { Object.assign(raw, partial); });
 
   /* ---------------------------------------------------------- reading position
    * Per-article reading position so the reader resumes where you left off.

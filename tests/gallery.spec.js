@@ -631,6 +631,79 @@ test.describe('gallery downloads', () => {
 });
 
 test.describe('mode switching', () => {
+  for (const delayedRead of ['loadSettings', 'loadGalleryPref', 'loadHidden']) {
+    test(`a gallery waiting on ${delayedRead} cannot replace a newer reader`, async ({ page }) => {
+      await gotoArticle(page);
+      await injectAll(page);
+      await page.evaluate((method) => {
+        const original = OBR[method];
+        OBR[method] = function (...args) {
+          OBR[method] = original;
+          return new Promise((resolve) => {
+            window.__releaseGalleryRead = () => resolve(original.apply(OBR, args));
+          });
+        };
+        window.__pendingGallery = OBR.openGallery();
+      }, delayedRead);
+      await page.waitForFunction(() => typeof window.__releaseGalleryRead === 'function');
+
+      // A repeated request within one mode does not start a rival initialization.
+      await page.evaluate(() => OBR.openGallery());
+      expect(await page.locator('#obr-gallery-host').count()).toBe(0);
+      await page.evaluate(() => OBR.open());
+      const opened = await readState(page);
+      expect(opened.present).toBe(true);
+      expect(opened.title).toContain('Slow Reading');
+      expect(opened.hostDisplay).not.toBe('none');
+
+      await page.evaluate(async () => {
+        window.__releaseGalleryRead();
+        await window.__pendingGallery;
+      });
+      expect((await readState(page)).hostDisplay).not.toBe('none');
+      expect(await page.locator('#obr-gallery-host').count()).toBe(0);
+    });
+  }
+
+  test('a newer reader still waiting on settings wins over an earlier gallery', async ({ page }) => {
+    await gotoArticle(page);
+    await injectAll(page);
+    await page.evaluate(() => {
+      const original = OBR.loadGalleryPref;
+      OBR.loadGalleryPref = (...args) => {
+        OBR.loadGalleryPref = original;
+        return new Promise((resolve) => {
+          window.__releaseGalleryRead = () => resolve(original.apply(OBR, args));
+        });
+      };
+      window.__pendingGallery = OBR.openGallery();
+    });
+    await page.waitForFunction(() => typeof window.__releaseGalleryRead === 'function');
+    await page.evaluate(() => {
+      const original = OBR.loadSettings;
+      OBR.loadSettings = (...args) => {
+        OBR.loadSettings = original;
+        return new Promise((resolve) => {
+          window.__releaseReaderRead = () => resolve(original.apply(OBR, args));
+        });
+      };
+      window.__pendingReader = OBR.open();
+    });
+    await page.waitForFunction(() => typeof window.__releaseReaderRead === 'function');
+    await page.evaluate(async () => {
+      window.__releaseGalleryRead();
+      await window.__pendingGallery;
+      window.__releaseReaderRead();
+      await window.__pendingReader;
+    });
+
+    const reader = await readState(page);
+    expect(reader.present).toBe(true);
+    expect(reader.hostDisplay).not.toBe('none');
+    expect(reader.title).toContain('Slow Reading');
+    expect(await page.locator('#obr-gallery-host').count()).toBe(0);
+  });
+
   test('switches text <-> images and only one mode shows at a time', async ({ page }) => {
     await gotoArticle(page);
     await injectAll(page);

@@ -1616,14 +1616,19 @@
     window.addEventListener('scroll', onPickScroll, true);
   }
 
-  function endPicker(node) {
-    if (!pickerActive) return;
+  function disposePicker() {
     pickerActive = false;
     document.removeEventListener('mousemove', onPickMove, true);
     document.removeEventListener('click', onPickClick, true);
     document.removeEventListener('keydown', onPickKey, true);
     window.removeEventListener('scroll', onPickScroll, true);
     if (pickHost) pickHost.style.display = 'none';
+    pickHoverNode = null;
+  }
+
+  function endPicker(node) {
+    if (!pickerActive) return;
+    disposePicker();
     // Restore the reader: re-lock scroll and show the host again.
     document.documentElement.style.overflow = 'hidden';
     host.style.display = '';
@@ -3881,7 +3886,10 @@
     if (OBR._ctxDead()) return void OBR._ctxLost(hardTeardown);
     if (active || opening) return;
     opening = true;
-    try { await openInner(opts); } finally { opening = false; }
+    try {
+      if (OBR.closeGallery) OBR.closeGallery({ suppress: false });
+      await openInner(opts);
+    } finally { opening = false; }
   }
 
   async function openInner(opts) {
@@ -3896,7 +3904,6 @@
     settings = await OBR.loadSettings();
     if (gen !== openGen) return;
     if (t) t.mark('settings');
-    if (OBR.closeGallery) OBR.closeGallery({ suppress: false }); // ensure image mode isn't also showing (defensive — not a user dismissal)
     build();
     applyStylesheet();
     overlay.className = 'obr-overlay ' + resolveTheme();
@@ -4054,7 +4061,12 @@
   /* Close without touching chrome.*: the normal close() flushes the reading position through
    * chrome.storage, which is precisely what is broken here. */
   function hardTeardown() {
+    openGen++;
     active = false;
+    disposePicker();
+    if (pickHost) pickHost.remove();
+    pickHost = pickRoot = pickBox = pickLabel = null;
+    clearTimeout(saveTimer);
     clearInterval(ctxTimer); clearTimeout(paintTimer); clearTimeout(mediaTimer); clearTimeout(chromeTimer);
     try { clearSpotlight(); } catch (e) { /* */ }
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
@@ -4133,7 +4145,12 @@
     closePop();
     closeZoom();
     if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
-    if (pickerActive) endPicker(null); // tear down picker listeners/scroll-unlock first
+    if (pickerActive) {
+      disposePicker();
+      // Closing measures the reader before hiding it; the picker left that host hidden.
+      document.documentElement.style.overflow = 'hidden';
+      host.style.display = '';
+    }
     clearInterval(ctxTimer);  // nothing to watch once the overlay is gone
     clearTimeout(paintTimer); // a close before the check lands must not nag about a closed reader
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }

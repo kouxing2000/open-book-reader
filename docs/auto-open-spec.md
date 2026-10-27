@@ -97,10 +97,14 @@ Non-goals (explicitly rejected or deferred)
   1. if the origin permission is missing, run the existing permission-popup flow
      (`src/permission.html`) requesting just this site's origins;
   2. on grant, upsert the site rule with `auto: true` (mode = the rule's existing mode, else
-     `auto`) — `OBR.storeAutoRule`, called by the permission page on its own Allow AND by the
-     worker's callback: the worker that asked routinely dies while the prompt is up, so the page
-     is the write that cannot be missed. Step 3 has no such backup: when that worker is gone,
-     the tab is armed only by its next load;
+     `auto`) — `OBR.storeAutoRule`. The permission page for this host is the ONLY writer after
+     its prompt: the worker that asked routinely dies while the prompt is up, and a worker write
+     would turn a failed page save followed by Cancel into a rule the user declined. The worker
+     only reads storage back and continues when the page's rule is there. It writes the rule
+     itself in two cases: the grant was already held (no prompt), or the access came from a
+     different popup its request was queued behind (an all-sites grant from a ZIP or
+     shared-links prompt), which never writes this host's rule. Step 3 has no backup: when that worker is gone, the tab is armed
+     only by its next load;
   3. `executeScript` the sentinel files into the **current tab** — registration only
      affects future document loads, so on an SPA forum the enabling tab would otherwise
      stay sentinel-less (no auto-open on the very next topic click) until a full reload.

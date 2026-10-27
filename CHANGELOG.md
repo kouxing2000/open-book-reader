@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Incognito reading stays private when auto-open is enabled while the reader is open.
+- Site-rule and preference changes keep concurrent worker updates and migrate older saved
+  rules before saving. Failed saves leave permissions intact and remain available to retry.
+- Switching to the reader cancels an unfinished gallery open, including one waiting on settings.
+- An extension update retires an active content picker without leaving the page scroll-locked.
+
 ## [1.15.2] - 2026-10-26
 
 - **Turning pages over a video no longer copies it.** The page-turn animation used to copy every
