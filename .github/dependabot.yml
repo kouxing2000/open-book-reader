@@ -18,7 +18,7 @@ updates:
     commit-message:
       prefix: 'ci'
 
-  # Dev tooling (Playwright, archiver, chrome-webstore-upload, dotenv). One grouped PR a week;
+  # Dev tooling. One grouped PR a week;
   # CI runs the full suite on it, which is exactly the check a Playwright bump needs.
   - package-ecosystem: npm
     directory: /

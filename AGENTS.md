@@ -286,8 +286,8 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
   version goes live once Google's review passes. The store rejects any non-incremented version, so the
   bump is mandatory; `bump-version.mjs` is its single source (don't hand-edit the two version fields).
   CI re-verifies the tag matches `manifest.json`. Repo secrets:
-  `CHROME_EXTENSION_ID`/`CLIENT_ID`/`CLIENT_SECRET`/`REFRESH_TOKEN` (account-scoped — only the
-  extension ID differs per extension).
+  `CHROME_EXTENSION_ID`, `CHROME_PUBLISHER_ID`, `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, and
+  `CHROME_REFRESH_TOKEN`. The V2 publisher ID belongs in private configuration alongside credentials.
 - **A tag push runs the workflow file from THAT TAG's tree, not from `master`.** So a guard added to
   `release.yml` today protects nothing on an older tag that gets re-pushed or moved — every existing
   `v*` tag carries its own copy of the workflow as it was when that tag was cut. Consequence: before
@@ -304,7 +304,7 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
   The exact publisher + owning account are in `.meta/portfolio.json` (gitignored — deliberately kept out
   of this public repo, per RULE #1). A bare `Bad Request`/`Forbidden` with a swallowed body on deploy is
   usually this or an expired token; `deploy-to-store.js` probes the token and prints the real reason.
-  Confirm ownership with `GET /chromewebstore/v1.1/items/<id>?projection=DRAFT` (200 = owns it). The
+  Confirm V2 access with `GET /v2/publishers/<publisher-id>/items/<id>:fetchStatus` (200 = access). The
   full publish runbook is kept in the maintainer's private `~/.claude` config, not this repo.
 - **Packaging is allowlist-based** (`SHIP_FILES`/`SHIP_DIRS` in `package-extension.js`): only
   `manifest.json`, `icons/`, `src/`, `_locales/` ship — dev files can't leak. `_locales/` is

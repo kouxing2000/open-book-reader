@@ -10,7 +10,8 @@ name: Release to Chrome Web Store
 # to draft-only uploads, set AUTO_PUBLISH to 'false' below.
 #
 # Required repo secrets (Settings -> Secrets and variables -> Actions):
-#   CHROME_EXTENSION_ID  CHROME_CLIENT_ID  CHROME_CLIENT_SECRET  CHROME_REFRESH_TOKEN
+#   CHROME_EXTENSION_ID  CHROME_PUBLISHER_ID  CHROME_CLIENT_ID
+#   CHROME_CLIENT_SECRET  CHROME_REFRESH_TOKEN
 
 on:
   push:
@@ -19,6 +20,11 @@ on:
 
 permissions:
   contents: write   # needed to create the GitHub Release
+
+# Each tag uploads and submits the same store item. Keep its complete operation serialized.
+concurrency:
+  group: chrome-webstore-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -43,6 +49,7 @@ jobs:
       - name: Preflight — verify Web Store credentials
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
           CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
@@ -70,6 +77,7 @@ jobs:
       - name: Upload to Chrome Web Store and submit for review
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
           CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}

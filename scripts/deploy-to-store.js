@@ -8,6 +8,7 @@
  *
  * Required env (in .env.chrome-webstore):
  * - CHROME_EXTENSION_ID
+ * - CHROME_PUBLISHER_ID
  * - CHROME_CLIENT_ID
  * - CHROME_CLIENT_SECRET
  * - CHROME_REFRESH_TOKEN   (auto-generated via get-refresh-token.js if missing)
@@ -24,7 +25,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
-import chromeWebstoreUpload from 'chrome-webstore-upload';
+import { deployPackage } from './lib/webstore-client.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +46,7 @@ if (fs.existsSync(envPath)) {
 
 const CONFIG = {
   extensionId: process.env.CHROME_EXTENSION_ID,
+  publisherId: process.env.CHROME_PUBLISHER_ID,
   clientId: process.env.CHROME_CLIENT_ID,
   clientSecret: process.env.CHROME_CLIENT_SECRET,
   refreshToken: process.env.CHROME_REFRESH_TOKEN,
@@ -55,6 +57,7 @@ const CONFIG = {
 async function validateConfig() {
   const missing = [];
   if (!CONFIG.extensionId) missing.push('CHROME_EXTENSION_ID');
+  if (!CONFIG.publisherId) missing.push('CHROME_PUBLISHER_ID');
   if (!CONFIG.clientId) missing.push('CHROME_CLIENT_ID');
   if (!CONFIG.clientSecret) missing.push('CHROME_CLIENT_SECRET');
 
@@ -115,9 +118,17 @@ function getVersion() {
   return manifest.version;
 }
 
-// Exchange the refresh token for an access token — the single source of truth for "is our
-// Web Store auth alive". Used by the fast preflight (--check) and by the post-failure
-// diagnostic below. Never throws; returns a plain status object.
+// Never print credentials or the publisher identifier, including API messages that echo them.
+function safeMessage(message, accessToken) {
+  let result = String(message);
+  for (const value of [CONFIG.publisherId, CONFIG.clientId, CONFIG.clientSecret, CONFIG.refreshToken, accessToken]) {
+    if (!value) continue;
+    for (const text of new Set([value, encodeURIComponent(value)])) result = result.split(text).join('[redacted]');
+  }
+  return result.replace(/publishers\/[^/\s"'<>]+/g, 'publishers/[redacted]');
+}
+
+// Exchange credentials once; the deploy adapter receives only the short-lived access token.
 async function checkToken() {
   if (!CONFIG.refreshToken) return { ok: false, reason: 'CHROME_REFRESH_TOKEN is not set' };
   try {
@@ -130,31 +141,14 @@ async function checkToken() {
         refresh_token: CONFIG.refreshToken,
         grant_type: 'refresh_token',
       }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(30000),
     });
     const j = await r.json().catch(() => ({}));
-    if (r.ok && j.access_token) return { ok: true, scope: j.scope || '?' };
+    if (r.ok && typeof j.access_token === 'string' && j.access_token) return { ok: true, accessToken: j.access_token, scope: j.scope || '?' };
     return { ok: false, error: j.error || '', reason: `HTTP ${r.status} ${j.error || ''} ${j.error_description || ''}`.trimEnd() };
   } catch (e) {
     return { ok: false, reason: `could not reach the OAuth endpoint (${e.message})` };
-  }
-}
-
-// uploadExisting()/publish() refresh the OAuth token internally, so a DEAD refresh token
-// surfaces as a bare "Bad Request" (Google's token endpoint returns HTTP 400 invalid_grant).
-// On any deploy failure, probe the token directly so the real cause is unambiguous in CI logs:
-// either "token OK -> it's the upload/publish API" or "invalid_grant -> re-mint the token".
-async function reportTokenHealth() {
-  if (!CONFIG.refreshToken) return;
-  const t = await checkToken();
-  if (t.ok) {
-    console.error(`   ⮑ OAuth token OK (scope: ${t.scope}) — the failure is the upload/publish API, not auth.`);
-  } else {
-    console.error(`   ⮑ OAuth token check: ${t.reason}`);
-    if (t.error === 'invalid_grant') {
-      console.error('   ⮑ CHROME_REFRESH_TOKEN is expired/revoked. Re-mint it (npm run get-token), update the');
-      console.error('     GitHub secret, and set the OAuth consent screen to "In production" so tokens stop');
-      console.error('     expiring (~7-day limit while the consent screen is in "Testing").');
-    }
   }
 }
 
@@ -163,8 +157,8 @@ async function reportTokenHealth() {
 // as the first release step so a dead/rotated token fails in seconds, not after the full build.
 async function preflight() {
   console.log('\n🔐 Chrome Web Store credential preflight\n');
-  const missing = ['CHROME_EXTENSION_ID', 'CHROME_CLIENT_ID', 'CHROME_CLIENT_SECRET', 'CHROME_REFRESH_TOKEN'].filter(
-    (k) => !process.env[k]
+  const missing = ['CHROME_EXTENSION_ID', 'CHROME_PUBLISHER_ID', 'CHROME_CLIENT_ID', 'CHROME_CLIENT_SECRET', 'CHROME_REFRESH_TOKEN'].filter(
+    (k) => !process.env[k]?.trim()
   );
   if (missing.length) {
     console.error('❌ Missing required credential(s):');
@@ -174,11 +168,11 @@ async function preflight() {
   }
   const t = await checkToken();
   if (t.ok) {
-    console.log(`✓ OAuth token valid (scope: ${t.scope})`);
-    console.log('✓ Preflight passed — safe to build and upload.\n');
+    console.log(`✓ OAuth token valid (scope: ${safeMessage(t.scope, t.accessToken)})`);
+    console.log('✓ Credential preflight passed.\n');
     process.exit(0);
   }
-  console.error(`❌ OAuth token invalid: ${t.reason}`);
+  console.error(`❌ OAuth token invalid: ${safeMessage(t.reason)}`);
   if (t.error === 'invalid_grant') {
     console.error('   ⮑ CHROME_REFRESH_TOKEN is expired/revoked. Re-mint it (npm run get-token), then sync the');
     console.error('     GitHub secret. The consent screen is "In production" so tokens should not expire on their');
@@ -196,62 +190,22 @@ async function deploy() {
   console.log(`📦 Extension version: ${version}`);
   console.log(`📁 Zip file size: ${(fs.statSync(CONFIG.zipPath).size / 1024 / 1024).toFixed(2)} MB`);
 
+  let token;
   try {
-    const webStore = chromeWebstoreUpload({
-      extensionId: CONFIG.extensionId,
-      clientId: CONFIG.clientId,
-      clientSecret: CONFIG.clientSecret,
-      refreshToken: CONFIG.refreshToken,
-    });
-
+    token = await checkToken();
+    if (!token.ok) throw new Error(`OAuth token invalid: ${token.reason}`);
     console.log('\n📤 Uploading extension to Chrome Web Store...');
-    const zipStream = fs.createReadStream(CONFIG.zipPath);
-    const uploadResult = await webStore.uploadExisting(zipStream);
-
-    if (uploadResult.uploadState === 'SUCCESS') {
-      console.log('✓ Upload successful!');
-
-      if (CONFIG.autoPublish) {
-        console.log('\n📢 Publishing extension...');
-        const publishResult = await webStore.publish();
-
-        if (publishResult.status.includes('OK') || publishResult.status.includes('PUBLISHED')) {
-          console.log('✓ Extension published successfully!');
-          console.log('\n✅ Deployment complete!');
-          console.log(`   Version ${version} is now submitted for review.`);
-          console.log('   Check your Developer Dashboard for review status.');
-        } else {
-          console.log('⚠️  Publish status:', publishResult.status);
-          console.log('   Please check the Developer Dashboard for details.');
-        }
-      } else {
-        console.log('\n✅ Upload complete!');
-        console.log('   Extension uploaded but not published (AUTO_PUBLISH=false).');
-        console.log('   Publish manually from the Developer Dashboard.');
-      }
+    const result = await deployPackage({ ...CONFIG, accessToken: token.accessToken, version });
+    console.log(`✓ Upload confirmed (${result.uploadState}).`);
+    if (result.submissionState === 'PENDING_REVIEW') {
+      console.log(`✓ Version ${version} is now submitted for review (PENDING_REVIEW).`);
+    } else if (result.submissionState === 'PUBLISHED') {
+      console.log(`✓ Version ${version} is published publicly (PUBLISHED).`);
     } else {
-      console.error('❌ Upload failed:', uploadResult.uploadState);
-      if (uploadResult.itemError) {
-        console.error('   Error details:', uploadResult.itemError);
-      }
-      process.exit(1);
+      console.log('✓ Upload complete (AUTO_PUBLISH=false). Submit from the Developer Dashboard when ready.');
     }
   } catch (error) {
-    console.error('\n❌ Deployment failed:', error.message);
-    // chrome-webstore-upload surfaces the real Web Store API body in different
-    // places depending on the failure; print whatever we can find so CI logs are
-    // actionable (e.g. the "Privacy practices tab" gate hides here, not in .message).
-    const body =
-      error.response?.body ??
-      error.response?.data ??
-      error.body ??
-      (error.response && typeof error.response.text === 'function' ? await error.response.text().catch(() => undefined) : undefined);
-    if (body !== undefined) {
-      console.error('   API response:', typeof body === 'string' ? body : JSON.stringify(body, null, 2));
-    }
-    // The most common silent cause is a dead refresh token (HTTP 400 invalid_grant, which looks
-    // like a bare "Bad Request"). Probe it so CI logs say plainly whether it's auth or the API.
-    await reportTokenHealth();
+    console.error('\n❌ Deployment failed:', safeMessage(error.message, token?.accessToken));
     process.exit(1);
   }
 
@@ -260,6 +214,6 @@ async function deploy() {
 
 const run = CHECK_ONLY ? preflight : deploy;
 run().catch((error) => {
-  console.error('Unexpected error:', error);
+  console.error('Unexpected error:', safeMessage(error.message));
   process.exit(1);
 });
