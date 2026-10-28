@@ -231,16 +231,20 @@
   }
 
   /* -------------------------------------------------- collection */
+  // Gallery favors data-original before data-lazy-src when both conventions coexist.
+  const LAZY_ATTRS = OBR.LAZY_IMAGE_ATTRS.slice().sort((a, b) => Number(a === 'data-lazy-src') - Number(b === 'data-lazy-src'));
   // The real image URL a lazy <img> defers into a non-standard attribute (data-src
-  // and friends), or null if it has none. Same set reader.js recognises.
+  // and friends), or null if it has none. The supported names are shared with the reader.
   function lazyAttrUrl(img) {
-    return (
-      img.getAttribute('data-src') ||
-      img.getAttribute('data-original') ||
-      img.getAttribute('data-lazy-src') ||
-      (img.getAttribute('data-srcset') && bestFromSrcset(img.getAttribute('data-srcset'))) ||
-      null
-    );
+    for (const name of LAZY_ATTRS) {
+      const url = (img.getAttribute(name) || '').trim();
+      if (url) return url;
+    }
+    for (const name of OBR.LAZY_IMAGE_SRCSET_ATTRS) {
+      const url = bestFromSrcset(img.getAttribute(name));
+      if (url) return url;
+    }
+    return null;
   }
 
   // Walk every page <img> that passes the tiny-image filter, calling fn(url, w, h)
@@ -372,11 +376,10 @@
     for (const p of hiddenPatterns) if (typeof p === 'string' && p.startsWith('+') && p.slice(1) === t) return true;
     return false;
   }
-  // An Unhide allow may name any URL the image answers to: liveUrls covers the loaded ones and one
-  // lazy URL, and a lazy image's other sizes wait in data-srcset.
+  // An Unhide allow may name any loaded or lazy candidate URL the image answers to.
   function allowedAnyUrl(img, e) {
     if ([...liveUrls(img, e)].some(isAllowed)) return true;
-    return OBR.srcsetUrls(img.getAttribute('data-srcset') || '').some((u) => isAllowed(resolveUrl(u, location.href)));
+    return OBR.lazyImageUrls(img).some((u) => isAllowed(resolveUrl(u, location.href)));
   }
 
   // A plain-source <video>: one whose file URL the gallery can load in its own element. A blob:
@@ -1363,7 +1366,8 @@
   }
   // Every URL a live <img> answers to. A tile keeps the URL collect() saw, and an image changes
   // its own as it loads: an unloaded srcset image is collected as its largest candidate, then
-  // loads the one its sizes pick.
+  // loads the one its sizes pick. Only the selected lazy URL belongs to this identity; other
+  // lazy attributes can be stale URLs belonging to a different picture.
   function liveUrls(img, e) {
     const out = new Set();
     const add = (u) => { if (u) out.add(resolveUrl(u, location.href)); };

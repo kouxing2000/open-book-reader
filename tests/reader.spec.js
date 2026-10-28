@@ -3847,6 +3847,58 @@ test.describe('back-cover colophon', () => {
     })).toBe(true);
   });
 
+  for (const surface of ['invite', 'article link']) {
+    test(`relayout preserves ${surface} manual-copy focus and selection without stealing focus`, async ({ page }) => {
+      await resetEngagement(page);
+      await stubClipboard(page, false);
+      await stubShareSheet(page, 'none');
+      await openReader(page);
+      await page.keyboard.press('End');
+      if (surface === 'invite') {
+        await page.evaluate(() => document.getElementById('obr-host').shadowRoot.querySelector('.obr-colo-share').click());
+      } else {
+        await clickShareArticle(page);
+        await clickMenuAction(page, 'Copy link');
+      }
+      await expect.poll(() => page.evaluate(() => !!document.getElementById('obr-host').shadowRoot.querySelector('.obr-colophon .obr-share-field'))).toBe(true);
+      const before = await page.evaluate(() => {
+        const root = document.getElementById('obr-host').shadowRoot;
+        const field = root.querySelector('.obr-colophon .obr-share-field');
+        field.focus({ preventScroll: true });
+        field.setSelectionRange(2, 12, 'backward');
+        window.__copyField = field;
+        window.__copyRelayouts = 0;
+        const colophon = root.querySelector('.obr-colophon');
+        const observer = new MutationObserver((rows) => {
+          for (const row of rows) if ([...row.removedNodes].includes(colophon)) window.__copyRelayouts++;
+        });
+        observer.observe(root, { childList: true, subtree: true });
+        return { focused: root.activeElement === field, pageY: window.scrollY };
+      });
+      expect(before.focused).toBe(true);
+      await page.setViewportSize({ width: 1300, height: 800 });
+      await expect.poll(() => page.evaluate(() => window.__copyRelayouts)).toBeGreaterThan(0);
+      expect(await page.evaluate(() => {
+        const root = document.getElementById('obr-host').shadowRoot;
+        const field = window.__copyField;
+        return { connected: field.isConnected, focused: root.activeElement === field,
+          start: field.selectionStart, end: field.selectionEnd, direction: field.selectionDirection, pageY: window.scrollY };
+      })).toEqual({ connected: true, focused: true, start: 2, end: 12, direction: 'backward', pageY: before.pageY });
+
+      const count = await page.evaluate(() => {
+        const button = document.createElement('button');
+        button.id = 'unrelated-focus';
+        button.textContent = 'Fixture page control';
+        document.body.appendChild(button);
+        button.focus({ preventScroll: true });
+        return window.__copyRelayouts;
+      });
+      await page.setViewportSize({ width: 1320, height: 800 });
+      await expect.poll(() => page.evaluate(() => window.__copyRelayouts)).toBeGreaterThan(count);
+      expect(await page.evaluate(() => document.activeElement.id)).toBe('unrelated-focus');
+    });
+  }
+
   // "Share this article" opens a menu: the system share sheet (only where Chrome has one), Copy
   // link, Email, and one link per network. What the sheet or the clipboard was HANDED is the
   // outcome under test, so both are stubbed; a sheet `outcome` of 'none' is a Chrome without one

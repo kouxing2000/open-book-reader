@@ -897,8 +897,8 @@
 
   // The lazy-loading conventions: an attribute under one of these names holds the real URL
   // whatever it looks like, so a CDN URL with no file extension (/img/123?w=800) still counts.
-  const LAZY_ATTRS = ['data-src', 'data-lazy-src', 'data-original'];
-  const LAZY_SRCSET_ATTRS = ['data-srcset', 'data-lazy-srcset'];
+  const LAZY_ATTRS = OBR.LAZY_IMAGE_ATTRS;
+  const LAZY_SRCSET_ATTRS = OBR.LAZY_IMAGE_SRCSET_ATTRS;
   const absUrl = (u) => { try { return new URL(u, document.baseURI).href; } catch (e) { return u; } };
 
   // A srcset's widest candidate, or null when that candidate is a placeholder.
@@ -916,8 +916,7 @@
         // mirrors its low-quality src in data-lowsrc — so it keeps the tokens and the upgrade.
         if (/lazy/i.test(img.className)) {
           const here = absUrl(cur);
-          const loaded = LAZY_ATTRS.some((n) => { const v = (img.getAttribute(n) || '').trim(); return v && absUrl(v) === here; })
-            || LAZY_SRCSET_ATTRS.some((n) => OBR.srcsetUrls(img.getAttribute(n) || '').some((u) => absUrl(u) === here));
+          const loaded = OBR.lazyImageUrls(img).some((u) => absUrl(u) === here);
           if (loaded) {
             img.className = img.className.split(/\s+/).filter((c) => !/lazy/i.test(c)).join(' ');
             // The lazy pass would also have copied a lazy srcset in; keep that half of it.
@@ -2829,6 +2828,10 @@
 
     // Measure the CONTENT alone first — a colophon or end mark left attached by a previous pass
     // would distort the blank-page detection below.
+    const focused = root.activeElement;
+    const detachedFocus = focused && ((colophonEl && colophonEl.contains(focused)) || (endMarkEl && endMarkEl.contains(focused)));
+    const selection = detachedFocus && typeof focused.selectionStart === 'number'
+      ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection] : null;
     if (colophonEl && colophonEl.parentNode) colophonEl.remove();
     if (endMarkEl && endMarkEl.parentNode) endMarkEl.remove();
     void pagesEl.offsetWidth; // force reflow before measuring
@@ -2894,6 +2897,13 @@
 
     requestAnimationFrame(() => { pagesEl.style.transition = ''; });
     applySpread();
+    // Removing focused furniture clears focus; reattaching it does not restore it. A focus
+    // handler can select all, so restore the user's selection after focusing the same control.
+    if (detachedFocus && focused.isConnected && !root.activeElement
+      && (document.activeElement === document.body || document.activeElement === host)) {
+      focused.focus({ preventScroll: true });
+      if (selection && root.activeElement === focused) focused.setSelectionRange(...selection);
+    }
   }
 
   function applySpread() {

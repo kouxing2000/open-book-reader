@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rules before saving. Failed saves leave permissions intact and remain available to retry.
 - Switching to the reader cancels an unfinished gallery open, including one waiting on settings.
 - An extension update retires an active content picker without leaving the page scroll-locked.
+- The gallery includes images whose real address is only in `data-lazy-srcset`, and counts them
+  when the toolbar icon chooses between reader and gallery.
+- A share link being copied by hand on the back cover keeps its focus and selection when the
+  window is resized.
 
 ## [1.15.2] - 2026-10-26
 

@@ -10,7 +10,7 @@ import path from 'path';
 import {
   gotoImages, injectGallery, openGallery, galleryState, clickInGallery, sentMessages,
   gotoArticle, injectAll, readState, clickInReader, gotoIllustratedArticle, gotoLazyImages,
-  gotoGrowNoImages, gotoFixture,
+  gotoGrowNoImages, gotoFixture, openReader,
 } from './helpers.js';
 
 test.describe('image gallery', () => {
@@ -1009,6 +1009,44 @@ test.describe('normalizeHost', () => {
   });
 });
 
+test.describe('lazy image identity', () => {
+  async function openWithStaleCandidate(page) {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      document.body.style.cssText = 'margin:0;min-height:4000px';
+      document.body.innerHTML = '<img id="larger-photo" class="feature-photo" src="/pic-700.png?n=A" data-src="/pic-700.png?n=A" data-original="/photo-400.png?n=B" style="position:absolute;top:100px;left:0;width:640px;height:480px">'
+        + '<img id="viewed-photo" class="inline-photo" src="/photo-400.png?n=B" style="position:absolute;top:2000px;left:0;width:200px;height:150px">';
+    });
+    await page.waitForFunction(() => Array.from(document.images).every((img) => img.complete && img.naturalWidth > 0));
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(2);
+  }
+
+  test('closing a viewed photo ignores another image\'s stale lazy candidate', async ({ page }) => {
+    await openWithStaleCandidate(page);
+    await page.locator('#obr-gallery-host >> .tile:has(img[src$="?n=B"])').click();
+    expect((await galleryState(page)).lbOpen).toBe(true);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    const viewedTop = await page.evaluate(() => document.getElementById('viewed-photo').getBoundingClientRect().top);
+    expect(Math.abs(viewedTop)).toBeLessThan(2);
+  });
+
+  test('a Hide preview ignores another image\'s stale lazy candidate', async ({ page }) => {
+    await openWithStaleCandidate(page);
+    const featureTile = page.locator('#obr-gallery-host >> .tile:has(img[src$="?n=A"])');
+    await featureTile.hover();
+    await featureTile.locator('.tile-hide').click({ force: true });
+    const scope = page.locator('#obr-gallery-host >> .hide-menu .hm-opt').first();
+    await expect(scope).toContainText('img.feature-photo');
+    await scope.hover();
+    const marked = await page.evaluate(() => Array.from(document.getElementById('obr-gallery-host').shadowRoot
+      .querySelectorAll('.tile.hide-preview img')).map((img) => new URL(img.src).searchParams.get('n')));
+    expect(marked).toEqual(['A']);
+  });
+});
+
 test.describe('lazy / late images', () => {
   // Open with auto-load OFF so hydration only happens when we drive it explicitly.
   async function openManual(page) {
@@ -1022,6 +1060,46 @@ test.describe('lazy / late images', () => {
     await openManual(page);
     // 3 normal + 1 lazy (rescued from data-src despite a 2x2 placeholder showing).
     expect((await galleryState(page)).tiles).toBe(4);
+  });
+
+  test('reader and gallery keep a data-lazy-srcset-only picture', async ({ page }) => {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      const prose = '<p>' + 'A complete paragraph with enough readable text to keep this illustrated article in extraction. '.repeat(8) + '</p>';
+      document.body.innerHTML = '<article>' + prose
+        + '<img class="lazyload" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-lazy-srcset="/photo-400.png?w=300 300w, /pic-700.png?w=700 700w">'
+        + prose + '</article>';
+    });
+    await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth === 1);
+    await injectAll(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openReader(page);
+    const readerImages = page.locator('#obr-host >> .obr-content img');
+    await expect(readerImages).toHaveCount(1);
+    await expect(readerImages).toHaveAttribute('src', /\/pic-700\.png\?w=700$/);
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    expect((await galleryState(page)).tiles).toBe(1);
+    expect(await page.evaluate(() => globalThis.OBR._imageCount())).toBe(1);
+    await expect(page.locator('#obr-gallery-host >> .tile img')).toHaveAttribute('src', /\/pic-700\.png\?w=700$/);
+  });
+
+  test('lazy-image source priority stays specific to each mode', async ({ page }) => {
+    const png = fs.readFileSync(new URL('./fixtures/photo-400.png', import.meta.url));
+    await page.route('**/media/**', (route) => route.fulfill({ contentType: 'image/png', body: png }));
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      const prose = '<p>' + 'An illustrated article keeps its source selection when several lazy conventions coexist. '.repeat(8) + '</p>';
+      document.body.innerHTML = '<article>' + prose
+        + '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-original="/media/original" data-lazy-src="/media/lazy">'
+        + prose + '</article>';
+    });
+    await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth === 1);
+    await injectAll(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openReader(page);
+    await expect(page.locator('#obr-host >> .obr-content img')).toHaveAttribute('src', /\/media\/lazy$/);
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    await expect(page.locator('#obr-gallery-host >> .tile img')).toHaveAttribute('src', /\/media\/original$/);
   });
 
   test('live-merges an image inserted into the page after the gallery is open', async ({ page }) => {
@@ -1543,6 +1621,37 @@ test.describe('lazy forum noise', () => {
     const photoTiles = await page.evaluate(() => [...document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile img')]
       .filter((i) => i.src.includes('/photos/p/')).length);
     expect(photoTiles).toBe(1);
+  });
+
+  test('an Unhide from a data-lazy-srcset candidate holds while lazy', async ({ page }) => {
+    const png = fs.readFileSync(new URL('./fixtures/photo-400.png', import.meta.url));
+    await page.route('http://avatar2.forum.test/**', (route) => route.fulfill({ contentType: 'image/png', body: png }));
+    await gotoFixture(page, 'forum-lazy-noise.html');
+    const sizes = 'http://avatar2.forum.test/photos/p/300x 300w, http://avatar2.forum.test/photos/p/900x 900w';
+    await page.evaluate((srcset) => {
+      const img = Object.assign(document.createElement('img'), { id: 'lazy-srcset-photo', sizes: '300px', srcset });
+      img.setAttribute('data-src', 'http://avatar2.forum.test/photos/p/600x');
+      img.setAttribute('data-lazy-srcset', srcset);
+      document.getElementById('floor-1').appendChild(img);
+    }, sizes);
+    await page.waitForFunction(() => {
+      const img = document.getElementById('lazy-srcset-photo');
+      return img.complete && /\/300x$/.test(img.currentSrc);
+    });
+    await injectGallery(page);
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
+    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/300x"]) .tile-unhide').click({ force: true });
+    await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    await page.evaluate((srcset) => {
+      const img = Object.assign(document.createElement('img'), { id: 'lazy-srcset-photo', className: 'lazyload' });
+      img.setAttribute('data-src', 'http://avatar2.forum.test/photos/p/600x');
+      img.setAttribute('data-lazy-srcset', srcset);
+      document.getElementById('lazy-srcset-photo').replaceWith(img);
+    }, sizes);
+    await openGallery(page);
+    await expect(page.locator('#obr-gallery-host >> .tile img[src$="/photos/p/600x"]')).toHaveCount(1);
   });
 });
 

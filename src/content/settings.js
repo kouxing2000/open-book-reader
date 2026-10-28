@@ -405,6 +405,15 @@
   // Every candidate URL in a srcset, in order, by the same tokenizing.
   OBR.srcsetUrls = (srcset) => srcsetCandidates(srcset).map((c) => c.url);
 
+  // Lazy attributes advertise real image URLs even when a CDN path has no file extension.
+  // Candidate enumeration is shared; each mode keeps its own hydration/selection policy.
+  OBR.LAZY_IMAGE_ATTRS = ['data-src', 'data-lazy-src', 'data-original'];
+  OBR.LAZY_IMAGE_SRCSET_ATTRS = ['data-srcset', 'data-lazy-srcset'];
+  OBR.lazyImageUrls = (img) => [
+    ...OBR.LAZY_IMAGE_ATTRS.map((n) => (img.getAttribute(n) || '').trim()).filter(Boolean),
+    ...OBR.LAZY_IMAGE_SRCSET_ATTRS.flatMap((n) => OBR.srcsetUrls(img.getAttribute(n) || '')),
+  ];
+
   // Mode-switch glyphs shared by the reader and gallery toolbars (an open book + a framed
   // picture). Defined once here — settings.js loads before both engines — so the two stay
   // visually identical instead of carrying byte-for-byte copies that can drift apart.
