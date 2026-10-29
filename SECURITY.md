@@ -1,10 +1,17 @@
 # Security Policy
 
-Open Book Reader is a Chrome MV3 extension. It runs **only when you invoke it** (toolbar
-click, `Alt+B`, or `Alt+Shift+B`) and reads entirely locally — no telemetry, nothing sent to
-the developer. The one network case is when you explicitly download gallery images. Even so,
-because the extension injects scripts into the page you're reading and can hold `<all_urls>`
-host access (optional, granted only at first image download), security reports matter to us.
+Open Book Reader is a Chrome MV3 extension. It runs when you invoke it (toolbar click,
+`Alt+B`, `Alt+Shift+B`, or the right-click menu), and otherwise only where access you granted
+allows it: on sites you turned auto-open on for, and on a shared article you open from a share
+link when Open Book already has access to that article's site (the opt-in to open shared links
+in reading mode, auto-open there, or access you gave that site for a ZIP download). It reads
+entirely locally, with no telemetry, and sends nothing on its own: network requests happen only
+when you explicitly download gallery images, and a problem report reaches the developer only
+when you choose to send one. Even so, because the extension injects scripts into the pages you
+read and can hold `<all_urls>` host access (optional, granted only through an explicit choice:
+a ZIP prompt's "Allow all sites instead" or the opt-in to open shared links in reading mode),
+security reports matter to us. The README's Permissions section lists every permission and
+what uses it.
 
 ## Supported versions
 

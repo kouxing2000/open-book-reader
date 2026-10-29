@@ -37,5 +37,6 @@ After that: `npm run package && npm run deploy`.
   retrying. Avoid concurrent local/dashboard uploads while the release job is running.
 - CI serializes tag releases for this store item with cancellation disabled. This does not
   coordinate separate dashboard sessions or locally invoked deploys.
-- Permissions to justify in the listing: `activeTab`, `scripting`, `storage` (no host permissions,
-  no network, no data collection).
+- Permissions to justify in the listing: every entry in `manifest.json`'s `permissions`,
+  `optional_permissions` and `optional_host_permissions`; the README's Permissions section
+  says what uses each. No data collection.

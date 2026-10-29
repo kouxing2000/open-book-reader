@@ -50,7 +50,7 @@
     <div class="top"><a href="index.html">← Open Book Reader</a></div>
     <div class="card">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 2026-10-19</p>
+      <p class="updated">Last updated: 2026-10-29</p>
 
       <p class="lead">Open Book Reader is designed to be completely private.</p>
 
@@ -59,7 +59,7 @@
 
       <h2>Network activity</h2>
       <p>Core reading is fully local: article extraction and pagination (and the image-gallery layout) happen entirely in your browser, and the Mozilla Readability library is bundled inside the extension — nothing is fetched from external servers for reading.</p>
-      <p>The extension makes network requests in <strong>one case only: when you explicitly download images</strong> from the image-gallery mode. To save an image, or to bundle several into a ZIP, your browser fetches those image URLs (the same images the page already shows). This happens only on your action (clicking a download / ZIP button), the bytes go only to your device, and <strong>nothing is ever sent to the developer or any third party.</strong></p>
+      <p>The extension makes network requests in <strong>two cases only, both on your action: when you explicitly download images</strong> from the image-gallery mode, <strong>and when you send a problem report through the web form</strong> (see <a href="#feedback">Reporting a problem</a> below). To save an image, or to bundle several into a ZIP, your browser fetches those image URLs (the same images the page already shows). This happens only when you click a download / ZIP button, the bytes go only to your device, and <strong>nothing from a download is ever sent to the developer or any third party.</strong></p>
 
       <h2 id="feedback">Reporting a problem</h2>
       <p>The reader and image-gallery toolbars have a <strong>⚠ Report</strong> button. It opens a small report page (part of the extension) where you describe the problem and choose how to send it — both entirely up to you:</p>
@@ -108,7 +108,7 @@
         <li><strong>host access (<code>&lt;all_urls&gt;</code>)</strong> — used only to fetch image bytes when you ask to download a ZIP of selected images, and to open the reader on the shared articles you open. It is one permission for all of these: granting it from either place (the ZIP download's <em>Allow all sites</em>, or a shared-link page's <em>Turn on &amp; read</em>) enables both, and it also covers the sites you turned auto-open on for — so removing it pauses those too until you allow them again. It is never used to monitor or transmit page content.</li>
         <li><strong>per-site host access</strong> — granted only if you turn on <em>auto-open</em> for a site (right-click → Auto-open on this site, or <em>Always open</em> that site <em>in reading mode</em> on a shared-link page). It lets the extension check that one site's pages as they load — entirely inside your browser — to open reading mode on them. Nothing is read for any other purpose and nothing is transmitted; you can revoke it any time in the site's rules or in <code>chrome://extensions</code>.</li>
       </ul>
-      <p>The extension only runs when you click its icon or press its keyboard shortcut — on sites where you explicitly turned auto-open on — or, if you turned on opening shared links in reading mode, on a shared article you open from a share link. It does not run in the background or on any other page.</p>
+      <p>The extension only runs when you click its icon, press its keyboard shortcut or use its right-click menu — and otherwise only on sites where you explicitly turned auto-open on, or on a shared article you open from a share link when Open Book may already open it in reading mode (you turned on opening shared links in reading mode, or already gave Open Book access to that site). It does not run in the background or on any other page.</p>
 
       <h2>Contact</h2>
       <p>For questions about this policy, open an issue at the project's repository or email the developer.</p>

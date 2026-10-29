@@ -69,7 +69,8 @@ Two modes: **text** (Alt+B) and **image gallery** (Alt+Shift+B). The gallery off
 masonry **Wall** for browsing and an **Ordered** layout that reads images in sequence
 (webtoons/manga — one page at a time at max size), plus a per-site filter that hides
 avatars and other repeated noise. The engine is injected **only when invoked** — nothing
-runs against any page otherwise (the one exception is opt-in, below). Styles use
+runs against any page otherwise (the exceptions are opt-in: per-site auto-open, below, and
+shared links; see Permissions). Styles use
 Constructable Stylesheets inside a Shadow DOM, so strict-CSP sites can't block or interfere.
 
 **Per-site auto-open (opt-in):** right-click → *Auto-open on this site*, and pages there open
@@ -93,15 +94,22 @@ Requested **only on first use, never at install** (optional permissions):
 
 - `downloads` — save images you explicitly download from the gallery
 - host access to **the sites the images live on** — fetch image bytes cross-origin to bundle a
-  ZIP you request. Least privilege: the prompt lists those hosts and asks only for them. Broad
-  `<all_urls>` access exists solely behind the prompt's "Allow all sites instead" link, for
-  people who download a lot — it is never what a ZIP asks for by default
+  ZIP you request. Least privilege: the prompt lists those hosts and asks only for them; a ZIP
+  never asks for all sites by default
+- all-sites host access (`<all_urls>`) — only through one of two explicit choices: the ZIP
+  prompt's "Allow all sites instead" link, for people who download a lot, or, on a shared-link
+  page, the opt-in to open shared links straight in reading mode. It is one grant, so either
+  choice enables both uses, and it also covers the sites you turned auto-open on for
 - per-site host access — granted when you turn on auto-open for a site (a per-origin subset
   of the same optional host permission), so the tiny sentinel can run there on page load
 
-No data collection, no telemetry, nothing sent to the developer. The extension makes
-network requests **only when you explicitly download images** (the browser fetches those
-image URLs to save them). Core reading/extraction is fully local — auto-open included: the
+Any of these grants that covers a site also lets a shared article on that site open straight
+in reading mode when you follow a share link to it.
+
+No data collection, no telemetry; nothing reaches the developer unless you choose to send a
+problem report. The extension makes network requests **only when you explicitly download
+images** (the browser fetches those image URLs to save them) or send a report through the
+Report page's web form. Core reading/extraction is fully local — auto-open included: the
 sentinel reads the page locally to decide, and transmits nothing.
 
 ## Store assets
