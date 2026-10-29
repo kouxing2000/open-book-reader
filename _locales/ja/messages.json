@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "記事の終わり" },
   "readerAtStart": { "message": "記事の先頭" },
 
-  "galleryTitle": { "message": "🖼 画像" },
   "gallerySelectAll": { "message": "すべて選択" },
   "gallerySelectedCount": { "message": "$COUNT$件選択", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "ダウンロード" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "テキスト" },
   "galleryCurrentModeTitle": { "message": "画像ギャラリーを表示中" },
   "galleryModeImages": { "message": "画像" },
-  "galleryReport": { "message": "⚠ 報告" },
   "galleryReportTitle": { "message": "このページの問題を報告 (メールが開きます)" },
-  "gallerySettings": { "message": "⚙ 設定" },
   "gallerySettingsTitle": { "message": "設定を開く" },
   "galleryClose": { "message": "閉じる (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "この画像をダウンロード" },

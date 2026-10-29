@@ -393,7 +393,6 @@ export function galleryState(page) {
     return {
       present: true,
       hostDisplay: getComputedStyle(host).display,
-      count: r.querySelector('.count')?.textContent || '',
       tiles: r.querySelectorAll('.tile').length,
       lbOpen: lb?.classList.contains('open') || false,
       lbCounter: r.querySelector('.lb-counter')?.textContent || '',

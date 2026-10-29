@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "已到文末" },
   "readerAtStart": { "message": "已到开头" },
 
-  "galleryTitle": { "message": "🖼 图片" },
   "gallerySelectAll": { "message": "全选" },
   "gallerySelectedCount": { "message": "已选 $COUNT$ 张", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "下载" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "文本" },
   "galleryCurrentModeTitle": { "message": "当前为图库" },
   "galleryModeImages": { "message": "图片" },
-  "galleryReport": { "message": "⚠ 反馈" },
   "galleryReportTitle": { "message": "报告本页面的问题(会打开邮件)" },
-  "gallerySettings": { "message": "⚙ 设置" },
   "gallerySettingsTitle": { "message": "打开设置" },
   "galleryClose": { "message": "关闭 (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "下载此图片" },

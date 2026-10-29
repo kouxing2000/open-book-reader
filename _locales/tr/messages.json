@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "Makalenin sonu" },
   "readerAtStart": { "message": "Makalenin başı" },
 
-  "galleryTitle": { "message": "🖼 Resimler" },
   "gallerySelectAll": { "message": "Tümünü seç" },
   "gallerySelectedCount": { "message": "$COUNT$ seçildi", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "İndir" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "Metin" },
   "galleryCurrentModeTitle": { "message": "Resim galerisindesiniz" },
   "galleryModeImages": { "message": "Resimler" },
-  "galleryReport": { "message": "⚠ Bildir" },
   "galleryReportTitle": { "message": "Bu sayfadaki bir sorunu bildir (e-posta açar)" },
-  "gallerySettings": { "message": "⚙ Ayarlar" },
   "gallerySettingsTitle": { "message": "Ayarları aç" },
   "galleryClose": { "message": "Kapat (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "Bu resmi indir" },

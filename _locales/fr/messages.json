@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "Fin de l’article" },
   "readerAtStart": { "message": "Début de l’article" },
 
-  "galleryTitle": { "message": "🖼 Images" },
   "gallerySelectAll": { "message": "Tout sélectionner" },
   "gallerySelectedCount": { "message": "$COUNT$ sélectionnées", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "Télécharger" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "Texte" },
   "galleryCurrentModeTitle": { "message": "Vous êtes dans la galerie d’images" },
   "galleryModeImages": { "message": "Images" },
-  "galleryReport": { "message": "⚠ Signaler" },
   "galleryReportTitle": { "message": "Signaler un problème sur cette page (ouvre un e-mail)" },
-  "gallerySettings": { "message": "⚙ Paramètres" },
   "gallerySettingsTitle": { "message": "Ouvrir les paramètres" },
   "galleryClose": { "message": "Fermer (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "Télécharger cette image" },

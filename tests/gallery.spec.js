@@ -24,7 +24,7 @@ test.describe('image gallery', () => {
     const s = await galleryState(page);
     // fixture: 5 large <img> + 1 background-image kept; 2 tiny (<80px) filtered.
     expect(s.tiles).toBe(6);
-    expect(s.count).toBe('6 images');
+    expect(s.selCount).toBe('0 / 6 selected'); // the total rides in the selection count
   });
 
   // Perf split (REFACTOR-PLAN 1.2): the costly getComputedStyle('*') background-image scan
@@ -172,6 +172,7 @@ test.describe('image gallery', () => {
     // Regression: without white-space:nowrap the flex bar dumped all its shrink onto
     // the only shrinkable items (the text labels), collapsing "Images" / "Select all" /
     // "Size" to one character per line. They must stay single-line; the bar wraps instead.
+    // The selection count carries the image total ("0 / 6 selected").
     await page.setViewportSize({ width: 560, height: 800 });
     await openGallery(page);
     const r = await page.evaluate(() => {
@@ -181,9 +182,9 @@ test.describe('image gallery', () => {
         const cs = getComputedStyle(el);
         return { h: el.offsetHeight, line: parseFloat(cs.lineHeight) || 18, ws: cs.whiteSpace };
       };
-      return { title: m('.title'), selall: m('.selall'), size: m('.bar label:not(.selall)') };
+      return { selcount: m('.selcount'), selall: m('.selall'), size: m('.bar label:not(.selall)') };
     });
-    for (const part of [r.title, r.selall, r.size]) {
+    for (const part of [r.selcount, r.selall, r.size]) {
       expect(part.ws).toBe('nowrap');
       expect(part.h).toBeLessThan(part.line * 2); // one line tall, not a stacked column
     }
@@ -501,12 +502,12 @@ test.describe('gallery downloads', () => {
   });
 
   test('selecting tiles updates the count and enables the download buttons', async ({ page }) => {
-    expect((await galleryState(page)).selCount).toBe('0 selected');
+    expect((await galleryState(page)).selCount).toBe('0 / 6 selected');
     expect((await galleryState(page)).dlSelDisabled).toBe(true);
 
     await clickInGallery(page, '.tile >> nth=0 >> .check');
     const s = await galleryState(page);
-    expect(s.selCount).toBe('1 selected');
+    expect(s.selCount).toBe('1 / 6 selected');
     expect(s.dlSelDisabled).toBe(false);
   });
 
@@ -521,7 +522,7 @@ test.describe('gallery downloads', () => {
 
   test('Select all + ZIP fetches every image and builds the archive', async ({ page }) => {
     await clickInGallery(page, '.selall-cb');
-    expect((await galleryState(page)).selCount).toBe('6 selected');
+    expect((await galleryState(page)).selCount).toBe('6 / 6 selected');
 
     await clickInGallery(page, '.dl-zip');
     await expect.poll(() => galleryState(page).then((s) => s.status)).toContain('saved');
@@ -1556,7 +1557,7 @@ test.describe('lazy forum noise', () => {
       [...document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile img')]
         .map((i) => { const u = new URL(i.src); return u.pathname + u.search; }).sort());
     expect(tileUrls).toEqual(['/photo-400.png?n=1', '/photo-400.png?n=2', '/photo-400.png?n=3', '/pic-700.png']);
-    expect((await galleryState(page)).count).toBe('4 images');
+    expect((await galleryState(page)).selCount).toBe('0 / 4 selected');
     // 4 avatars + 4 emoticons ride the "N hidden" toggle: recoverable, never silently dropped.
     const hiddenLabel = await page.evaluate(() =>
       document.getElementById('obr-gallery-host').shadowRoot.querySelector('.hidden-toggle .lbl').textContent);

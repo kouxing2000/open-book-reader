@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "已到文末" },
   "readerAtStart": { "message": "已到開頭" },
 
-  "galleryTitle": { "message": "🖼 圖片" },
   "gallerySelectAll": { "message": "全選" },
   "gallerySelectedCount": { "message": "已選 $COUNT$ 張", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "下載" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "文字" },
   "galleryCurrentModeTitle": { "message": "目前在圖庫" },
   "galleryModeImages": { "message": "圖片" },
-  "galleryReport": { "message": "⚠ 回報" },
   "galleryReportTitle": { "message": "回報這個頁面的問題（會開啟電子郵件）" },
-  "gallerySettings": { "message": "⚙ 設定" },
   "gallerySettingsTitle": { "message": "開啟設定" },
   "galleryClose": { "message": "關閉 (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "下載這張圖片" },

@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "Fim do artigo" },
   "readerAtStart": { "message": "Início do artigo" },
 
-  "galleryTitle": { "message": "🖼 Imagens" },
   "gallerySelectAll": { "message": "Selecionar tudo" },
   "gallerySelectedCount": { "message": "$COUNT$ selecionadas", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "Baixar" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "Texto" },
   "galleryCurrentModeTitle": { "message": "Você está na galeria de imagens" },
   "galleryModeImages": { "message": "Imagens" },
-  "galleryReport": { "message": "⚠ Relatar" },
   "galleryReportTitle": { "message": "Relatar um problema nesta página (abre um e-mail)" },
-  "gallerySettings": { "message": "⚙ Configurações" },
   "gallerySettingsTitle": { "message": "Abrir configurações" },
   "galleryClose": { "message": "Fechar (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "Baixar esta imagem" },

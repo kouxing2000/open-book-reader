@@ -89,8 +89,8 @@ embeds, which the overlays keep out.
   `applySlideSecsLive` skips such a slide, or a +/- press would fire an overdue dwell mid-video. A
   looping video never ends, so it gets the dwell; so does one that fails to load.
 - **Not counted** by `imageCount()`: the toolbar's auto-pick and the reader's "Images · N" badge
-  see pictures only, so no page changes mode because of its videos. The gallery's own "N images"
-  count includes video tiles.
+  see pictures only, so no page changes mode because of its videos. The gallery's total (the N in
+  "0 / N selected") includes video tiles.
 - **Downloads:** a single video goes through `chrome.downloads` like a picture (no bytes through
   the worker; a URL without an extension saves as `.mp4`). A ZIP leaves selected videos out and
   says so (`galleryZipVideosSkipped`): the worker returns every file as base64 in one message,

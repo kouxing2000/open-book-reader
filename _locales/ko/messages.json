@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "글의 끝" },
   "readerAtStart": { "message": "글의 처음" },
 
-  "galleryTitle": { "message": "🖼 이미지" },
   "gallerySelectAll": { "message": "전체 선택" },
   "gallerySelectedCount": { "message": "$COUNT$개 선택됨", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "다운로드" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "텍스트" },
   "galleryCurrentModeTitle": { "message": "이미지 갤러리를 보고 있습니다" },
   "galleryModeImages": { "message": "이미지" },
-  "galleryReport": { "message": "⚠ 신고" },
   "galleryReportTitle": { "message": "이 페이지의 문제 신고 (메일이 열립니다)" },
-  "gallerySettings": { "message": "⚙ 설정" },
   "gallerySettingsTitle": { "message": "설정 열기" },
   "galleryClose": { "message": "닫기 (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "이 이미지 다운로드" },

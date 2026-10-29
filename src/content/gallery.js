@@ -39,6 +39,12 @@
   // Hide (eye-off) + Show (eye) glyphs for the image filter.
   const HIDE_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13 13 0 0 1-1.67 2.68"/><path d="M6.6 6.6A13 13 0 0 0 2 12s3 8 10 8a9 9 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/><path d="m2 2 20 20"/></svg>';
+  // Report (alert triangle) + Settings (gear) glyphs: those two buttons are icon-only, named by
+  // aria-label and tooltip.
+  const ALERT_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  const GEAR_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>';
   const EYE_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
 
@@ -159,7 +165,7 @@
 
   /* -------------------------------------------------- state */
   let settings = Object.assign({}, OBR.DEFAULTS);
-  let host, root, wrap, gridEl, scrollerEl, countEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbVideo, lbCounter, lbStrip, lbSecsEl, lbControls;
+  let host, root, wrap, gridEl, scrollerEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbVideo, lbCounter, lbStrip, lbSecsEl, lbControls;
   let active = false, built = false;
   let openedByAuto = false; // this session was sentinel-opened (tempers the chip's ask moment)
   let images = [];           // [{url, full, w, h, ...}]; a video also carries {video: true, poster, loop}
@@ -560,16 +566,19 @@
       font: 14px/1.4 -apple-system, system-ui, "PingFang SC", sans-serif;
       display: flex; flex-direction: column;
     }
-    .bar { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    /* Positioned, and above the tiles' own controls (z-index up to 3), so the status toast can
+       hang below the bar over the grid. */
+    .bar { position: relative; z-index: 5; flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
       padding: 10px 16px; background: #16161a; border-bottom: 1px solid #26262c; }
-    .title { font-weight: 600; white-space: nowrap; }
-    .count { color: #9a9aa2; }
+    .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; white-space: nowrap;
+      clip-path: inset(50%); }
+    .btn.icon-only { padding: 6px 9px; }
     /* Shrinks and wraps inside itself only when its own row is too narrow (a phone in a long
        locale), right-aligned, so Close stays on screen at the right end. */
     .end { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center;
       gap: 10px 14px; margin-left: auto; min-width: 0; }
     .bar label { display: flex; align-items: center; gap: 8px; color: #b8b8c0; white-space: nowrap; }
-    .bar input[type=range] { width: 150px; accent-color: #7c6cff; }
+    .bar input[type=range] { width: 110px; accent-color: #7c6cff; }
     .btn { background: #26262c; color: #e8e8ea; border: 1px solid #34343c;
       border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-family: inherit;
       display: inline-flex; align-items: center; gap: 6px; line-height: 1; white-space: nowrap; }
@@ -581,6 +590,9 @@
     .btn.autoscroll.on:hover { background: #6a5aef; }
     /* .bar label.autospeed beats the generic ".bar label" so gap/size aren't overridden. */
     .bar label.autospeed { gap: 5px; font-size: 12px; }
+    /* The speed box is only useful while scrolling (+/- nudge it live), so it rides along then. */
+    .bar .autospeed { display: none; }
+    .bar .autoscroll.on + .autospeed { display: flex; }
     .autospeed-in { width: 64px; background: #131318; color: #e8e8ea; border: 1px solid #34343c;
       border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; text-align: right;
       font-variant-numeric: tabular-nums; }
@@ -599,8 +611,13 @@
     .seg-btn.is-active { background: #7c6cff; color: #fff; cursor: default; font-weight: 600;
       box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 6px rgba(124,108,255,.45); }
     .sep { width: 1px; align-self: stretch; background: #2c2c34; margin: 0 2px; }
-    .selcount { color: #9a9aa2; min-width: 70px; }
-    .status { color: #b8b8c0; font-size: 12px; min-width: 60px; }
+    .selcount { color: #9a9aa2; min-width: 70px; white-space: nowrap; }
+    /* Status is a toast under the bar's right end, so a message never re-wraps the toolbar. */
+    .status { position: absolute; top: calc(100% + 8px); right: 16px; max-width: min(420px, 80vw);
+      color: #e8e8ea; font-size: 12px; background: #26262c; border: 1px solid #34343c;
+      border-radius: 8px; padding: 6px 10px; box-shadow: 0 6px 18px rgba(0,0,0,.45);
+      pointer-events: none; }
+    .status:empty { display: none; }
     .selall { display: flex; align-items: center; gap: 6px; color: #b8b8c0; cursor: pointer; white-space: nowrap; }
     .scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 12px;
       scrollbar-gutter: stable; } /* reserve the scrollbar width so Ordered rows justify against a
@@ -775,15 +792,12 @@
         </span>
         <label>${OBR.t('gallerySizeLabel')} <input type="range" class="range" min="2" step="1" aria-label="${OBR.t('gallerySizeAria')}"></label>
         <span class="sep"></span>
-        <span class="title">${OBR.t('galleryTitle')}</span>
-        <span class="count"></span>
-        <span class="sep"></span>
         <label class="selall"><input type="checkbox" class="selall-cb"> ${OBR.t('gallerySelectAll')}</label>
         <span class="selcount">${OBR.t('gallerySelectedCount', ['0'])}</span>
         <button class="btn dl-sel" disabled>${DL_ICON}<span>${OBR.t('galleryDownload')}</span></button>
         <button class="btn dl-zip" disabled>${DL_ICON}<span>${OBR.t('galleryZip')}</span></button>
-        <button class="btn rescan" title="${OBR.t('galleryLoadAllTitle')}">${RESCAN_ICON}<span>${OBR.t('galleryLoadAll')}</span></button>
-        <button class="btn autoscroll" aria-pressed="false" title="${OBR.t('galleryAutoScrollTitle')}"><span class="icon">${PLAY_ICON}</span><span class="lbl">${OBR.t('galleryAutoScroll')}</span></button>
+        <button class="btn rescan icon-only" title="${OBR.t('galleryLoadAllTitle')}">${RESCAN_ICON}<span class="vh">${OBR.t('galleryLoadAll')}</span></button>
+        <button class="btn autoscroll icon-only" aria-pressed="false" title="${OBR.t('galleryAutoScrollTitle')}"><span class="icon">${PLAY_ICON}</span><span class="lbl vh">${OBR.t('galleryAutoScroll')}</span></button>
         <label class="autospeed" title="${OBR.t('galleryAutoScrollSpeedTitle')}"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="${OBR.t('galleryAutoScrollSpeedAria')}"> ${OBR.t('gallerySpeedUnit')}</label>
         <button class="btn hidden-toggle" aria-pressed="false" style="display:none" title="${OBR.t('galleryShowFilteredTitle')}"><span class="icon">${EYE_ICON}</span><span class="lbl"></span></button>
         <button class="btn undo-hide" style="display:none" title="${OBR.t('galleryUndoHideTitle')}">${OBR.t('galleryUndo')}</button>
@@ -791,8 +805,8 @@
         <!-- One group, so a wrap moves Report / Settings / Close together and Close (Esc) never
              lands alone at the start of a new row. margin-left:auto keeps it at the right end. -->
         <span class="end">
-          <button class="btn report" data-act="report" title="${OBR.t('galleryReportTitle')}">${OBR.t('galleryReport')}</button>
-          <button class="btn settings" data-act="settings" title="${OBR.t('gallerySettingsTitle')}">${OBR.t('gallerySettings')}</button>
+          <button class="btn report icon-only" data-act="report" title="${OBR.t('galleryReportTitle')}" aria-label="${OBR.t('galleryReportTitle')}">${ALERT_ICON}</button>
+          <button class="btn settings icon-only" data-act="settings" title="${OBR.t('gallerySettingsTitle')}" aria-label="${OBR.t('gallerySettingsTitle')}">${GEAR_ICON}</button>
           <button class="btn close" data-act="close">${OBR.t('galleryClose')}</button>
         </span>
       </div>
@@ -816,7 +830,6 @@
 
     gridEl = wrap.querySelector('.grid');
     scrollerEl = wrap.querySelector('.scroll');
-    countEl = wrap.querySelector('.count');
     rangeEl = wrap.querySelector('.range');
     autoSpeedEl = wrap.querySelector('.autospeed-in');
     lbEl = wrap.querySelector('.lb');
@@ -979,7 +992,8 @@
   function updateSelUI() {
     if (!wrap) return;
     const n = selectedUrls().length;
-    wrap.querySelector('.selcount').textContent = OBR.t('gallerySelectedCount', [String(n)]);
+    // "0 / 15 selected": the selection count also carries the gallery's image total.
+    wrap.querySelector('.selcount').textContent = OBR.t('gallerySelectedCount', [n + ' / ' + images.length]);
     const selBtn = wrap.querySelector('.dl-sel');
     const zipBtn = wrap.querySelector('.dl-zip');
     selBtn.disabled = busy || n === 0;
@@ -1023,8 +1037,10 @@
       if (!resp) {
         setStatus(OBR.t('galleryWaitingPermission'));
         resp = await retryUntilAnswered(msg);
+        if (resp && !resp.denied) setStatus(''); // answered: the wait message is done
+        else if (!resp) clearStatusIn(6000);     // gave up waiting: let the message go
       }
-      if (resp && resp.denied) setStatus(OBR.t('galleryDownloadsPermissionNeeded'));
+      if (resp && resp.denied) { setStatus(OBR.t('galleryDownloadsPermissionNeeded')); clearStatusIn(6000); }
       return resp;
     });
   }
@@ -1581,7 +1597,6 @@
     if (lbStrip && lightboxIndex < 0) lbStrip.replaceChildren(); // rebuild the strip fresh on next open
     if (scrollerEl) scrollerEl.scrollTop = 0;
     syncSizeSlider(); // reflect the stored column count (max + value) for this screen + layout
-    countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
     relayoutActive(false);
     updateSelUI();
     updateHiddenToggle();
@@ -1601,7 +1616,6 @@
   function refreshFilter() {
     const sy = scrollerEl ? scrollerEl.scrollTop : 0;
     images = collect(true);
-    if (countEl) countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
     relayoutActive(false);
     if (scrollerEl) scrollerEl.scrollTop = Math.min(sy, Math.max(0, scrollerEl.scrollHeight - scrollerEl.clientHeight));
     updateSelUI();
@@ -1775,7 +1789,6 @@
       if (!renderedCols) relayoutActive(false);       // was empty-state — first real render
       else if (ordered) appendOrderedTiles(startIdx); // append rows; re-justify only touched rows
       else { if (!cols.length) buildColumns(); for (let i = startIdx; i < images.length; i++) placeTile(images[i], i); }
-      countEl.textContent = OBR.t('galleryImageCount', [String(images.length)]);
       updateSelUI();
       softDone = false;
       if (lightboxIndex >= 0) { // keep the open lightbox's filmstrip + counter in sync as images hydrate

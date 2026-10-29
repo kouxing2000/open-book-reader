@@ -53,7 +53,6 @@
   "readerAtEnd": { "message": "Koniec artykułu" },
   "readerAtStart": { "message": "Początek artykułu" },
 
-  "galleryTitle": { "message": "🖼 Obrazy" },
   "gallerySelectAll": { "message": "Zaznacz wszystko" },
   "gallerySelectedCount": { "message": "Wybrano: $COUNT$", "placeholders": { "count": { "content": "$1" } } },
   "galleryDownload": { "message": "Pobierz" },
@@ -92,9 +91,7 @@
   "galleryModeText": { "message": "Tekst" },
   "galleryCurrentModeTitle": { "message": "Jesteś w galerii obrazów" },
   "galleryModeImages": { "message": "Obrazy" },
-  "galleryReport": { "message": "⚠ Zgłoś" },
   "galleryReportTitle": { "message": "Zgłoś problem na tej stronie (otworzy wiadomość e-mail)" },
-  "gallerySettings": { "message": "⚙ Opcje" },
   "gallerySettingsTitle": { "message": "Otwórz ustawienia" },
   "galleryClose": { "message": "Zamknij (Esc)" },
   "galleryLightboxDownloadTitle": { "message": "Pobierz ten obraz" },
