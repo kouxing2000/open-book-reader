@@ -212,8 +212,8 @@
           </div>
           <div class="obr-pop-lab">${OBR.t('optTheme')}</div>
           <div class="obr-set">${THEMES.map((t) => `<button class="obr-set-btn" data-act="theme" data-val="${t}" aria-pressed="false">${OBR.t(THEME_LABELS[t])}</button>`).join('')}</div>
-          <div class="obr-pop-lab">${OBR.t('optColumns')}</div>
-          <div class="obr-set">${COLUMN_OPTS.map((n) => `<button class="obr-set-btn" data-act="columns" data-val="${n}" aria-pressed="false">${n}</button>`).join('')}</div>
+          <div class="obr-pop-lab obr-cols">${OBR.t('optColumns')}</div>
+          <div class="obr-set obr-cols">${COLUMN_OPTS.map((n) => `<button class="obr-set-btn" data-act="columns" data-val="${n}" aria-pressed="false">${n}</button>`).join('')}</div>
         </div>
         <div class="obr-pop" data-for="more" role="menu" hidden>
           ${FLEX_ACTS.map((a) => `<button class="obr-menuitem" role="menuitem" data-act="${a.act}" title="${OBR.t(a.title)}">${OBR.t(a.label)}</button>`).join('')}
@@ -508,6 +508,8 @@
   // Options-page change, and the OS flipping an 'auto' theme.
   function syncTypePop() {
     if (!overlay) return;
+    // Again here, not only in layout(): a theme change rewrites the overlay's className.
+    overlay.classList.toggle('obr-single', pagesPerSpread === 1);
     const size = overlay.querySelector('.obr-font-size');
     if (size) size.textContent = settings.fontSize + ' px';
     const theme = resolveTheme();
@@ -2789,6 +2791,7 @@
     const vw = window.innerWidth, vh = window.innerHeight;
     const cols = Math.max(2, Math.min(4, settings.columns || 2)); // 2, 3, or 4 per spread
     pagesPerSpread = vw < settings.singlePageBelow ? 1 : cols;
+    overlay.classList.toggle('obr-single', pagesPerSpread === 1);
 
     // Desktop margins are generous on purpose; on a phone the SAME pixels are a quarter of
     // the screen (24 + 44*2 = 112px of 412px), so the single-page layout gets its own pair.

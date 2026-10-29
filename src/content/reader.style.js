@@ -198,12 +198,14 @@
       background: linear-gradient(to top, rgba(var(--obr-bg),.96) 38%, rgba(var(--obr-bg),0) 100%);
       transition: opacity .25s ease, transform .25s ease;
     }
-    .obr-hint { opacity: .55; }
+    /* At least .8: lower, the hint and the reading-time meta fall under 4.5:1 over the paper
+       theme's bar. At .8 every theme is 5:1 or better. */
+    .obr-hint { opacity: .8; }
     /* A turn past either end names the edge (bumpEdge); outlined so it reads as an answer to
        the press rather than as the usual page count. */
     .obr-indicator.obr-at-edge { font-weight: 600; border: 1px solid currentColor;
       border-radius: 999px; padding: 3px 11px; }
-    .obr-doc-meta { opacity: .5; font-size: .92em; margin-left: 10px; white-space: nowrap; }
+    .obr-doc-meta { opacity: .8; font-size: .92em; margin-left: 10px; white-space: nowrap; }
     /* Centred, the hint and the page count read as one run-on string on a narrow screen.
        Split them to opposite ends; the order property puts the hint first without touching the
        DOM, so the desktop layout stays source-order and centred. This block must stay BELOW
@@ -345,6 +347,12 @@
     .obr-pages pre, .obr-pages code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .85em; }
     .obr-pages pre { white-space: pre-wrap; word-break: break-word; background: rgba(127,127,127,.12); padding: .7em; border-radius: 4px; break-inside: avoid; }
     .obr-doc-h1 { font-size: 1.7em; line-height: 1.2; margin: 0 0 .8em; }
+    /* The topbar floats over the book and shows on open, exactly while the title is on screen;
+       this clearance keeps the title out from under it. Scoped to the paged view, so print is
+       untouched. */
+    .obr-pages .obr-doc-h1 { margin-top: 30px; }
+    /* One page per view ignores the column count, so the Aa row for it would do nothing. */
+    .obr-single .obr-cols { display: none; }
     .obr-byline { opacity: .6; font-size: .85em; margin: 0 0 1.4em; }
 
     /* "Wrong content?" / saved-pick affordance — a small pill above the footer.
