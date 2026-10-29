@@ -22,7 +22,7 @@ body:
     id: privacy
     attributes:
       label: Privacy check
-      description: Open Book Reader collects no data and sends nothing to the developer.
+      description: Privacy comes first. Open Book Reader collects no data and has no tracking or telemetry.
       options:
         - label: This request does not require new tracking, telemetry, or an always-on permission.
           required: false

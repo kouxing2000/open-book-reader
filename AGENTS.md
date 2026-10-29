@@ -28,10 +28,10 @@
 Chrome MV3 extension, two reading modes: a two-page open-book **text** reader (keyboard
 page-flipping) and an **image-gallery** mode (a **Wall** masonry grid or an **Ordered** row-major
 layout for sequential images, + lightbox). Reading is fully local —
-no data collected, nothing sent to the developer. The one network case: when the user explicitly
-downloads gallery images (needs the OPTIONAL `downloads` permission plus host access to the sites
-those images live on — requested on first use, not held at install — so the service worker can fetch
-image bytes cross-origin to build a ZIP).
+no data collected, no tracking. Network requests happen only on a user action: an explicit gallery
+image download (needs the OPTIONAL `downloads` permission plus host access to the sites those images
+live on — requested when a download needs it, not held at install — so the service worker can fetch image bytes
+cross-origin to build a ZIP), or a problem report the user sends through the Report page's web form.
 
 Zero-dependency, zero-build: Chrome loads `manifest.json` + `src/` + `icons/` directly. Edit files,
 reload the unpacked extension. (`package.json`/`scripts/` are release tooling only — never bundled.)
