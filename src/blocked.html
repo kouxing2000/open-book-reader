@@ -16,6 +16,21 @@
     p { font-size: 13.5px; line-height: 1.55; opacity: .85; margin: 0 0 12px; }
     ul { font-size: 13px; line-height: 1.6; opacity: .8; margin: 0 0 14px; padding-left: 20px; }
     .tip { font-size: 12.5px; opacity: .65; margin: 0; }
+    /* Opened as a TAB (first block, ?first=1) the popup layout would sit as small print in the
+       top-left corner; a tab-sized window centres it as a card. The popup never gets this wide. */
+    @media (min-width: 600px) {
+      html { min-height: 100%; background: #efe9dc; }
+      body { margin: 72px auto; max-width: 480px; padding: 28px 30px; border-radius: 14px;
+        border: 1px solid rgba(127,127,127,.18); box-shadow: 0 8px 30px rgba(60,45,25,.12); }
+      h1 { font-size: 19px; }
+      p { font-size: 14.5px; }
+      ul { font-size: 14px; }
+      .tip { font-size: 13.5px; }
+    }
+    @media (min-width: 600px) and (prefers-color-scheme: dark) {
+      html { background: #0e0f12; }
+      body { box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+    }
   </style>
 </head>
 <body>
