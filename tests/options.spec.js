@@ -408,6 +408,20 @@ test('savePick bounds the map by bytes (not just count) and reports success', as
   expect(r.droppedOldest).toBe(true);        // LRU dropped the oldest
 });
 
+test('Columns per view is a 2/3/4 group: a press saves it, a reload shows it, Reset restores 2', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  const pressed = () => page.locator('#columns [aria-pressed="true"]');
+  await expect(pressed()).toHaveText('2'); // the default
+  await page.locator('#columns [data-val="3"]').click();
+  await expect(pressed()).toHaveText('3');
+  await expect.poll(() => page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get('obr_settings', (d) => res((d.obr_settings || {}).columns))))).toBe(3);
+  await page.reload();
+  await expect(pressed()).toHaveText('3');
+  await page.locator('#reset').click();
+  await expect(pressed()).toHaveText('2');
+});
+
 test('reset to defaults also clears saved content picks', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
   await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({

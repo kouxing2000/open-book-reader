@@ -19,6 +19,13 @@
     .beta { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; vertical-align: 1px; color: #6a59f2; background: rgba(124,108,255,.14); }
     @media (prefers-color-scheme: dark) { .beta { color: #b3a8ff; background: rgba(124,108,255,.22); } }
     input[type="range"] { width: 180px; }
+    /* The reader's own accent, so the controls match the product they configure. */
+    input[type="range"], input[type="checkbox"] { accent-color: #7c6cff; }
+    /* Segmented 2 / 3 / 4, the same control as the reader's Aa popover. */
+    .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: rgba(127,127,127,.16); }
+    .seg button { padding: 5px 14px; border-radius: 6px; background: transparent; color: inherit; font-size: 13px; }
+    .seg button[aria-pressed="true"] { background: #fff; color: #222; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+    @media (prefers-color-scheme: dark) { .seg button[aria-pressed="true"] { background: rgba(255,255,255,.18); color: #fff; } }
     select, input[type="number"] { padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
     /* The control cell never wraps: a long description must not push a slider's value under it.
        On a phone the slider narrows instead, so a long single-word label still fits. */
@@ -220,8 +227,8 @@
     </div>
 
     <div class="row">
-      <label><span data-i18n="optColumns">Columns per view</span> <span class="hint" data-i18n="optColumnsHint">2, 3, or 4 columns per spread</span></label>
-      <span><input type="range" id="columns" min="2" max="4" step="1" /><span class="val" id="columnsVal"></span></span>
+      <label><span data-i18n="optColumns" id="columnsLabel">Columns per view</span> <span class="hint" data-i18n="optColumnsHint">2, 3, or 4 columns per spread</span></label>
+      <span class="seg" id="columns" role="group" aria-labelledby="columnsLabel"><button type="button" data-val="2" aria-pressed="false">2</button><button type="button" data-val="3" aria-pressed="false">3</button><button type="button" data-val="4" aria-pressed="false">4</button></span>
     </div>
 
     <div class="row">

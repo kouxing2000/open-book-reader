@@ -18,8 +18,9 @@
 
   try { OBR.bindShareLink(document.getElementById('share-link'), 'options'); } catch (e) { /* never block the page */ } // after localize(): it keeps the label
 
-  const SLIDERS = ['fontSize', 'maxBookWidth', 'columns', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
+  const SLIDERS = ['fontSize', 'maxBookWidth', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
+  const SEGMENTS = ['columns']; // a group of [data-val] buttons, one pressed
   const CHECKBOXES = ['splitLongPictures', 'readSelection', 'markdownExport', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding', 'colophon', 'colophonLifetime'];
   const savedEl = document.getElementById('saved');
   let saveTimer;
@@ -234,7 +235,23 @@
     else valEl.textContent = el.value;
   }
 
+  function setSegment(key, value) {
+    document.querySelectorAll('#' + key + ' [data-val]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.val === String(value)));
+    });
+  }
+
   function bind(settings) {
+    SEGMENTS.forEach((key) => {
+      setSegment(key, settings[key]);
+      document.getElementById(key).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-val]');
+        if (!b) return;
+        const v = parseInt(b.dataset.val, 10);
+        setSegment(key, v);
+        OBR.saveSettings({ [key]: v }).then(flashSaved);
+      });
+    });
     SLIDERS.forEach((key) => {
       const el = document.getElementById(key);
       setSliderFromSetting(key, settings[key]);
@@ -786,6 +803,7 @@
         const cleared = !chrome.runtime.lastError; // else the picks and hidden images are still stored
         OBR.loadSettings().then((s) => {
           SLIDERS.forEach((k) => { setSliderFromSetting(k, s[k]); reflectValue(k); });
+          SEGMENTS.forEach((k) => setSegment(k, s[k]));
           SELECTS.forEach((k) => { document.getElementById(k).value = s[k]; });
           CHECKBOXES.forEach((k) => { document.getElementById(k).checked = !!s[k]; });
           rules = [];
