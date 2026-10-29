@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the toolbar icon chooses between reader and gallery.
 - A share link being copied by hand on the back cover keeps its focus and selection when the
   window is resized.
+- When Chrome fails to read stored data, the next save no longer wipes saved reading positions,
+  content picks or reading totals.
 
 ## [1.15.2] - 2026-10-26
 

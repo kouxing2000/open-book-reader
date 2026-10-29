@@ -999,6 +999,8 @@
         const stamp = typeof now === 'number' ? now : Date.now();
         try {
           a.get(key, (d) => {
+            // A failed read is not an empty map: writing now would replace every saved entry.
+            if (globalThis.chrome && chrome.runtime && chrome.runtime.lastError) return resolve(false);
             const map = (d && d[key]) || {};
             if (val == null) {
               if (!(k in map)) return resolve(true); // nothing to delete — skip the write
@@ -1032,6 +1034,7 @@
         const stamp = typeof now === 'number' ? now : Date.now();
         try {
           a.get(key, (d) => {
+            if (globalThis.chrome && chrome.runtime && chrome.runtime.lastError) return resolve(false); // see write()
             const map = (d && d[key]) || {};
             map[k] = Object.assign({}, fn(map[k] || {}), { t: stamp });
             const byAge = () => Object.keys(map).sort((x, y) => (map[x].t || 0) - (map[y].t || 0));
@@ -1262,6 +1265,8 @@
         if (!a) return resolve(null);
         try {
           a.get(key, (d) => {
+            // A failed read is not an empty object: patching it would reset the stored totals.
+            if (globalThis.chrome && chrome.runtime && chrome.runtime.lastError) return resolve(null);
             const prev = (d && d[key]) || {};
             const next = typeof p === 'function' ? p(prev) : Object.assign({}, prev, p);
             try {
