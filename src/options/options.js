@@ -777,20 +777,23 @@
     // a broad <all_urls> grant belongs to the gallery's ZIP download and to the opt-in to open
     // shared links in reading mode, not to any rule, so a settings reset is not the place to
     // revoke it.
+    // The settings write goes first and must be confirmed: until it is, the rules are still
+    // stored, so their site access stays and nothing on the page changes.
     const orphaned = OBR.autoRuleOrigins(rules);
-    chrome.storage.sync.remove([OBR.PICKS_KEY, OBR.HIDDEN_KEY], () => {
-      chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {
+    chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {
+      if (chrome.runtime.lastError) return void flashSaved(false);
+      chrome.storage.sync.remove([OBR.PICKS_KEY, OBR.HIDDEN_KEY], () => {
+        const cleared = !chrome.runtime.lastError; // else the picks and hidden images are still stored
         OBR.loadSettings().then((s) => {
           SLIDERS.forEach((k) => { setSliderFromSetting(k, s[k]); reflectValue(k); });
           SELECTS.forEach((k) => { document.getElementById(k).value = s[k]; });
           CHECKBOXES.forEach((k) => { document.getElementById(k).checked = !!s[k]; });
           rules = [];
           renderSites();
-          picks = {};
+          if (cleared) { picks = {}; hiddenMap = {}; }
           renderPicks();
-          hiddenMap = {};
           renderHidden();
-          flashSaved();
+          flashSaved(cleared);
           if (orphaned.length) revokeOrigins(orphaned).then(renderSiteAccess);
           else renderSiteAccess();
         });

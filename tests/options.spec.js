@@ -423,6 +423,41 @@ test('reset to defaults also clears saved content picks', async ({ page, extensi
   expect(after === null || Object.keys(after).length === 0).toBe(true);
 });
 
+// The settings write carries the rules. When Chrome refuses it, the rules are still stored, so
+// Reset must not revoke the site access they use, clear the lists, or say "Saved".
+test('reset whose settings write fails keeps the rules, their site access and the picks', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  const rule = { match: 'reset.test', mode: 'text', auto: true };
+  await page.evaluate((rule) => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [rule] },
+    obr_picks: { 'example.com': { sel: '#main', t: 1 } },
+  }, res)), rule);
+  await page.reload();
+  await expect(page.locator('.site-row')).toHaveCount(1);
+  await expect(page.locator('#picks .pick-host')).toHaveCount(1);
+  const failedText = await page.evaluate(() => {
+    window.__removed = [];
+    chrome.permissions.remove = (need, cb) => { window.__removed.push(need); if (cb) cb(true); };
+    const realSet = chrome.storage.sync.set;
+    // Oversize the item so Chrome itself rejects the write with a real runtime.lastError.
+    chrome.storage.sync.set = function (items, cb) {
+      return realSet.call(this, { ...items, obr_settings: { ...items.obr_settings, padding: 'x'.repeat(9000) } }, cb);
+    };
+    return chrome.i18n.getMessage('optSaveFailed');
+  });
+
+  await page.locator('#reset').click();
+  await expect(page.locator('#saved')).toHaveText(failedText);
+  await expect(page.locator('#saved')).toHaveClass(/error/);
+  const stored = await page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.get(['obr_settings', 'obr_picks'], res)));
+  expect(stored.obr_settings.siteRules).toEqual([rule]);
+  expect(Object.keys(stored.obr_picks)).toEqual(['example.com']);
+  await expect(page.locator('.site-row')).toHaveCount(1);
+  await expect(page.locator('#picks .pick-host')).toHaveCount(1);
+  expect(await page.evaluate(() => window.__removed)).toEqual([]);
+});
+
 test('the Auto-open checkbox asks for the site permission — grant, uncheck, and deny paths', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
   // Stub the permission prompt: a real permissions.request pops a native dialog headless

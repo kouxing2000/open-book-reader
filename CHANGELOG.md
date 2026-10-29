@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window is resized.
 - When Chrome fails to read stored data, the next save no longer wipes saved reading positions,
   content picks or reading totals.
+- When Chrome refuses the save, Reset to defaults says so and keeps your site rules, their site
+  access and your saved picks, instead of reporting "Saved".
 
 ## [1.15.2] - 2026-10-26
 
