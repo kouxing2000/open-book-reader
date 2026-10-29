@@ -20,6 +20,10 @@
     @media (prefers-color-scheme: dark) { .beta { color: #b3a8ff; background: rgba(124,108,255,.22); } }
     input[type="range"] { width: 180px; }
     select, input[type="number"] { padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
+    /* The control cell never wraps: a long description must not push a slider's value under it.
+       On a phone the slider narrows instead, so a long single-word label still fits. */
+    .row > span:last-child { flex: none; white-space: nowrap; }
+    @media (max-width: 520px) { input[type="range"] { width: 120px; } }
     .val { display: inline-block; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; opacity: .7; }
     .actions { display: flex; gap: 10px; margin-top: 20px; }
     button { padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; }

@@ -564,7 +564,10 @@
       padding: 10px 16px; background: #16161a; border-bottom: 1px solid #26262c; }
     .title { font-weight: 600; white-space: nowrap; }
     .count { color: #9a9aa2; }
-    .spacer { flex: 1; }
+    /* Shrinks and wraps inside itself only when its own row is too narrow (a phone in a long
+       locale), right-aligned, so Close stays on screen at the right end. */
+    .end { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center;
+      gap: 10px 14px; margin-left: auto; min-width: 0; }
     .bar label { display: flex; align-items: center; gap: 8px; color: #b8b8c0; white-space: nowrap; }
     .bar input[type=range] { width: 150px; accent-color: #7c6cff; }
     .btn { background: #26262c; color: #e8e8ea; border: 1px solid #34343c;
@@ -785,10 +788,13 @@
         <button class="btn hidden-toggle" aria-pressed="false" style="display:none" title="${OBR.t('galleryShowFilteredTitle')}"><span class="icon">${EYE_ICON}</span><span class="lbl"></span></button>
         <button class="btn undo-hide" style="display:none" title="${OBR.t('galleryUndoHideTitle')}">${OBR.t('galleryUndo')}</button>
         <span class="status"></span>
-        <span class="spacer"></span>
-        <button class="btn report" data-act="report" title="${OBR.t('galleryReportTitle')}">${OBR.t('galleryReport')}</button>
-        <button class="btn settings" data-act="settings" title="${OBR.t('gallerySettingsTitle')}">${OBR.t('gallerySettings')}</button>
-        <button class="btn close" data-act="close">${OBR.t('galleryClose')}</button>
+        <!-- One group, so a wrap moves Report / Settings / Close together and Close (Esc) never
+             lands alone at the start of a new row. margin-left:auto keeps it at the right end. -->
+        <span class="end">
+          <button class="btn report" data-act="report" title="${OBR.t('galleryReportTitle')}">${OBR.t('galleryReport')}</button>
+          <button class="btn settings" data-act="settings" title="${OBR.t('gallerySettingsTitle')}">${OBR.t('gallerySettings')}</button>
+          <button class="btn close" data-act="close">${OBR.t('galleryClose')}</button>
+        </span>
       </div>
       <div class="scroll"><div class="grid"></div></div>
       <div class="lb">
