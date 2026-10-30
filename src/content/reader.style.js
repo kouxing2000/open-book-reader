@@ -52,7 +52,7 @@
     /* The mode switch (.obr-seg) leads the bar; a thin divider sets it off, the title/meta
        flow after it, and the tool buttons hug the right via margin-left:auto. */
     .obr-topdiv { flex: none; width: 1px; align-self: center; height: 22px; background: currentColor; opacity: .2; }
-    .obr-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; max-width: 45%; min-width: 0; }
+    .obr-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; max-width: 45%; min-width: 0; }
     .obr-controls { display: flex; gap: 6px; flex: none; justify-content: flex-end; margin-left: auto; }
     /* The bar is ONE row at every width. fitControls (reader.js) keeps it there by measuring:
        inline actions move into the ⋯ menu, then the reading-time meta hides, then the mode
@@ -87,7 +87,7 @@
       background-image: linear-gradient(rgba(255,255,255,.07), rgba(255,255,255,.07));
       box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);
     }
-    .obr-pop-lab { font-size: 11.5px; opacity: .6; padding: 6px 8px 2px; }
+    .obr-pop-lab { font-size: 11.5px; opacity: .8; padding: 6px 8px 2px; }
     .obr-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 6px 4px; }
     .obr-font-size { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
     .obr-set { display: flex; gap: 2px; padding: 3px; margin: 0 6px 4px; border-radius: 8px; background: rgba(0,0,0,.09); }
@@ -346,14 +346,13 @@
     .obr-pages blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid rgba(127,127,127,.4); opacity: .85; font-style: italic; }
     .obr-pages pre, .obr-pages code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .85em; }
     .obr-pages pre { white-space: pre-wrap; word-break: break-word; background: rgba(127,127,127,.12); padding: .7em; border-radius: 4px; break-inside: avoid; }
-    .obr-doc-h1 { font-size: 1.7em; line-height: 1.2; margin: 0 0 .8em; }
     /* The topbar floats over the book and shows on open, exactly while the title is on screen;
        this clearance keeps the title out from under it. Scoped to the paged view, so print is
        untouched. */
     .obr-pages .obr-doc-h1 { margin-top: 30px; }
     /* One page per view ignores the column count, so the Aa row for it would do nothing. */
     .obr-single .obr-cols { display: none; }
-    .obr-byline { opacity: .6; font-size: .85em; margin: 0 0 1.4em; }
+    .obr-byline { opacity: .8; font-size: .85em; margin: 0 0 1.4em; }
 
     /* "Wrong content?" / saved-pick affordance — a small pill above the footer.
        Auto-hides with the chrome (shares .obr-chrome-hidden), dismissible. */
@@ -388,7 +387,7 @@
        leaves the button losing its purple the moment the pointer touches it. */
     .obr-overlay.dark .obr-empty-go { background: #7c6cff; }
     .obr-overlay.dark .obr-empty-go:hover { background: #6a59f2; }
-    .obr-empty-alt { font-family: ${FONT_STACKS.sans}; font-size: .72em; opacity: .5; margin-top: 16px; }
+    .obr-empty-alt { font-family: ${FONT_STACKS.sans}; font-size: .72em; opacity: .8; margin-top: 16px; }
     .obr-pick-hint .obr-btn { background: #7c6cff; color: #fff; padding: 5px 11px; }
     .obr-pick-hint .obr-btn:hover { background: #6a59f2; }
     .obr-pick-x {
