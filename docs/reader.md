@@ -124,7 +124,8 @@ keeps the label.
 ## The toolbar — Aa, ⋯, and a width fit instead of breakpoints
 
 The topbar is the mode switch, the title, and then **Aa · ◐ · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
-is a popover with text size, theme and columns (the `+` `−` `T` keys reach the same settings); ◐
+is a popover with text size, theme and columns (the `+` `−` `T` keys reach the same settings; the
+columns row is hidden at one page per view, where the count does nothing); ◐
 cycles the theme in one tap, as `T` does; ⋯ is a menu with everything else. The Aa and ⋯ popovers
 are hand-rolled (`togglePop` / `closePop`) because the `popover` attribute needs Chrome 114 and the
 manifest's floor is 102. They live inside `.obr-topbar`, so the

@@ -41,10 +41,11 @@
       void chrome.runtime.lastError;
       window.close();
     });
-    // Auto-open's rule is written HERE on Allow, not only by the worker that asked: that worker
-    // routinely dies while the prompt is up, which would leave the grant without its rule. Only
-    // for the site these origins were built from, so the host named cannot differ from the
-    // access Chrome just granted.
+    // Auto-open's rule is written HERE on Allow, and only here. The worker that asked routinely
+    // dies while the prompt is up, so this page has to write it; a worker that survives only reads
+    // storage back, because a worker write would turn a failed save here followed by Cancel into a
+    // rule the user declined. Only for the site these origins were built from, so the host named
+    // cannot differ from the access Chrome just granted.
     const OBR = globalThis.OBR;
     if (granted && reason === 'auto-open' && host && OBR && OBR.storeAutoRule &&
         OBR.originsForRule(host).join(',') === origins.join(',')) {

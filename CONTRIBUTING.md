@@ -9,8 +9,9 @@ contributing is deliberately low-ceremony.
   directly. The `package.json` devDependencies are release/test tooling only — they are never
   bundled into the shipped extension. Keep it that way: new shipped code is plain ES (IIFE
   modules), and all shared state hangs off `globalThis.OBR`.
-- **Privacy is a feature.** No telemetry, nothing sent to the developer. Reading is fully local.
-  The only network call is a user-triggered image download. Any change that would weaken this
+- **Privacy is a feature.** No telemetry, no analytics, nothing collected in the background;
+  reading is fully local. Network requests happen only on a user action: an image download, or a
+  problem report the user sends through the Report page's web form. Any change that would weaken this
   (new tracking, a new always-on permission) is very unlikely to be accepted.
 - **Minimal permissions.** Don't add a manifest permission unless it's genuinely required, and
   prefer optional permissions requested at first use. (For example, do **not** add the `tabs`

@@ -15,8 +15,8 @@ Extracts the article with Mozilla Readability, paginates it into left/right page
 you flip with the arrow keys — with a realistic page-turn (soft paper curl or 3D book), paper /
 light / dark themes, adjustable font, all settings synced.
 
-**Open source (MIT).** The whole extension lives in this repo — reading is fully local and
-nothing is sent to the developer, so you can read every line and verify that yourself.
+**Open source (MIT).** The whole extension lives in this repo — reading happens entirely on your
+device, with no tracking and no analytics, so you can read every line and verify that yourself.
 
 ## Load unpacked (development)
 
@@ -149,8 +149,9 @@ dashboard-only; the API (`npm run deploy`) only uploads/publishes the package.
 - [x] Set `homepage_url` in `manifest.json` to the live site
 - [x] Host the privacy policy publicly — https://openbook.peach-studio.com/privacy.html
 - [x] Capture 1280×800 screenshots + 440×280 promo tile — `npm run screenshots`
-- [ ] Data-disclosure form: **no data collected / transmitted**; note network requests occur
-      only on user-triggered image downloads. `downloads` and host access are optional and
+- [ ] Data-disclosure form: **no data collected**; network requests happen only on a user action:
+      an image download, or a problem report sent through the Report page's web form. `downloads`
+      and host access are optional and
       requested at first download (host access scoped to the image hosts, not `<all_urls>`),
       so install asks for none of them.
 - [ ] Confirm single-purpose description matches behavior

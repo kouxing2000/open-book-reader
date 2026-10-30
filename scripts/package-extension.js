@@ -240,8 +240,9 @@ function buildChecklist(manifest, zipFileName, displayName) {
 
 ### Privacy & Permissions
 - [ ] Privacy policy URL hosted publicly — https://openbook.peach-studio.com/privacy.html (source: site/privacy.html)
-- [ ] Data-disclosure: no data collected/sent. Network requests happen ONLY when the user
-      downloads images (chrome.downloads + cross-origin fetch for ZIP). Disclose accordingly.
+- [ ] Data-disclosure: no data collected. Network requests happen ONLY on a user action: an image
+      download (chrome.downloads + cross-origin fetch for ZIP), or a problem report sent through the
+      Report page's web form. Disclose accordingly.
 - [ ] Permission justifications:
 ${permLines}
 - [ ] Optional host permission justification (requested on first download — install asks for none):

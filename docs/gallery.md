@@ -6,7 +6,8 @@
 
 Everything specific to image mode: how images are collected from a lazy page, the two
 layouts and why each exists, the lightbox, plain-source videos, the avatar/noise filter, and
-the ZIP download path (the only network feature in the extension).
+the ZIP download path (one of the extension's two network features; the other is the Report
+page's web form).
 
 ## Lazy / progressive images
 
@@ -207,10 +208,11 @@ gallery is filtered; the reader is untouched.
 
 ## Gallery downloads
 
-**Gallery downloads** (the only network feature): content scripts can't call `chrome.downloads` or
+**Gallery downloads** (one of two network features; the other is the Report page's web form): content scripts can't call `chrome.downloads` or
 fetch cross-origin, so `gallery.js` messages `background.js` — `obr-download-one` →
 `chrome.downloads.download` (no host perm needed); `obr-fetch-bytes` → SW `fetch` (needs
-`host_permissions`, sent with `credentials:'include'` so login-gated images resolve) returns base64,
+`host_permissions`, sent with `credentials:'omit'` so no logged-in content is captured; an image
+behind a login fails into the per-image "failed" count and can still be single-downloaded) returns base64,
 and the gallery builds the ZIP in-page (`OBR._buildZip`) and saves it via a blob `<a download>`. Hence
 `downloads` + `<all_urls>` as **optional** permissions (`optional_permissions` / `optional_host_permissions`),
 requested on first use — not held at install. **What a ZIP actually REQUESTS is per-origin, not

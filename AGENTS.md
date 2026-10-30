@@ -41,10 +41,10 @@ reload the unpacked extension. (`package.json`/`scripts/` are release tooling on
 On-demand injection — nothing runs on a page until the user invokes it (toolbar click / `Alt+B`
 text / `Alt+Shift+B` images). Two deliberate exceptions, both opt-in and both riding a host grant:
 sites where the user explicitly enabled per-site **auto-open** (its registered sentinel is the only
-pre-gesture code; see `docs/auto-open-spec.md`), and — for users who turned on opening shared links
-in reading mode (the all-sites grant, or auto-open on the shared article's site, both offered by the
-share page) — the article a share link hands over (`openShared` in `background.js`; see
-`docs/engagement.md`).
+pre-gesture code; see `docs/auto-open-spec.md`), and — for users holding a host grant that covers
+the shared article's site (the all-sites grant or auto-open on that site, both offered by the share
+page, or a ZIP download's grant for it) — the article a share link hands over (`openShared` in
+`background.js`; see `docs/engagement.md`).
 
 ```
 manifest.json        MV3: action + 2 commands + minimal perms (activeTab, scripting, storage, contextMenus)
@@ -213,6 +213,11 @@ npx playwright install chromium                # first run only
   orderings), a host the page's own re-render deleted, an iframe, and the banner's replace-not-stack
   behaviour. These are the failures that look identical to a dead extension.
 - `packaging.spec.js` — `npm run package` zips only the allowlist, leaks no dev files.
+- `deploy-to-store.spec.js` — the release client against a stubbed Web Store V2 API (Node, no
+  browser): upload then submit, async uploads waited out and bounded, upload-only mode, no
+  automatic retry of a write, and the real CLI's exit codes, labels and redaction.
+- `settings-storage.spec.js` — `settings.js` in a VM realm with a synthetic `chrome.storage`
+  (Node, no browser): a failed read leaves saved positions, picks and totals intact.
 - `uninstall-survey.spec.js` — `site/uninstall.html`: what the form POSTs. The stamped page
   (`#url=`) is sent only for a site reason and only with "Report the problem site" checked; a
   stamp of the welcome page's sample article is never prefilled and sends `sampleOnly` instead
@@ -302,8 +307,10 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
   account that owns the publisher** — a token from any other account *authenticates fine but the Web Store
   upload 403s* (the OAuth client's GCP project is irrelevant; only the consenting account decides access).
   The exact publisher + owning account are in `.meta/portfolio.json` (gitignored — deliberately kept out
-  of this public repo, per RULE #1). A bare `Bad Request`/`Forbidden` with a swallowed body on deploy is
-  usually this or an expired token; `deploy-to-store.js` probes the token and prints the real reason.
+  of this public repo, per RULE #1). A deploy that fails with `<operation> failed (HTTP 403): …` is
+  usually this. A wrong `CHROME_PUBLISHER_ID` also fails at that step (which status the live API
+  returns for it is unverified). An expired or revoked refresh token stops earlier:
+  `deploy-to-store.js` checks the token before any upload and prints `OAuth token invalid: …`.
   Confirm V2 access with `GET /v2/publishers/<publisher-id>/items/<id>:fetchStatus` (200 = access). The
   full publish runbook is kept in the maintainer's private `~/.claude` config, not this repo.
 - **Packaging is allowlist-based** (`SHIP_FILES`/`SHIP_DIRS` in `package-extension.js`): only

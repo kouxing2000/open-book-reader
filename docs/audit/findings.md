@@ -354,6 +354,10 @@ Dependabot PR #4 bumps four dev deps as one group. CI is red, but the red is the
   anywhere in the repo or the CI secrets. Merging this makes the next tag push fail at the upload
   step, and **the suite would stay green the whole time**, because the publish path only runs on a
   `v*` tag. This is the "unchanged metric that cannot see the change" trap in its exact form.
+  **Addressed 2026-10-27:** the release no longer uses `chrome-webstore-upload`; it calls the V2
+  API directly (`scripts/lib/webstore-client.mjs`) with a `CHROME_PUBLISHER_ID` secret, and
+  `tests/deploy-to-store.spec.js` covers that path against a stubbed API. The first run against
+  the live API is the next tag.
 - `dotenv` 16 → 17 and `@playwright/test` 1.49 → 1.62 are routine. The Playwright jump is 13
   minors on the harness this repo has documented macOS-only hangs with, so it is worth landing
   where the result can be watched rather than inside a four-package group.

@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content picks or reading totals.
 - When Chrome refuses the save, Reset to defaults says so and keeps your site rules, their site
   access and your saved picks, instead of reporting "Saved".
+- The gallery toolbar is more compact: Load all, Auto-scroll, Report and Settings are icon buttons
+  with tooltips, the selection reads "0 / 15 selected", and status messages show under the bar.
+  On wide screens it fits on one row. Close stays at the right end, on a phone too.
+- The reader's opening title is no longer covered by the toolbar, and its faint text is easier to
+  read: the toolbar title, author line, footer hint, reading time and Aa menu labels.
+- On a phone the reader's Aa menu no longer shows Columns, which does nothing at one page per view.
+- Options: sliders and checkboxes use the extension's purple, Columns per view is a 2 / 3 / 4
+  choice like the reader's Aa menu, the per-site rule form and saved rules wrap instead of running
+  off the screen, and on a phone the slider values stay beside their sliders.
+- The "not available on this page" tab is a centred card, and the permission page's Allow button
+  uses the extension's purple.
+- The privacy notes lead with what is true: no tracking, no analytics, nothing collected in the
+  background. They no longer say nothing is ever sent, since a problem report you send does reach
+  the developer.
 
 ## [1.15.2] - 2026-10-26
 
