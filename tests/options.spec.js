@@ -554,6 +554,31 @@ test('a rule whose host cannot form a match pattern gets a disabled Auto checkbo
   await expect(row.locator('.site-auto')).toHaveAttribute('title', /can.t auto-open/);
 });
 
+test('at phone width no control on the options page runs off the right edge', async ({ page, extensionId }) => {
+  // A control past the edge is unreachable without a sideways scroll, and the page gives no
+  // sign it is there. A saved rule is added first: its row is the widest line on the page.
+  await page.goto(optionsUrl(extensionId));
+  await openSections(page);
+  await page.fill('#siteHost', 'example.com');
+  await page.click('#siteAddBtn');
+  await expect(page.locator('.site-row')).toHaveCount(1);
+  for (const width of [412, 360]) {
+    await page.setViewportSize({ width, height: 915 });
+    await page.reload();
+    await openSections(page);
+    await expect(page.locator('.site-row')).toHaveCount(1);
+    const fit = await page.evaluate(() => {
+      // The visible area: a classic scrollbar (Linux) takes its width out of the viewport.
+      const W = document.documentElement.clientWidth;
+      const past = [...document.querySelectorAll('button, input, select')]
+        .filter((el) => el.getClientRects().length && el.getBoundingClientRect().right > W + 0.5)
+        .map((el) => el.id || el.className || el.tagName);
+      return { width: innerWidth, sideways: document.documentElement.scrollWidth - W, past };
+    });
+    expect(fit).toEqual({ width, sideways: 0, past: [] });
+  }
+});
+
 const storedFirstRule = (page) => page.evaluate(() => new Promise((res) =>
   chrome.storage.sync.get('obr_settings', (d) => res(((d.obr_settings || {}).siteRules || [])[0]))));
 

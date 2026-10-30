@@ -60,10 +60,13 @@
     .subhead { font-size: 13.5px; font-weight: 600; padding: 16px 0 2px; margin-top: 6px; border-top: 1px solid rgba(127,127,127,.18); }
     .subhead .hint { display: block; font-size: 12px; opacity: .55; margin-top: 3px; font-weight: normal; line-height: 1.5; }
     .hint code, .guide-body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; padding: 0 3px; border-radius: 4px; background: rgba(127,127,127,.16); }
-    .site-add { display: flex; gap: 8px; padding: 8px 0; }
-    .site-add input[type="text"] { flex: 1; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
+    /* The rule form and each saved rule wrap when their labels don't fit (long translations, a
+       phone), so the address keeps a usable width and Add / the remove button stay on screen.
+       Content-driven rather than a breakpoint: the overflow depends on label length, not width. */
+    .site-add { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+    .site-add input[type="text"] { flex: 1 1 150px; min-width: 0; box-sizing: border-box; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
     .site-row { padding: 8px 0; border-bottom: 1px solid rgba(127,127,127,.12); }
-    .site-row .site-top { display: flex; align-items: center; gap: 8px; }
+    .site-row .site-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .site-row .site-remove { padding: 4px 9px; line-height: 1; }
     .site-row .site-sub { margin-top: 4px; font-size: 12px; opacity: .6; line-height: 1.4; }
     .site-auto { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; white-space: nowrap; opacity: .85; cursor: pointer; }
@@ -97,6 +100,11 @@
       border: 1px solid rgba(127,127,127,.35); background: rgba(127,127,127,.06); color: inherit;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .pick-sel-input.invalid, .site-pat-input.invalid { border-color: #d9534f; }
+    /* A saved rule's address keeps a readable width; the row wraps instead (see .site-top).
+       border-box, so the 140px includes padding and a row that fits keeps one line. */
+    .site-pat-input { flex-basis: 140px; box-sizing: border-box; }
+    /* A wrapped Add or remove button goes to the right end, never alone at the left edge. */
+    #siteAddBtn, .site-row .site-remove { margin-left: auto; }
     .pick-valid { width: 1.1em; text-align: center; font-size: 13px; opacity: .9; }
     .pick-valid.ok { color: #2e9e5b; }
     .pick-valid.bad { color: #d9534f; }
