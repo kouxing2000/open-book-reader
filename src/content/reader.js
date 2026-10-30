@@ -152,6 +152,12 @@
   function resolveTheme() {
     return settings.theme === 'auto' ? (systemDark.matches ? 'dark' : 'paper') : settings.theme;
   }
+  // Swaps the theme class alone: the overlay also carries state classes owned by other code
+  // (obr-chrome-hidden, obr-single), and a theme change must not drop them.
+  function applyTheme() {
+    const t = resolveTheme();
+    THEMES.forEach((x) => overlay.classList.toggle(x, x === t));
+  }
 
   /* ---------------------------------------------------------------- styles */
   // The stylesheet itself lives in reader.style.js (OBR._readerCSS) — a pure function of
@@ -508,8 +514,6 @@
   // Options-page change, and the OS flipping an 'auto' theme.
   function syncTypePop() {
     if (!overlay) return;
-    // Again here, not only in layout(): a theme change rewrites the overlay's className.
-    overlay.classList.toggle('obr-single', pagesPerSpread === 1);
     const size = overlay.querySelector('.obr-font-size');
     if (size) size.textContent = settings.fontSize + ' px';
     const theme = resolveTheme();
@@ -3835,7 +3839,7 @@
   function setTheme(theme) {
     if (THEMES.indexOf(theme) < 0) return;
     settings.theme = theme;
-    overlay.className = 'obr-overlay ' + theme;
+    applyTheme();
     OBR.saveSettings({ theme });
     syncTypePop();
     showChrome();
@@ -3919,6 +3923,8 @@
     if (t) t.mark('settings');
     build();
     applyStylesheet();
+    // A whole new class list on purpose: an open starts with the chrome shown, and layout()
+    // sets obr-single afresh, so nothing from the last session carries over.
     overlay.className = 'obr-overlay ' + resolveTheme();
     syncTypePop();
     updateImagesBadge();
@@ -4300,9 +4306,8 @@
       if (area !== 'sync' || !active || pickerActive || !built || !changes[OBR.STORAGE_KEY]) return;
       OBR.loadSettings().then((s) => {
         if (pickerActive) return; // overlay is hidden mid-pick; re-apply on the next open instead
-        const wasHidden = overlay.classList.contains('obr-chrome-hidden');
         settings = s;
-        overlay.className = 'obr-overlay ' + resolveTheme() + (wasHidden ? ' obr-chrome-hidden' : '');
+        applyTheme();
         pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
         syncTypePop();
         fitControls(); // a Beta action may have been switched on or off
@@ -4319,8 +4324,7 @@
   try {
     systemDark.addEventListener('change', () => {
       if (!active || !built || settings.theme !== 'auto') return;
-      const wasHidden = overlay.classList.contains('obr-chrome-hidden');
-      overlay.className = 'obr-overlay ' + resolveTheme() + (wasHidden ? ' obr-chrome-hidden' : '');
+      applyTheme();
       syncTypePop();
     });
   } catch (e) { /* MediaQueryList.addEventListener unavailable */ }

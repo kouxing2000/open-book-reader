@@ -116,6 +116,32 @@ test('the toolbar still auto-hides after a toolbar button is tapped', async ({ p
   await waitForChromeHidden(page);
 });
 
+test('an OS dark-mode flip keeps the phone state: no Columns row, toolbar still hidden', async ({ page }) => {
+  // One page per view ignores the column count, so obr-single hides the Aa Columns row. The
+  // OS flip re-themes the overlay without a storage write or a resize, so on a settled page
+  // nothing re-runs layout() to put a dropped class back: the theme swap has to leave the
+  // state classes alone. The snapshot is taken by a second listener on the same query, which
+  // fires right after the reader's own, before a late image or font relayout can heal it.
+  const overlayClasses = () => page.evaluate(() =>
+    [...document.getElementById('obr-host').shadowRoot.querySelector('.obr-overlay').classList]);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.evaluate(() => globalThis.OBR.saveSettings({ theme: 'auto' }));
+  await expect.poll(() => readState(page).then((s) => s.theme)).toBe('paper');
+  await page.evaluate(() => {
+    const overlay = document.getElementById('obr-host').shadowRoot.querySelector('.obr-overlay');
+    overlay.classList.add('obr-chrome-hidden');
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      window.__obrAfterFlip = [...overlay.classList];
+    });
+  });
+  expect(await overlayClasses()).toEqual(expect.arrayContaining(['obr-single', 'obr-chrome-hidden']));
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(() => readState(page).then((s) => s.theme)).toBe('dark'); // the flip landed
+  const afterFlip = await page.evaluate(() => window.__obrAfterFlip);
+  expect(afterFlip).toEqual(expect.arrayContaining(['dark', 'obr-single', 'obr-chrome-hidden']));
+});
+
 test('a hybrid device that hovers the toolbar and then taps still auto-hides', async ({ page }) => {
   // The regression the gating itself introduced. mouseenter latches overControls while on mouse;
   // the matching mouseleave is gated off once touch latches, so without setTouchMode() clearing

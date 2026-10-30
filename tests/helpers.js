@@ -197,7 +197,7 @@ export function readState(page) {
     return {
       present: true,
       hostDisplay: getComputedStyle(host).display,
-      theme: (overlay?.className.match(/obr-overlay (\w+)/) || [, ''])[1],
+      theme: ['paper', 'light', 'dark'].find((t) => overlay?.classList.contains(t)) || '',
       title: root.querySelector('.obr-doc-title')?.textContent || '',
       imagesBadge: root.querySelector('.obr-seg-badge')?.textContent || '',
       contentText: root.querySelector('.obr-content')?.textContent || '',
