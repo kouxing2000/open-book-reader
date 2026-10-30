@@ -100,7 +100,7 @@ function i18nShimArgs() {
 
 /** Static server for tests/fixtures. Path-escape guarded; defaults to the demo article. */
 export function serveFixtures(port) {
-  const TYPES = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.js': 'text/javascript' };
+  const TYPES = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.js': 'text/javascript' };
   return http
     .createServer((req, res) => {
       const rel = (decodeURIComponent((req.url || '/').split('?')[0]) || '/').replace(/^\/+/, '') || 'demo-article.html';
