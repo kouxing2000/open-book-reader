@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The privacy notes lead with what is true: no tracking, no analytics, nothing collected in the
   background. They no longer say nothing is ever sent, since a problem report you send does reach
   the developer.
+- The Report button's tooltip no longer says it opens an email: the Report page offers email or a
+  web form.
 
 ## [1.15.2] - 2026-10-26
 
