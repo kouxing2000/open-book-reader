@@ -41,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Report button's tooltip no longer says it opens an email: the Report page offers email or a
   web form.
 - Starting a second video tile right after the first no longer leaves both paused.
+- Collapsed sections, the kind you click to expand, open in the reader, in print and in the
+  Markdown export, so their text is no longer skipped. Nested sections stay indented under their
+  bold labels, and you can still fold one.
+- A full-screen button in the reader and gallery toolbars; F does the same in the reader.
+  Switching between text and images stays in full screen, and closing leaves it.
+- Resizing the window or going full screen keeps your place in the reader, and full screen and
+  back returns to the same pages.
 - Closing the reader right after a resize no longer resets its saved position to the first page.
 
 ## [1.15.2] - 2026-10-26
