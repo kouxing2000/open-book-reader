@@ -338,8 +338,13 @@ invisible (same base), which is why the regression test asserts on the exported 
 
 **Reading progress is a FRACTION, never a spread index** (`reader.js` + `settings.js`). Re-pagination
 (font / columns / width) changes how many columns an article splits into, so position is stored as
-`(currentSpread * pagesPerSpread) / totalColumns` and `layout()` re-anchors it: font/column changes
-pass an explicit `anchorFraction`; **resume** loads the saved fraction into `restoreAnchor` and
+`(currentSpread * pagesPerSpread) / totalColumns` (`readingFraction`) and `layout()` re-anchors it:
+font/column changes pass an explicit `anchorFraction`, and so does every other re-pagination that
+changes the page count with no page turn (`relayoutKeepingPlace`: a window resize, full screen
+included; a pick cancelled after a skipped resize; an Options-page change). Late-media relayouts
+keep the spread index instead, since the content before the reader did not move. The fraction is
+granular: the restored spread can sit up to one spread of the new layout off the exact place;
+**resume** loads the saved fraction into `restoreAnchor` and
 re-applies it through the late-image settle window until the first user nav clears it. Per-article
 positions persist to `chrome.storage.LOCAL` (NOT sync — per-device, can be many, mustn't burn the 8KB
 sync quota) as one bounded, LRU-pruned map `obr_positions` keyed by `origin+pathname`. No new

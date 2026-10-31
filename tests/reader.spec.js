@@ -1066,6 +1066,44 @@ test('opens on the paragraph the page is scrolled to, over page 1 and an older s
   expect((await readState(page)).translateX).toBeLessThan(0);
 });
 
+// A re-pagination that changes the page count with no page turn must keep the place, not the
+// spread INDEX: kept, the index put a full-screen-sized window (1280x800 -> 1512x982) on Part 53
+// of 60 while the reader was on Part 35. The place is carried as a fraction, so the contract is
+// the one font and column changes have: within one spread of the new layout. A resize during a
+// pick is skipped and redone on cancel (in full screen, Esc leaves full screen and the next Esc
+// cancels the pick); an Options-page font change arrives through storage.onChanged.
+const toFullScreenSize = (page) => page.setViewportSize({ width: 1512, height: 982 });
+for (const [how, change] of [
+  ['a window resize', toFullScreenSize],
+  ['a pick cancelled after a resize', async (page) => {
+    await clickReaderAction(page, 'pick');
+    await toFullScreenSize(page);
+    await page.keyboard.press('Escape');
+  }],
+  ['an Options-page font change', (page) => page.evaluate(() => OBR.saveSettings({ fontSize: 24 }))],
+]) {
+  test(`${how} keeps the reading place, not the page number`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' }); // instant turns; read when reader.js loads
+    await gotoFixture(page, 'long-article.html');
+    await injectReader(page);
+    await openReader(page);
+    for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
+    const before = await readState(page);
+    const at = progress(before);
+    expect(at).toBeGreaterThan(0.3);              // mid-article, away from both ends
+
+    await change(page);
+    await expect.poll(() => readState(page).then((s) => s.totalColumns)).not.toBe(before.totalColumns);
+    const after = await readState(page);
+    expect(Math.abs(progress(after) - at)).toBeLessThan(2 / after.totalColumns + 0.02);
+
+    if (how !== 'a window resize') return;
+    await page.setViewportSize({ width: 1280, height: 800 }); // and back out of full screen
+    await expect.poll(() => readState(page).then((s) => s.totalColumns)).toBe(before.totalColumns);
+    expect(Math.abs(progress(await readState(page)) - at)).toBeLessThan(2 / before.totalColumns + 0.02);
+  });
+}
+
 test('closing after turning pages scrolls the page to the paragraph the reader is on', async ({ page }) => {
   await gotoFixture(page, 'long-article.html');
   await injectReader(page);

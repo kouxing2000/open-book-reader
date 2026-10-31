@@ -1709,8 +1709,8 @@
       watchMedia();
     } else {
       // Cancelled: content is unchanged, but a window resize may have been skipped while
-      // the overlay was hidden — re-anchor to the current viewport so pagination is fresh.
-      requestAnimationFrame(() => layout(true));
+      // the overlay was hidden — re-paginate for the current viewport, keeping the place.
+      requestAnimationFrame(relayoutKeepingPlace);
     }
     showChrome();
   }
@@ -3877,13 +3877,26 @@
   }
 
   /* ---------------------------------------------------------------- controls */
+  // Where the reader is, as a fraction of the article: the position that survives a
+  // re-pagination which changes the page count. A spread index does not.
+  function readingFraction() {
+    return totalColumns > 0 ? (currentSpread * pagesPerSpread) / totalColumns : 0;
+  }
+  // Re-paginate after the page count changed with no page turn: a resize (full screen
+  // included), a cancelled pick that skipped one, an Options-page font or column change. Kept,
+  // the index lands far into unread text. A resume anchor still pending wins inside layout().
+  // Late-media relayouts keep the index instead: the content before the reader did not move.
+  function relayoutKeepingPlace() {
+    layout(true, restoreAnchor == null ? readingFraction() : undefined);
+  }
+
   function changeFont(dir) {
     const next = Math.min(FONT_MAX, Math.max(FONT_MIN, settings.fontSize + dir));
     if (next === settings.fontSize) return;
     // Capture reading position as a fraction BEFORE the font change reflows the
     // content (column count changes, so the spread index isn't portable — the
     // progress fraction is). Without this, re-paginating would snap back to p.1.
-    const anchor = totalColumns > 0 ? (currentSpread * pagesPerSpread) / totalColumns : 0;
+    const anchor = readingFraction();
     restoreAnchor = null; // live anchor supersedes any pending resume
     settings.fontSize = next;
     OBR.saveSettings({ fontSize: next });
@@ -3913,7 +3926,7 @@
     // Preserve reading position across the re-pagination (same fraction-anchor
     // trick as changeFont — the spread index isn't portable when the column
     // count changes, but the progress fraction is).
-    const anchor = totalColumns > 0 ? (currentSpread * pagesPerSpread) / totalColumns : 0;
+    const anchor = readingFraction();
     restoreAnchor = null; // live anchor supersedes any pending resume
     settings.columns = n;
     OBR.saveSettings({ columns: n });
@@ -4307,7 +4320,11 @@
     // can move the reader to another spread; leaving fullscreen restores the size the layout was
     // built for. Read when the debounce fires, not at the event, so the guard holds whichever of
     // the resize and the fullscreen-state change lands first.
-    resizeTimer = setTimeout(() => { if (!pickerActive && !root.fullscreenElement) { fitControls(); layout(true); } }, 150);
+    resizeTimer = setTimeout(() => {
+      if (pickerActive || root.fullscreenElement) return;
+      fitControls();
+      relayoutKeepingPlace();
+    }, 150);
   });
 
   document.addEventListener('keydown', (e) => {
@@ -4377,7 +4394,7 @@
         syncTypePop();
         fitControls(); // a Beta action may have been switched on or off
         applyStylesheet();
-        layout(true);
+        relayoutKeepingPlace(); // a font or column change made on the Options page
       });
     });
   }
