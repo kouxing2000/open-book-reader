@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the developer.
 - The Report button's tooltip no longer says it opens an email: the Report page offers email or a
   web form.
+- Starting a second video tile right after the first no longer leaves both paused.
 
 ## [1.15.2] - 2026-10-26
 

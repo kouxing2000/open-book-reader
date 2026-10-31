@@ -1931,6 +1931,39 @@ test.describe('gallery videos (plain-source <video>)', () => {
     expect((await tileVideo(page, 1)).paused).toBe(true);
   });
 
+  test('a late play event from a tile already handed over does not take the slot back', async ({ page }) => {
+    // `play` is queued while `paused` flips at once, so tile 1's event can run after tile 3 has
+    // taken over and paused it. Claiming on that late event would pause tile 3 and leave nothing
+    // playing. The late event is replayed here in that order.
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="1"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
+    await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      r.querySelector('.tile[data-idx="3"] .tile-play').click();
+      r.querySelector('.tile[data-idx="1"] video').dispatchEvent(new Event('play'));
+    });
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
+    expect((await tileVideo(page, 1)).paused).toBe(true);
+  });
+
+  test('resuming a paused tile from its own player takes the slot from the tile playing', async ({ page }) => {
+    // Space on a focused player plays it without the badge's immediate claim, so the `play`
+    // listener is what hands the slot over here.
+    await openGallery(page);
+    await clickInGallery(page, '.tile[data-idx="1"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.paused)).toBe(false);
+    expect((await tileVideo(page, 1)).paused).toBe(true);
+    await page.evaluate(() => document.getElementById('obr-gallery-host').shadowRoot
+      .querySelector('.tile[data-idx="1"] video').focus());
+    await page.keyboard.press(' ');
+    await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
+    // Paused before its 6s clip could end on its own: only the hand-over stops it that early.
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.paused && s.time < 5)).toBe(true);
+  });
+
   test('"open large" pauses the tile and the big view picks up where it stopped', async ({ page }) => {
     await openGallery(page);
     await clickInGallery(page, '.tile[data-idx="3"] >> .tile-play');

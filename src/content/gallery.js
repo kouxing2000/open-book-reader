@@ -1216,8 +1216,10 @@
     video.preload = 'auto';
     // Claimed now as well as on `play`: the event is queued while `paused` flips at once, so another
     // tile, the big view or a close could otherwise act before this tile is the one they pause.
-    // The listener covers a resume from the player's own controls.
-    video.addEventListener('play', () => claimTile(video));
+    // The listener covers a resume from the player's own controls. A queued `play` can also run
+    // after another tile has already taken over and paused this one; claiming then would pause the
+    // tile now playing and leave nothing playing, so a stale event (paused again) is ignored.
+    video.addEventListener('play', () => { if (!video.paused) claimTile(video); });
     claimTile(video);
     video.play().catch((e) => {
       // Retry muted only while this is still the tile in play: a retry that lands after a close,
