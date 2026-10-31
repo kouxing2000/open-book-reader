@@ -123,7 +123,7 @@ keeps the label.
 
 ## The toolbar — Aa, ⋯, and a width fit instead of breakpoints
 
-The topbar is the mode switch, the title, and then **Aa · ◐ · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
+The topbar is the mode switch, the title, and then **Aa · ◐ · ⛶ · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
 is a popover with text size, theme and columns (the `+` `−` `T` keys reach the same settings; the
 columns row is hidden at one page per view, where the count does nothing); ◐
 cycles the theme in one tap, as `T` does; ⋯ is a menu with everything else. The Aa and ⋯ popovers
@@ -147,6 +147,20 @@ nothing, so without that call a narrowed window leaves ✕ off-screen. **The bar
 never allowed to wrap**: a second row sits in the bar's transparent gradient tail with the article
 showing through the buttons. `syncTypePop` keeps the Aa readout and marked segments true on every path
 that changes them, including an Options-page change and the OS flipping an 'auto' theme.
+
+**⛶ full screen** (`F`; the gallery has the button only, since its big view already uses `F` for
+fit-width) takes the PAGE full screen through `OBR.toggleFullscreen` (settings.js), never the
+reader's host. Both overlays are children of `<html>`, so the Text ⇄ Images switch keeps full
+screen and the page-level banner and chips stay visible. Like ◐ it is never a `fitControls` step.
+It is hidden only where `document.fullscreenEnabled` is false (an iframe without
+`allowfullscreen`, a Permissions-Policy that forbids it). A user's close and `hardTeardown` end
+full screen (`OBR.leaveFullscreen`); a mode switch (`suppress: false`) does not. The label carries
+the state ("Exit full screen") and there is no `aria-pressed`, which would announce a flipped
+name as "pressed". The video checks above read `root.fullscreenElement`, which a page-level full
+screen leaves null, so they still fire only for a video, and the reader re-paginates to the
+full-screen size. Headless Chromium refuses every `requestFullscreen` ("TypeError: not granted"),
+so the test (`gallery.spec.js`, mode switching) stands in for the Fullscreen API. Real full
+screen is checked by hand.
 
 ## Page-turn animation
 

@@ -36,6 +36,8 @@
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, pickHintEl, hintEl;
   let zoomEl, zoomImg; // the picture viewer (openZoom), a sibling of the overlay
+  let fsBtn; // the topbar's full-screen toggle (OBR.syncFullscreenBtn keeps it current)
+  const syncFsBtn = () => OBR.syncFullscreenBtn(fsBtn, 'readerBtnFullscreenTitle', 'readerBtnExitFullscreenTitle');
   // Element-picker mode (the ⌖ Pick override): a separate Shadow host so its highlight
   // box / instruction bar can't disturb the reader's styles, plus the live hover target.
   let pickerActive = false, pickHost = null, pickRoot = null, pickBox = null, pickLabel = null, pickHoverNode = null;
@@ -205,6 +207,7 @@
         <span class="obr-controls">
           <button class="obr-btn" data-pop="type" aria-haspopup="true" aria-expanded="false" title="${OBR.t('readerBtnTypeTitle')}">Aa</button>
           <button class="obr-btn obr-icon-btn" data-act="theme" title="${OBR.t('readerBtnThemeTitle')}" aria-label="${OBR.t('readerBtnThemeTitle')}">${ICON_THEME}</button>
+          <button class="obr-btn obr-icon-btn" data-act="fullscreen"></button>
           ${FLEX_ACTS.map((a) => `<button class="obr-btn obr-flex" data-act="${a.act}" title="${OBR.t(a.title)}">${OBR.t(a.label)}</button>`).join('')}
           <button class="obr-btn" data-pop="more" aria-haspopup="menu" aria-expanded="false" title="${OBR.t('readerBtnMoreTitle')}">⋯</button>
           <button class="obr-btn" data-act="close" title="${OBR.t('readerBtnCloseTitle')}" aria-label="${OBR.t('readerBtnCloseTitle')}">✕</button>
@@ -280,6 +283,7 @@
     progressFillEl = overlay.querySelector('.obr-progress-fill');
     pickHintEl = overlay.querySelector('.obr-pick-hint');
     hintEl = overlay.querySelector('.obr-hint');
+    fsBtn = overlay.querySelector('.obr-controls [data-act="fullscreen"]');
     applyFooterHint(); // the (pointer: coarse) seed gets the first paint right on a phone
 
     // Click near the left/right edge turns the page. We listen on the content itself (NOT a
@@ -596,6 +600,7 @@
     });
     if (act === 'settings') return OBR.openOptions && OBR.openOptions(OBR.normalizeHost(location.href));
     if (act === 'theme') return val ? setTheme(val) : cycleTheme();
+    if (act === 'fullscreen') return OBR.toggleFullscreen();
     if (act === 'font+') return changeFont(1);
     if (act === 'font-') return changeFont(-1);
     if (act === 'columns') return setColumns(Number(val));
@@ -4072,6 +4077,7 @@
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
     active = true;
+    syncFsBtn(); // the gallery may have changed it while this was closed
     fitControls(); // first point where the bar has real widths to measure
     readMs = 0;
     heldMs = 0;
@@ -4141,6 +4147,7 @@
     try { clearSpotlight(); } catch (e) { /* */ }
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     try { document.documentElement.style.overflow = ''; } catch (e) { /* */ }
+    try { OBR.leaveFullscreen(); } catch (e) { /* */ }
     try { if (host) host.remove(); } catch (e) { /* */ }
   }
   function schedulePaintCheck() {
@@ -4214,7 +4221,10 @@
     if (!active) return;
     closePop();
     closeZoom();
-    if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
+    if (!(opts && opts.suppress === false)) {
+      if (OBR._autoSuppress) OBR._autoSuppress();
+      OBR.leaveFullscreen(); // done reading ends full screen; a mode switch keeps it
+    }
     if (pickerActive) {
       disposePicker();
       // Closing measures the reader before hiding it; the picker left that host hidden.
@@ -4285,6 +4295,9 @@
 
   /* ---------------------------------------------------------------- events */
   let resizeTimer;
+  // The button follows full screen however it changed: its own click, F, the gallery, or Esc.
+  document.addEventListener('fullscreenchange', () => { if (active) syncFsBtn(); });
+
   window.addEventListener('resize', () => {
     if (!active || pickerActive) return; // don't relayout against the hidden overlay mid-pick
     clearTimeout(resizeTimer);
@@ -4335,6 +4348,7 @@
       case '+': case '=': if (mod) break; e.preventDefault(); changeFont(1); break;
       case '-': case '_': if (mod) break; e.preventDefault(); changeFont(-1); break;
       case 't': case 'T': if (mod) break; e.preventDefault(); cycleTheme(); break;
+      case 'f': case 'F': if (mod) break; e.preventDefault(); OBR.toggleFullscreen(); break;
       case 'p': case 'P': e.preventDefault(); printReader(); break; // capture Cmd/Ctrl+P too — clean print, not the clipped native one
     }
   }, true);

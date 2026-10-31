@@ -13,6 +13,22 @@ import {
   gotoGrowNoImages, gotoFixture, openReader,
 } from './helpers.js';
 
+// Headless Chromium refuses every requestFullscreen, from any button, with "TypeError: not
+// granted" (measured), so the full-screen tests stand in for the Fullscreen API: a request sets
+// the document's fullscreenElement and fires fullscreenchange, as the browser does. What they pin
+// is the extension's wiring; the browser's own full screen is checked by hand.
+function fullscreenShim() {
+  let el = null;
+  const set = (next) => { el = next; document.dispatchEvent(new Event('fullscreenchange')); };
+  Object.defineProperty(Document.prototype, 'fullscreenElement', { configurable: true, get: () => el });
+  Element.prototype.requestFullscreen = function () { set(this); return Promise.resolve(); };
+  Document.prototype.exitFullscreen = function () {
+    if (!el) return Promise.reject(new TypeError('Document not active'));
+    set(null);
+    return Promise.resolve();
+  };
+}
+
 test.describe('image gallery', () => {
   test.beforeEach(async ({ page }) => {
     await gotoImages(page);
@@ -166,6 +182,19 @@ test.describe('image gallery', () => {
     const s = await galleryState(page);
     expect(s.cols).toBeGreaterThan(1); // JS masonry: multiple flex columns at 1280px wide
     expect(s.tiles).toBe(6);           // all images distributed across them
+  });
+
+  // The resize guard skips a relayout only for the gallery's OWN fullscreen element (a tile
+  // player). The full-screen button makes <html> the document's, and a grid that stopped
+  // following the window then would keep the columns of a window size that is gone.
+  test('the grid still re-lays out on resize while the page is full screen', async ({ page }) => {
+    await page.evaluate(fullscreenShim);
+    await openGallery(page);
+    await clickInGallery(page, '.btn.fullscreen');
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true);
+    const wide = (await galleryState(page)).cols;
+    await page.setViewportSize({ width: 560, height: 800 });
+    await expect.poll(() => galleryState(page).then((s) => s.cols)).toBeLessThan(wide);
   });
 
   test('toolbar labels stay on one line in a narrow window (no per-character wrap)', async ({ page }) => {
@@ -722,6 +751,50 @@ test.describe('mode switching', () => {
     await clickInGallery(page, '.switch');
     await expect.poll(() => readState(page).then((s) => s.hostDisplay)).not.toBe('none');
     expect((await galleryState(page)).hostDisplay).toBe('none'); // gallery hidden
+  });
+
+  // Full screen belongs to the page, not to one overlay: the switch keeps it, each toolbar's
+  // button reads it, and a user's close of either mode ends it.
+  test('full screen survives the Text <-> Images switch and ends when reading does', async ({ page }) => {
+    await gotoArticle(page);
+    await page.evaluate(fullscreenShim);
+    await injectAll(page);
+    await openReader(page);
+    const fsOn = () => page.evaluate(() => document.fullscreenElement === document.documentElement);
+    const btn = (hostId, sel) => page.evaluate(([h, s]) => {
+      const b = document.getElementById(h).shadowRoot.querySelector(s);
+      return { label: b.getAttribute('aria-label'), hidden: b.hidden };
+    }, [hostId, sel]);
+    const READER_FS = '.obr-controls [data-act="fullscreen"]';
+    expect(await btn('obr-host', READER_FS)).toEqual({ label: 'Full screen (F)', hidden: false });
+
+    await clickInReader(page, READER_FS);
+    await expect.poll(fsOn).toBe(true);
+    await expect.poll(() => btn('obr-host', READER_FS)).toMatchObject({ label: 'Exit full screen (F)' });
+    await page.keyboard.press('f');               // F leaves it, and takes it back
+    await expect.poll(fsOn).toBe(false);
+    await page.keyboard.press('f');
+    await expect.poll(fsOn).toBe(true);
+
+    await clickInReader(page, '.obr-seg-btn[data-act="images"]');
+    await expect.poll(() => galleryState(page).then((s) => s.hostDisplay)).not.toBe('none');
+    expect(await fsOn()).toBe(true);              // the switch kept it
+    expect(await btn('obr-gallery-host', '.btn.fullscreen')).toEqual({ label: 'Exit full screen', hidden: false });
+    await clickInGallery(page, '.btn.fullscreen');
+    await expect.poll(fsOn).toBe(false);
+    await clickInGallery(page, '.btn.fullscreen');
+    await expect.poll(fsOn).toBe(true);
+    await clickInGallery(page, '.switch');        // and back the other way
+    await expect.poll(() => readState(page).then((s) => s.hostDisplay)).not.toBe('none');
+    expect(await fsOn()).toBe(true);
+
+    await clickInReader(page, '.obr-controls [data-act="close"]');
+    await expect.poll(fsOn).toBe(false);          // a user's close ends it
+    await page.evaluate(() => OBR.openGallery());
+    await clickInGallery(page, '.btn.fullscreen');
+    await expect.poll(fsOn).toBe(true);
+    await clickInGallery(page, '.close');
+    await expect.poll(fsOn).toBe(false);
   });
 
   test('the reader mode toggle advertises the page image count on the Images segment', async ({ page }) => {

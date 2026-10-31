@@ -72,7 +72,9 @@ embeds, which the overlays keep out.
   would cancel the controls too), and an "open large" button (`.tile-open`) reaches the big view.
   Starting it focuses the player, and a focused tile player takes Space (play/pause) instead of
   the grid scrolling it away. Its fullscreen resizes the viewport, so the resize re-layout is
-  skipped while anything is fullscreen; a rebuild would destroy the player mid-fullscreen.
+  skipped while the gallery's shadow root reports a fullscreen element; a rebuild would destroy
+  the player mid-fullscreen. The shadow root's, never the document's: the toolbar's full-screen
+  button makes `<html>` the document's fullscreen element, and the grid must follow that resize.
   One tile plays at a time (`tileVideo`). The big view, close and a re-layout stop it: the first
   two pause it explicitly (`pauseTiles`), since the overlay is only covered or hidden, and the
   browser pauses a tile that a re-layout removes. The big view starts where the tile stopped

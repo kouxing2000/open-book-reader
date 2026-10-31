@@ -166,6 +166,7 @@
   /* -------------------------------------------------- state */
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, wrap, gridEl, scrollerEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbVideo, lbCounter, lbStrip, lbSecsEl, lbControls;
+  let fsBtn; // the bar's full-screen toggle (OBR.syncFullscreenBtn keeps it current)
   let active = false, built = false;
   let openedByAuto = false; // this session was sentinel-opened (tempers the chip's ask moment)
   let images = [];           // [{url, full, w, h, ...}]; a video also carries {video: true, poster, loop}
@@ -573,6 +574,7 @@
     .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; white-space: nowrap;
       clip-path: inset(50%); }
     .btn.icon-only { padding: 6px 9px; }
+    .btn[hidden] { display: none; }
     /* Shrinks and wraps inside itself only when its own row is too narrow (a phone in a long
        locale), right-aligned, so Close stays on screen at the right end. */
     .end { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center;
@@ -805,6 +807,7 @@
         <!-- One group, so a wrap moves Report / Settings / Close together and Close (Esc) never
              lands alone at the start of a new row. margin-left:auto keeps it at the right end. -->
         <span class="end">
+          <button class="btn fullscreen icon-only"></button>
           <button class="btn report icon-only" data-act="report" title="${OBR.t('galleryReportTitle')}" aria-label="${OBR.t('galleryReportTitle')}">${ALERT_ICON}</button>
           <button class="btn settings icon-only" data-act="settings" title="${OBR.t('gallerySettingsTitle')}" aria-label="${OBR.t('gallerySettingsTitle')}">${GEAR_ICON}</button>
           <button class="btn close" data-act="close">${OBR.t('galleryClose')}</button>
@@ -855,6 +858,10 @@
       OBR._ctxLost(hardTeardown);
     }, true);
     wrap.querySelector('.close').addEventListener('click', close);
+    fsBtn = wrap.querySelector('.fullscreen');
+    fsBtn.addEventListener('click', () => OBR.toggleFullscreen());
+    // The button follows full screen however it changed: its own click, the reader's F, or Esc.
+    document.addEventListener('fullscreenchange', () => { if (active) OBR.syncFullscreenBtn(fsBtn); });
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(OBR.normalizeHost(location.href)); });
     wrap.querySelector('.report').addEventListener('click', () => {
       if (OBR.reportBroken) OBR.reportBroken({
@@ -950,8 +957,10 @@
       resizeTimer = setTimeout(() => {
         if (!active || !built) return;
         // A tile player going fullscreen resizes the viewport; a re-layout would rebuild its tile
-        // out from under it. Leaving fullscreen restores the size the layout was built for.
-        if (document.fullscreenElement) return;
+        // out from under it. Leaving fullscreen restores the size the layout was built for. The
+        // shadow root's, not the document's: the full-screen button makes <html> the document's,
+        // and that resize is one the grid must follow.
+        if (root.fullscreenElement) return;
         syncSizeSlider(); // the column ceiling (and the clamped count) move with the viewport
         if (!images.length) return;
         if (columnCount() !== renderedCols) relayoutActive(true);
@@ -2273,6 +2282,7 @@
     document.documentElement.style.overflow = 'hidden';
     watchCtx();
     active = true;
+    OBR.syncFullscreenBtn(fsBtn); // the reader may have changed it while this was closed
     openedByAuto = trigger === 'auto';
     if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
     if (t) t.mark('build');
@@ -2322,6 +2332,7 @@
     // DETACHED tree and pulling full-size images off the network long after the gallery is gone.
     try { closeLightbox(); } catch (e) { /* */ }
     try { document.documentElement.style.overflow = ''; } catch (e) { /* */ }
+    try { OBR.leaveFullscreen(); } catch (e) { /* */ }
     try { if (host) host.remove(); } catch (e) { /* */ }
     // Progressive hydration physically scrolls the host page; without this the user is left
     // hundreds of screens down a page they never scrolled. Pure DOM — nothing stops us doing it.
@@ -2332,7 +2343,10 @@
     openGen++; // invalidate pending reads even before the gallery becomes active
     if (!active) return;
     clearInterval(ctxTimer);
-    if (!(opts && opts.suppress === false) && OBR._autoSuppress) OBR._autoSuppress();
+    if (!(opts && opts.suppress === false)) {
+      if (OBR._autoSuppress) OBR._autoSuppress();
+      OBR.leaveFullscreen(); // done browsing ends full screen; a mode switch keeps it
+    }
     stopAutoScroll(); // cancel the rAF before hiding the host (no orphan scrollTop writes)
     speedSetting.flush();     // persist a just-edited speed before a reopen reads storage
     slideSecsSetting.flush(); // persist a just-edited slideshow dwell too
