@@ -859,7 +859,10 @@
     }, true);
     wrap.querySelector('.close').addEventListener('click', close);
     fsBtn = wrap.querySelector('.fullscreen');
-    fsBtn.addEventListener('click', () => OBR.toggleFullscreen());
+    fsBtn.addEventListener('click', (e) => {
+      OBR.toggleFullscreen();
+      e.currentTarget.blur(); // drop focus so Space / PageDown drive the grid instead of re-clicking it
+    });
     // The button follows full screen however it changed: its own click, the reader's F, or Esc.
     document.addEventListener('fullscreenchange', () => { if (active) OBR.syncFullscreenBtn(fsBtn); });
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(OBR.normalizeHost(location.href)); });

@@ -197,6 +197,19 @@ test.describe('image gallery', () => {
     await expect.poll(() => galleryState(page).then((s) => s.cols)).toBeLessThan(wide);
   });
 
+  // The grid keys skip a focused button, so a button keeping focus after its click would take
+  // Space for itself: here that leaves full screen again. A real click focuses the button.
+  test('after the full-screen button is clicked, Space no longer reaches it', async ({ page }) => {
+    await page.evaluate(fullscreenShim);
+    await openGallery(page);
+    const fsOn = () => page.evaluate(() => document.fullscreenElement === document.documentElement);
+    await clickInGallery(page, '.btn.fullscreen');
+    await expect.poll(fsOn).toBe(true);
+    await page.keyboard.press(' ');
+    await page.keyboard.press('PageDown');
+    expect(await fsOn()).toBe(true);
+  });
+
   test('toolbar labels stay on one line in a narrow window (no per-character wrap)', async ({ page }) => {
     // Regression: without white-space:nowrap the flex bar dumped all its shrink onto
     // the only shrinkable items (the text labels), collapsing "Images" / "Select all" /
