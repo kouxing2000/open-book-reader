@@ -130,7 +130,7 @@ while editing a feature belongs beside that feature.
 
 | area | doc |
 | --- | --- |
-| Text reader — pagination, page-turn animation, print/PDF, Markdown export, heading chrome, progress fractions, page-scroll sync on open/close and the open spotlight, content override (selection / picker / saved pick), split article bodies, tall-figure fitting, long pictures cut into page-height strips, image sizing, the picture viewer (click a picture to enlarge it), why there is no text-wrap-around-image | `docs/reader.md` |
+| Text reader — pagination, page-turn animation, print/PDF, Markdown export, collapsible sections (`<details>`), heading chrome, progress fractions, page-scroll sync on open/close and the open spotlight, content override (selection / picker / saved pick), split article bodies, tall-figure fitting, long pictures cut into page-height strips, image sizing, the picture viewer (click a picture to enlarge it), why there is no text-wrap-around-image | `docs/reader.md` |
 | Image gallery — lazy hydration, Wall + Ordered layouts, lightbox, plain-source videos (why `blob:` streams are out), page-scroll sync on open/close and the open cue, avatar/noise filter, ZIP downloads | `docs/gallery.md` |
 | Auto-open — the sentinel's decision ladder, permission model, registration | `docs/auto-open-spec.md` |
 | Service worker — context-menu + sentinel-registration serialization, debug timing and trigger tracing | `docs/background-worker.md` |
@@ -192,7 +192,8 @@ npx playwright install chromium                # first run only
   `chrome.downloads` works and the SW fetches cross-origin via `host_permissions`.
 - `reader.spec.js` — text engine: extraction, Shadow render, pagination, flipping, Home/End, theme,
   font size, progress/resume, page-scroll sync on open/close, close/toggle, settings persistence,
-  the double-injection guard, the picture viewer, long pictures cut into strips, video and audio
+  the double-injection guard, the picture viewer, long pictures cut into strips, collapsible
+  sections opened with their levels kept, video and audio
   under page turns (inert turn clones, pause on turn/close, fullscreen keys).
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
   (stubbed SW), plain-source videos (still tiles, the in-grid player, big-view playback, Space, slideshow, ZIP skip), mode switching, page-scroll sync on open/close and the open cue, the shipped auto-mode defaults, and `_buildZip`'s bytes read back

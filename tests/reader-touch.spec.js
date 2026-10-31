@@ -261,3 +261,32 @@ test('a tap on a picture opens the viewer from the middle band, and an edge tap 
   await page.touchscreen.tap(CENTRE_X, Math.round((r.top + r.bottom) / 2));
   await expect.poll(() => zoomViewer(page).then((v) => v.open && v.loaded)).toBe(true);
 });
+
+test('an edge tap on a section label turns the page, and a middle tap on it folds the section', async ({ page }) => {
+  // A <summary> spans the column, so on a phone a label row reaches into both edge bands. Those
+  // stay page turns; only the middle band folds the section.
+  await gotoFixture(page, 'details-sections.html');
+  await injectReader(page); // beforeEach injected into the previous page; this is a fresh document
+  await openReader(page);
+  const label = () => page.evaluate(() => {
+    const s = document.getElementById('obr-host').shadowRoot.querySelector('.obr-content summary'); // "Go deeper"
+    const r = s.getBoundingClientRect();
+    return { open: s.parentElement.open, left: r.left, right: r.right, y: Math.round((r.top + r.bottom) / 2) };
+  });
+  let l = await label();
+  expect(l.left).toBeGreaterThanOrEqual(0);                 // on the page being read
+  expect(l.right).toBeLessThanOrEqual(W);
+  expect(RIGHT_X).toBeLessThan(l.right);                    // the row reaches into the right band
+
+  const before = (await readState(page)).translateX;
+  await page.touchscreen.tap(RIGHT_X, l.y);
+  await expect.poll(() => readState(page).then((s) => s.translateX)).toBeLessThan(before);
+  expect((await label()).open).toBe(true);
+
+  await page.touchscreen.tap(LEFT_X, MID_Y);                // back to the label's page
+  await expect.poll(() => readState(page).then((s) => s.translateX)).toBe(before);
+  l = await label();
+  await page.touchscreen.tap(CENTRE_X, l.y);
+  await expect.poll(() => label().then((x) => x.open)).toBe(false);
+  expect((await readState(page)).translateX).toBe(before);
+});

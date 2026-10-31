@@ -270,6 +270,11 @@
       const v = e.target;
       if (active && v.tagName === 'VIDEO' && v.autoplay && !root.fullscreenElement && !leaveAlone(v) && offSpread(v)) v.pause();
     }, true);
+    // A section opened or closed in the reader grows or shrinks every page after it, and nothing
+    // else re-measures until the next turn. `toggle` does not bubble; a capture listener sees it.
+    pagesEl.addEventListener('toggle', (e) => {
+      if (active && e.target.tagName === 'DETAILS') scheduleMediaRelayout();
+    }, true);
     paperEl = overlay.querySelector('.obr-paper');
     indicatorEl = overlay.querySelector('.obr-indicator');
     progressFillEl = overlay.querySelector('.obr-progress-fill');
@@ -296,9 +301,14 @@
       const linked = pictureAt(e.target);
       const modified = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
       if (linked && linkedImage(linked.at) && !modified) e.preventDefault();
+      // On touch the edge bands stay page turns over a section label too: a <summary> spans the
+      // column, so on a phone each label row reaches into both bands, and a tap there that folded
+      // the section would hide pages of text instead of turning one. Cancelling the click stops
+      // the fold; the label still folds from the middle band, and always with a mouse.
+      else if (touchMode && inEdgeBand(e.clientX) && e.target.closest('summary')) e.preventDefault();
       // A player with controls takes its own clicks; a controls-less clip ignores clicks, so the
       // edge band over it still turns the page.
-      else if (e.target.closest('a, button, input, label, video[controls], audio, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
+      else if (e.target.closest('a, button, input, label, summary, video[controls], audio, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
       // The content is in an open shadow root; window.getSelection() can't see selections inside
       // it, so use shadowRoot.getSelection() (Chrome) and fall back to the document selection.
       const sel = root.getSelection ? root.getSelection() : (globalThis.getSelection && getSelection());
@@ -417,10 +427,14 @@
     // picture fills (a strip of a long picture, a plated photo) nothing else is left to tap.
     if (touchMode) {
       if (overlay.classList.contains('obr-chrome-hidden')) return null;
-      const w = window.innerWidth;
-      if (e.clientX < w * EDGE_FRAC || e.clientX > w * (1 - EDGE_FRAC)) return null;
+      if (inEdgeBand(e.clientX)) return null;
     }
     return pic;
+  }
+
+  function inEdgeBand(x) {
+    const w = window.innerWidth;
+    return x < w * EDGE_FRAC || x > w * (1 - EDGE_FRAC);
   }
 
   function openZoom({ img, at }) {
@@ -626,6 +640,9 @@
       figure { margin: 1em 0; }
       figcaption { font-size: .85em; color: #555; text-align: center; }
       blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid #ccc; color: #333; }
+      details { margin: .8em 0; padding-left: .9em; border-left: 2px solid #ccc; }
+      summary { font-weight: 600; margin-bottom: .5em; break-after: avoid; list-style: none; }
+      summary::-webkit-details-marker { display: none; }
       pre { white-space: pre-wrap; background: #f4f4f4; padding: .8em; border-radius: 4px; font-size: .9em; }
       code { font-family: ui-monospace, Menlo, Consolas, monospace; }
       hr { border: 0; border-top: 1px solid #ddd; }
@@ -815,6 +832,14 @@
       headingStyle: 'atx', codeBlockStyle: 'fenced', bulletListMarker: '-', emDelimiter: '*',
     });
     td.keep(['table']);
+    // A section stays a section: GitHub and Obsidian render <details> in Markdown, and the blank
+    // line after each tag keeps the body between them Markdown. Open, as in the reader.
+    td.addRule('details', { filter: 'details',
+      replacement: (c, node) => '\n\n<details open>\n'
+        + (Array.from(node.children).some((k) => k.nodeName === 'SUMMARY') ? '' : '\n') // no label: the blank line goes here
+        + c.trim() + '\n\n</details>\n\n' });
+    td.addRule('summary', { filter: 'summary',
+      replacement: (c, node) => '<summary>' + escapeHTML(node.textContent.replace(/\s+/g, ' ').trim()) + '</summary>\n\n' });
     const oneLine = (v) => String(v || '').replace(/\s+/g, ' ').trim();
     const t = oneLine(title), by = oneLine(byline);
     const meta = [];
@@ -1066,6 +1091,32 @@
           }
         }
       });
+      // Every content path passes here, so this is also where collapsible sections are settled.
+      // Readability renames a section it appends beside the main text to <div>
+      // (ALTER_TO_DIV_EXCEPTIONS), which strands its <summary> as a plain line and drops that
+      // level from the outline. A <summary> is only valid inside <details>, so a div led by one
+      // was a section: make it one again.
+      doc.querySelectorAll('summary').forEach((s) => {
+        const p = s.parentElement;
+        if (!p || p === doc.body || p.tagName === 'DETAILS' || p.firstElementChild !== s) return;
+        const d = doc.createElement('details');
+        for (const a of Array.from(p.attributes)) d.setAttribute(a.name, a.value);
+        while (p.firstChild) d.appendChild(p.firstChild);
+        p.replaceWith(d);
+      });
+      // A section that only held a widget (a notes box: its <form> is gone above) would open onto
+      // nothing, a label over an empty space. Drop it; innermost first, so a section left holding
+      // only empty ones goes too.
+      const MEDIA = 'img, picture, video, audio, svg, canvas, table, math, object, embed';
+      Array.from(doc.querySelectorAll('details')).reverse().forEach((d) => {
+        const body = Array.from(d.childNodes).filter((n) => n.nodeName !== 'SUMMARY');
+        if (!body.some((n) => (n.nodeType === 3 && n.textContent.trim())
+          || (n.nodeType === 1 && (n.textContent.trim() || n.matches(MEDIA) || n.querySelector(MEDIA)))))
+          d.remove();
+      });
+      // Then open them all: a book hides no text, a closed section would be flipped past unseen,
+      // and print would leave it out. reader.style.js keeps each level labelled and indented.
+      doc.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
       return doc.body.innerHTML;
     } catch (e) { return html; }
   }

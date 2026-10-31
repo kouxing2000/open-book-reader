@@ -2251,6 +2251,105 @@ test.describe('⤓ Markdown export', () => {
     expect(r.long).toBe('x'.repeat(100) + '.md');
     expect(r.astral).toBe('😀'.repeat(100) + '.md');                  // capped by code point, none split
   });
+
+  test('_buildMarkdown keeps each collapsible section as an open <details> with Markdown inside', async ({ page }) => {
+    const md = await page.evaluate(() => OBR._buildMarkdown({
+      title: 'T',
+      content: '<p>Intro.</p><details open><summary>Go <b>deeper</b> &amp; on</summary><p>Lead <em>line</em>.</p>'
+        + '<details open><summary>Inner</summary><p>Inner body.</p></details></details><p>After.</p>',
+    }));
+    expect(md).toBe('---\ntitle: "T"\n---\n\n# T\n\nIntro.\n\n'
+      + '<details open>\n<summary>Go deeper &amp; on</summary>\n\nLead *line*.\n\n'
+      + '<details open>\n<summary>Inner</summary>\n\nInner body.\n\n</details>\n\n'
+      + '</details>\n\nAfter.\n');
+    // No label (an unlabelled section, or a selection that starts inside one): the blank line
+    // after the tag is what lets the first paragraph render as Markdown rather than raw text.
+    const bare = await page.evaluate(() => OBR._buildMarkdown({ content: '<details><p>Lead <em>line</em>.</p><p>Two.</p></details>' }));
+    expect(bare).toBe('<details open>\n\nLead *line*.\n\nTwo.\n\n</details>\n');
+  });
+});
+
+test.describe('collapsible sections (<details>)', () => {
+  // Off-spread columns sit outside the viewport; a box inside it is on the spread being read.
+  const visibleLabels = (page) => page.evaluate(() => [...document.getElementById('obr-host').shadowRoot
+    .querySelectorAll('.obr-content summary')]
+    .map((s, i) => ({ i, box: s.getBoundingClientRect().toJSON() }))
+    .filter((s) => s.box.width > 0 && s.box.left >= 0 && s.box.right <= innerWidth));
+  const pagination = (page) => page.evaluate(() => {
+    const pages = document.getElementById('obr-host').shadowRoot.querySelector('.obr-pages');
+    const cs = getComputedStyle(pages);
+    const w = parseFloat(cs.columnWidth), g = parseFloat(cs.columnGap);
+    const d = OBR._diagReader();
+    return { cached: d.cols, live: Math.round((pages.scrollWidth + g) / (w + g)), spread: d.spread };
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await gotoFixture(page, 'details-sections.html');
+    await injectReader(page);
+    await page.evaluate(() => OBR.saveSettings({ pageTurn: 'off' }));
+  });
+
+  test('open with the article, each level a labelled, indented step', async ({ page }) => {
+    await openReader(page);
+    const r = await page.evaluate(() => {
+      const root = document.getElementById('obr-host').shadowRoot;
+      const all = [...root.querySelectorAll('.obr-content details')];
+      const glass = all.find((d) => /how things got this way/.test(d.querySelector('summary').textContent));
+      return {
+        count: all.length,
+        closed: all.filter((d) => !d.open).length,
+        nested: all.filter((d) => d.parentElement.closest('details')).length,
+        hiddenBodyShown: glass.querySelector('p').checkVisibility(),
+        ruled: all.every((d) => getComputedStyle(d).borderLeftStyle === 'solid' && parseFloat(getComputedStyle(d).paddingLeft) > 0),
+        labelsBold: all.every((d) => Number(getComputedStyle(d.querySelector('summary')).fontWeight) >= 600),
+      };
+    });
+    expect(r).toMatchObject({ count: 4, closed: 0, nested: 2, hiddenBodyShown: true, ruled: true, labelsBold: true });
+    const s = await readState(page);
+    expect(s.contentText).toContain('the papers behind them'); // the text after the sections is reached
+  });
+
+  test('the content pass restores a section Readability renamed, opens every one, and drops one left empty', async ({ page }) => {
+    // A <div> led by a <summary> is what Readability leaves of a section it appended; the notes box
+    // is empty once its <form> is stripped; a picture alone keeps a section.
+    const html = await page.evaluate(() => OBR._sanitizeContentHTML(
+      '<div class="card"><summary>Deeper</summary><p>Body.</p><details><summary>Inner</summary><p>In.</p></details></div>'
+      + '<details><summary>Note</summary><form><textarea></textarea></form></details>'
+      + '<details><summary>Figure</summary><img src="a.png"></details>'
+      + '<details><summary>Comment</summary><!-- note --><form></form></details>'
+      + '<details><summary>Embed</summary><embed src="a.pdf"></details>'));
+    expect(html).toBe('<details class="card" open=""><summary>Deeper</summary><p>Body.</p>'
+      + '<details open=""><summary>Inner</summary><p>In.</p></details></details>'
+      + '<details open=""><summary>Figure</summary><img src="a.png"></details>'
+      + '<details open=""><summary>Embed</summary><embed src="a.pdf"></details>');
+  });
+
+  test('a click on a section label folds it and re-paginates, without turning the page', async ({ page }) => {
+    await openReader(page);
+    // Settle first: the open itself queues a re-measure (late fonts, the sections' own toggle).
+    await expect.poll(async () => { const p = await pagination(page); return p.cached === p.live; }).toBe(true);
+    // A spread past the first, so a label click that leaked into a page turn would change it.
+    let labels = [];
+    for (let i = 0; i < 6 && !labels.length; i++) {
+      await page.keyboard.press('ArrowRight');
+      labels = await visibleLabels(page);
+    }
+    expect(labels.length).toBeGreaterThan(0);
+    const before = await pagination(page);
+    expect(before.spread).toBeGreaterThan(0);
+    // Click the label's outer end, inside the edge band that turns the page on plain text.
+    const { i, box } = labels[0];
+    const onLeftPage = box.left < page.viewportSize().width / 2;
+    const x = onLeftPage ? box.left + 8 : box.right - 8;
+    await page.mouse.click(x, box.top + box.height / 2);
+
+    const folded = await page.evaluate((n) => !document.getElementById('obr-host').shadowRoot
+      .querySelectorAll('.obr-content summary')[n].parentElement.open, i);
+    expect(folded).toBe(true);
+    await expect.poll(async () => { const p = await pagination(page); return p.cached === p.live && p.cached < before.cached; })
+      .toBe(true);
+    expect((await pagination(page)).spread).toBe(before.spread);
+  });
 });
 
 test.describe('title echo', () => {

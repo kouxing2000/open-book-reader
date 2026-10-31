@@ -518,6 +518,42 @@ A whole part, never a substring: that is what keeps a section heading that merel
 with the title. On English pages it is a subset of what Readability already removed; its new
 reach is CJK reads and picks/selections, which never pass through Readability.
 
+## Collapsible sections (`<details>`) open, and keep their levels
+
+A book hides no text, so every `<details>` reaches the reader open: a closed one is a single line
+that a reader flips past without knowing a page of text sits behind it, and print would leave that
+text out altogether. `sanitizeContentHTML` does it, because every content path (Readability,
+picks, selections) passes through it, so the reader, print and the Markdown export all get the
+same open body.
+
+The same pass first undoes a Readability rename. A section that Readability appends beside the main
+text (the sibling sweep in `_grabArticle`) is renamed to `<div>` unless its tag is in
+`ALTER_TO_DIV_EXCEPTIONS` (`readability.js`), which strands the `<summary>` as a plain line and
+drops that level from the outline. A `<summary>` is valid only as a `<details>`'s child, so a div led
+by one is turned back into a section. Pinned by `tests/fixtures/details-sections.html`, a closed
+section holding two closed sub-sections plus a closed sibling, where only 2 of the 4 survive
+without the restore.
+
+- **Levels stay visible**: each section gets a rule and an indent (`reader.style.js`, and the
+  print stylesheet in `printCSS`), so a nested one sits a step further in; the label is bold and
+  stays with its first line (`break-after: avoid`). Print drops the disclosure marker, which means
+  nothing on paper. Markdown keeps each as `<details open>` + `<summary>`, with a blank line after
+  each tag so the body between them stays Markdown (GitHub and Obsidian render it).
+- **An empty section is dropped**: one that only held a widget (a notes box, whose `<form>` the
+  same pass strips) would open onto a bare label. Innermost first, so a parent left holding only
+  empty sections goes too. Text or media (`img`, `video`, `svg`, `table`, `embed`, ...) keeps it;
+  a comment does not.
+- **A section can still be folded**: a click on its label toggles it, and a capture `toggle`
+  listener on `.obr-pages` queues the re-measure (`toggle` does not bubble). Without it the page
+  count stays stale until the next turn. `summary` is excluded from the edge-band click handler,
+  since a label sits in the left band on any left page, and the click would also turn the page.
+  On touch it is the other way round: a label row spans the column and so reaches into both
+  bands, and those stay page turns (as over a picture, `inEdgeBand`), so the click is cancelled
+  and the page turns; the label folds from the middle band.
+- **A fold is not saved.** Every open renders all sections open again, so a reading position
+  saved while a long section was folded resumes a little early (the fraction is measured against
+  the folded layout).
+
 ## Content override — when extraction picks the wrong block
 
 **Content override — when extraction picks the WRONG block** (`reader.js`, plus pick storage in

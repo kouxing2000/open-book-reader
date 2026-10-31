@@ -343,6 +343,10 @@
       cursor: pointer; opacity: .8;
     }
     .obr-zoom-x:hover { opacity: 1; }
+    /* Collapsed sections arrive open (sanitizeContentHTML). The rule and indent keep each level
+       visible, so a nested section reads as one step further in; the label stays with its body. */
+    .obr-pages details { margin: .8em 0; padding-left: .9em; border-left: 2px solid rgba(127,127,127,.35); }
+    .obr-pages summary { font-weight: 600; cursor: pointer; margin-bottom: .5em; break-after: avoid; }
     .obr-pages blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid rgba(127,127,127,.4); opacity: .85; font-style: italic; }
     .obr-pages pre, .obr-pages code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .85em; }
     .obr-pages pre { white-space: pre-wrap; word-break: break-word; background: rgba(127,127,127,.12); padding: .7em; border-radius: 4px; break-inside: avoid; }
