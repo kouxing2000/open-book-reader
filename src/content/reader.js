@@ -4263,6 +4263,7 @@
     if (hostWatch) { try { hostWatch.disconnect(); } catch (e) { /* */ } }
     endActiveFlip(); // no orphaned leaf if the user closes mid-turn
     clearTimeout(mediaTimer); mediaTimer = null; // drop any pending late-image relayout for this open
+    clearTimeout(resizeTimer); // a resize just before close would lay out the hidden host and save page 1
     // The host is only hidden, and a hidden player keeps playing with nothing left to stop it.
     if (pagesEl) pagesEl.querySelectorAll('video, audio').forEach((m) => m.pause());
     clearSpotlight();
@@ -4335,7 +4336,8 @@
     // built for. Read when the debounce fires, not at the event, so the guard holds whichever of
     // the resize and the fullscreen-state change lands first.
     resizeTimer = setTimeout(() => {
-      if (pickerActive || root.fullscreenElement) return;
+      // Closed or torn down since: a hidden host lays out as one column and saves page 1.
+      if (!active || pickerActive || root.fullscreenElement) return;
       fitControls();
       relayoutKeepingPlace();
     }, 150);

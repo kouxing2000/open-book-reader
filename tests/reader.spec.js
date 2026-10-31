@@ -1132,6 +1132,27 @@ test('full screen and back returns to the same pages from every starting spread'
   expect(seen.filter(([a, b]) => a !== b)).toEqual([]);
 });
 
+// A resize waits out a 150ms debounce. Closing inside it (Esc leaves full screen, a second Esc
+// closes) must not let that relayout run on the hidden host: it lays out as one column, and its
+// save would replace the place the close just stored with page 1.
+test('closing right after a resize keeps the saved reading position', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await openReader(page);
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
+  const at = progress(await readState(page));
+  // Close in the resize event itself, after the reader's own listener (attached first) has armed
+  // its timer: a close before the event never arms it, and one after the debounce comes too late.
+  await page.evaluate(() => addEventListener('resize', () => OBR.close(), { once: true }));
+  await toFullScreenSize(page);
+  await page.waitForTimeout(1000); // past the debounce and the position save behind it
+  const stored = await page.evaluate(() => new Promise((res) => chrome.storage.local.get(
+    'obr_positions', (d) => { const v = Object.values(d.obr_positions || {}); res(v.length ? v[0].f : null); })));
+  expect(at).toBeGreaterThan(0.3);
+  expect(stored).toBeCloseTo(at, 2);
+});
+
 test('closing after turning pages scrolls the page to the paragraph the reader is on', async ({ page }) => {
   await gotoFixture(page, 'long-article.html');
   await injectReader(page);
