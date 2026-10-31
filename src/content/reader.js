@@ -3885,9 +3885,23 @@
   // Re-paginate after the page count changed with no page turn: a resize (full screen
   // included), a cancelled pick that skipped one, an Options-page font or column change. Kept,
   // the index lands far into unread text. A resume anchor still pending wins inside layout().
-  // Late-media relayouts keep the index instead: the content before the reader did not move.
+  // Back-to-back calls carry the fraction the first one read, not one re-read off the spread
+  // it rounded to: re-read, each rounding adds to the last, so full screen and back could land
+  // a spread later. It is reused while the spread, the page count and the pages per spread are
+  // unchanged: under those it still maps to the spread on screen, so whatever happened in
+  // between, it cannot move the reader further than re-reading would.
+  // Late-media relayouts (a picture loading, a section folding, a web font) keep the index
+  // instead: a fold or a picture after the reader leaves the text before it in place. A picture
+  // above the reader or a font swap does move it, and those mostly land in the open's settle
+  // window, where the pending resume anchor re-places the reader anyway.
+  let keptPlace = null; // { f, spread, columns, perSpread } after the last call
   function relayoutKeepingPlace() {
-    layout(true, restoreAnchor == null ? readingFraction() : undefined);
+    if (restoreAnchor != null) { layout(true); return; }
+    const k = keptPlace;
+    const f = k && k.spread === currentSpread && k.columns === totalColumns && k.perSpread === pagesPerSpread
+      ? k.f : readingFraction();
+    layout(true, f);
+    keptPlace = { f, spread: currentSpread, columns: totalColumns, perSpread: pagesPerSpread };
   }
 
   function changeFont(dir) {

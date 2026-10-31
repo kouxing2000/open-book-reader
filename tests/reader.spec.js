@@ -1104,6 +1104,34 @@ for (const [how, change] of [
   });
 }
 
+// Within one spread is the contract for ONE re-pagination. Full screen and back is two, and
+// re-reading the place off the spread the first one rounded to would add the errors up, and
+// from some starting spreads the reader would come back one spread later. Every start is
+// checked, since which ones round badly depends on the window's column counts.
+test('full screen and back returns to the same pages from every starting spread', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await gotoFixture(page, 'long-article.html');
+  await injectReader(page);
+  await openReader(page);
+  const total = (await readState(page)).totalColumns;
+  // The pages shown, without the edge note a turn past the last spread adds ("End of article").
+  const pages = () => readState(page).then((s) => (s.indicator.match(/\d+(?:–\d+)?\s*\/\s*\d+/) || [''])[0]);
+  const seen = [];
+  for (let i = 0; i < 40; i++) {
+    const before = await pages();
+    await toFullScreenSize(page);
+    await expect.poll(() => readState(page).then((s) => s.totalColumns), { intervals: [25] }).not.toBe(total);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(() => readState(page).then((s) => s.totalColumns), { intervals: [25] }).toBe(total);
+    seen.push([before, await pages()]);
+    await page.keyboard.press('ArrowRight');
+    if ((await pages()) === before) break; // the last spread: nothing to turn to
+  }
+  expect(seen.length).toBeGreaterThan(5);
+  expect(seen.map(([a]) => a)).not.toContain(''); // the indicator was read, not defaulted
+  expect(seen.filter(([a, b]) => a !== b)).toEqual([]);
+});
+
 test('closing after turning pages scrolls the page to the paragraph the reader is on', async ({ page }) => {
   await gotoFixture(page, 'long-article.html');
   await injectReader(page);
