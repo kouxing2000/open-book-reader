@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-01
+
 - Incognito reading stays private when auto-open is enabled while the reader is open.
 - Site-rule and preference changes keep concurrent worker updates and migrate older saved
   rules before saving. Failed saves leave permissions intact and remain available to retry.
@@ -621,7 +623,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.15.2...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.16.0...HEAD
+[1.16.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.16.0
 [1.15.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.2
 [1.15.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.1
 [1.15.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.0
