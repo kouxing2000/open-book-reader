@@ -252,7 +252,7 @@
   "optGuideReadTitle": { "message": "<b>읽는 동안 (📖 리더)</b>" },
   "optGuideReadFlip": { "message": "<kbd>←</kbd> <kbd>→</kbd> 페이지 넘기기 — 또는 책의 왼쪽 / 오른쪽 끝을 클릭" },
   "optGuideReadHomeEnd": { "message": "<kbd>Home</kbd> / <kbd>End</kbd> 첫 / 마지막 펼침면 · <kbd>Esc</kbd> 닫기" },
-  "optGuideReadTopbar": { "message": "상단 바: <kbd>Aa</kbd> 글자 크기 · 테마 · 전체 화면 (<kbd>F</kbd>) · 단 수 (2/3/4) · <kbd>⋯</kbd> 고르기 · 인쇄 · 설정 · 신고 (창이 넓으면 일부는 바에 바로 표시) · 🖼 갤러리로 전환" },
+  "optGuideReadTopbar": { "message": "상단 바: <kbd>Aa</kbd> 글자 크기 · 테마 · 전체 화면 (<kbd>F</kbd>) · 단 수 (2/3/4) · <kbd>⋯</kbd> 고르기 · 인쇄 · Markdown · 설정 · 신고 (창이 넓으면 일부는 바에 바로 표시) · 🖼 갤러리로 전환" },
   "optGuideWrongTitle": { "message": "<b>엉뚱한 내용이 잡혔나요?</b> 리더가 사이드바나 다른 블록을 가져올 때가 있습니다. 고치는 방법은 세 가지:" },
   "optGuideWrongSelect": { "message": "<b>텍스트를 선택</b> — 페이지에서 원하는 텍스트를 먼저 선택한 뒤 리더를 열면 그 부분만 읽습니다." },
   "optGuideWrongPick": { "message": "상단 바의 <b>⌖ 고르기</b>를 클릭하고 원하는 블록을 클릭하면 리더가 거기서부터 다시 읽습니다." },

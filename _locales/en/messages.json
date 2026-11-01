@@ -254,7 +254,7 @@
   "optGuideReadTitle": { "message": "<b>While reading (📖 reader)</b>" },
   "optGuideReadFlip": { "message": "<kbd>←</kbd> <kbd>→</kbd> flip pages — or click the left / right edge of the book" },
   "optGuideReadHomeEnd": { "message": "<kbd>Home</kbd> / <kbd>End</kbd> first / last spread · <kbd>Esc</kbd> close" },
-  "optGuideReadTopbar": { "message": "Topbar: <kbd>Aa</kbd> font size · theme · full screen (<kbd>F</kbd>) · columns (2/3/4) · <kbd>⋯</kbd> Pick · Print · Settings · Report (a wide window shows some of these right in the bar) · 🖼 switch to gallery" },
+  "optGuideReadTopbar": { "message": "Topbar: <kbd>Aa</kbd> font size · theme · full screen (<kbd>F</kbd>) · columns (2/3/4) · <kbd>⋯</kbd> Pick · Print · Markdown · Settings · Report (a wide window shows some of these right in the bar) · 🖼 switch to gallery" },
   "optGuideWrongTitle": { "message": "<b>Picked the wrong content?</b> Sometimes the reader grabs a sidebar or the wrong block. Three ways to fix it:" },
   "optGuideWrongSelect": { "message": "<b>Select the text</b> on the page first, then open the reader — it reads just your selection." },
   "optGuideWrongPick": { "message": "Click <b>⌖ Pick</b> in the topbar, then click the block you want — the reader re-reads from there." },

@@ -252,7 +252,7 @@
   "optGuideReadTitle": { "message": "<b>読書中 (📖 リーダー)</b>" },
   "optGuideReadFlip": { "message": "<kbd>←</kbd> <kbd>→</kbd> ページをめくる — または本の左 / 右の端をクリック" },
   "optGuideReadHomeEnd": { "message": "<kbd>Home</kbd> / <kbd>End</kbd> 最初 / 最後の見開き · <kbd>Esc</kbd> 閉じる" },
-  "optGuideReadTopbar": { "message": "上部バー：<kbd>Aa</kbd> 文字サイズ · テーマ · 全画面表示 (<kbd>F</kbd>) · 段数 (2/3/4) · <kbd>⋯</kbd> 選択 · 印刷 · 設定 · 報告（ウィンドウが広いと一部はバーに直接表示） · 🖼 ギャラリーに切り替え" },
+  "optGuideReadTopbar": { "message": "上部バー：<kbd>Aa</kbd> 文字サイズ · テーマ · 全画面表示 (<kbd>F</kbd>) · 段数 (2/3/4) · <kbd>⋯</kbd> 選択 · 印刷 · Markdown · 設定 · 報告（ウィンドウが広いと一部はバーに直接表示） · 🖼 ギャラリーに切り替え" },
   "optGuideWrongTitle": { "message": "<b>内容が違いますか？</b> リーダーがサイドバーや誤ったブロックを取り込むことがあります。直す方法は3つ：" },
   "optGuideWrongSelect": { "message": "<b>テキストを選択</b> — ページ上でテキストを先に選択してからリーダーを開くと、その選択部分だけを読みます。" },
   "optGuideWrongPick": { "message": "上部バーの <b>⌖ 選択</b> をクリックし、読みたいブロックをクリックすると、リーダーがそこから読み直します。" },

@@ -12,7 +12,7 @@
   const COLUMN_OPTS = [2, 3, 4];
   // The toolbar actions that sit inline while there is room, in priority order: the first
   // keeps its inline slot longest. Anything else lives in the ⋯ menu or the Aa popover. An action
-  // with a `setting` exists only while that setting is on (a Beta feature that is off by default).
+  // with a `setting` exists only while that setting is on (an Options checkbox can remove it).
   const FLEX_ACTS = [
     { act: 'pick', label: 'readerBtnPickLabel', title: 'readerBtnPickTitle' },
     { act: 'print', label: 'readerBtnPrintLabel', title: 'readerBtnPrintTitle' },
@@ -4408,7 +4408,7 @@
         applyTheme();
         pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
         syncTypePop();
-        fitControls(); // a Beta action may have been switched on or off
+        fitControls(); // a setting-gated action (⤓ Markdown) may have been switched on or off
         applyStylesheet();
         relayoutKeepingPlace(); // a font or column change made on the Options page
       });

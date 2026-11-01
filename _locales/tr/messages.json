@@ -252,7 +252,7 @@
   "optGuideReadTitle": { "message": "<b>Okurken (📖 okuyucu)</b>" },
   "optGuideReadFlip": { "message": "<kbd>←</kbd> <kbd>→</kbd> sayfa çevirir — ya da kitabın sol / sağ kenarına tıklayın" },
   "optGuideReadHomeEnd": { "message": "<kbd>Home</kbd> / <kbd>End</kbd> ilk / son çift sayfa · <kbd>Esc</kbd> kapat" },
-  "optGuideReadTopbar": { "message": "Üst çubuk: <kbd>Aa</kbd> yazı boyutu · tema · tam ekran (<kbd>F</kbd>) · sütunlar (2/3/4) · <kbd>⋯</kbd> Seç · Yazdır · Ayarlar · Bildir (geniş pencerede bazıları doğrudan çubukta durur) · 🖼 galeriye geç" },
+  "optGuideReadTopbar": { "message": "Üst çubuk: <kbd>Aa</kbd> yazı boyutu · tema · tam ekran (<kbd>F</kbd>) · sütunlar (2/3/4) · <kbd>⋯</kbd> Seç · Yazdır · Markdown · Ayarlar · Bildir (geniş pencerede bazıları doğrudan çubukta durur) · 🖼 galeriye geç" },
   "optGuideWrongTitle": { "message": "<b>Yanlış içerik mi seçildi?</b> Okuyucu bazen bir kenar çubuğunu veya yanlış bloğu alır. Bunu düzeltmenin üç yolu var:" },
   "optGuideWrongSelect": { "message": "Önce sayfadaki <b>metni seçin</b>, sonra okuyucuyu açın — yalnızca seçiminizi okur." },
   "optGuideWrongPick": { "message": "Üst çubuktaki <b>⌖ Seç</b> düğmesine, ardından istediğiniz bloğa tıklayın — okuyucu oradan yeniden okur." },

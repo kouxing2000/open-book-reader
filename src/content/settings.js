@@ -310,9 +310,9 @@
                            // ONLY that selection instead of the whole page (a manual override
                            // for when auto-extraction picks the wrong content). The selection
                            // is read exactly as highlighted. Off = always read the whole page.
-    markdownExport: false, // BETA, text reader: show the ⤓ Markdown action (inline or in ⋯) that
-                           // saves the article as a .md file. Off by default while in beta;
-                           // off = no Markdown action anywhere in the toolbar.
+    markdownExport: true,  // text reader: show the ⤓ Markdown action (inline or in ⋯) that
+                           // saves the article as a .md file. Off = no Markdown action
+                           // anywhere in the toolbar.
     printSourceUrl: true,  // print / Save as PDF: append a footer with the full source URL
                            // so the saved copy links back to the article. Off = omit it
                            // (e.g. when sharing a PDF and you'd rather not expose the URL).

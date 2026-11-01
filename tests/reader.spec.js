@@ -2171,20 +2171,19 @@ test.describe('width-aware toolbar (Aa + ⋯)', () => {
   const popOpen = (page, name) => page.evaluate((n) =>
     !document.getElementById('obr-host').shadowRoot.querySelector(`.obr-pop[data-for="${n}"]`).hidden, name);
 
-  test('Markdown is Beta and off by default: absent from the bar and the menu', async ({ page }) => {
-    expect(await page.evaluate(() => OBR.DEFAULTS.markdownExport)).toBe(false);
+  test('Markdown is on by default, and the Options checkbox removes it from the bar and the menu', async ({ page }) => {
+    expect(await page.evaluate(() => OBR.DEFAULTS.markdownExport)).toBe(true);
     await openReader(page);
     const p = await placement(page);
-    expect(p.where.markdown).toBe('none');
+    expect(p.where.markdown).toBe('inline');
     expect(p.where.pick).toBe('inline');
     expect(p.where.print).toBe('inline');
-    // Switching it on from the Options page brings it in without a reopen.
-    await page.evaluate(() => OBR.saveSettings({ markdownExport: true }));
-    await expect.poll(() => placement(page).then((q) => q.where.markdown)).toBe('inline');
+    // Switching it off from the Options page takes it out without a reopen.
+    await page.evaluate(() => OBR.saveSettings({ markdownExport: false }));
+    await expect.poll(() => placement(page).then((q) => q.where.markdown)).toBe('none');
   });
 
   test('every action is reachable exactly once, in one row, at every width', async ({ page }) => {
-    await seedSettings(page, { markdownExport: true });
     await openReader(page);
     const seen = {};
     for (const width of [1280, 900, 700, 520, 412, 360]) {
@@ -2278,7 +2277,6 @@ test.describe('width-aware toolbar (Aa + ⋯)', () => {
 
 test.describe('⤓ Markdown export', () => {
   test('the button downloads the open article as a .md file with front matter', async ({ page }) => {
-    await seedSettings(page, { markdownExport: true }); // Beta, off by default
     await openReader(page);
     const [dl] = await Promise.all([
       page.waitForEvent('download'),
@@ -2494,7 +2492,6 @@ test.describe('heading chrome', () => {
   test.beforeEach(async ({ page }) => {
     await gotoFixture(page, 'heading-chrome.html');
     await injectReader(page);
-    await seedSettings(page, { markdownExport: true });
     await openReader(page);
   });
 
@@ -3154,7 +3151,6 @@ test.describe('picking an image-rich block', () => {
       p.innerHTML = 'See <a href="notes/keeper.html">the notes</a> and <a href="#lamp">the lamp</a>.';
       document.getElementById('photo-gallery').appendChild(p);
     });
-    await seedSettings(page, { markdownExport: true });
     await openReader(page);
     await pickGallerySection(page);
     // Landmark: six figures means the raw fallback built this content, not Readability.

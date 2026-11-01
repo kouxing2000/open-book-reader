@@ -252,7 +252,7 @@
   "optGuideReadTitle": { "message": "<b>Durante a leitura (leitor 📖)</b>" },
   "optGuideReadFlip": { "message": "<kbd>←</kbd> <kbd>→</kbd> virar as páginas — ou clique na borda esquerda / direita do livro" },
   "optGuideReadHomeEnd": { "message": "<kbd>Home</kbd> / <kbd>End</kbd> primeira / última página dupla · <kbd>Esc</kbd> fechar" },
-  "optGuideReadTopbar": { "message": "Barra superior: <kbd>Aa</kbd> tamanho da fonte · tema · tela cheia (<kbd>F</kbd>) · colunas (2/3/4) · <kbd>⋯</kbd> Selecionar · Imprimir · Configurações · Relatar (numa janela larga, alguns ficam direto na barra) · 🖼 mudar para a galeria" },
+  "optGuideReadTopbar": { "message": "Barra superior: <kbd>Aa</kbd> tamanho da fonte · tema · tela cheia (<kbd>F</kbd>) · colunas (2/3/4) · <kbd>⋯</kbd> Selecionar · Imprimir · Markdown · Configurações · Relatar (numa janela larga, alguns ficam direto na barra) · 🖼 mudar para a galeria" },
   "optGuideWrongTitle": { "message": "<b>Selecionou o conteúdo errado?</b> Às vezes o leitor captura uma barra lateral ou o bloco errado. Três maneiras de corrigir:" },
   "optGuideWrongSelect": { "message": "<b>Selecione o texto</b> na página primeiro e depois abra o leitor — ele lê apenas a sua seleção." },
   "optGuideWrongPick": { "message": "Clique em <b>⌖ Selecionar</b> na barra superior e depois clique no bloco desejado — o leitor relê a partir dali." },

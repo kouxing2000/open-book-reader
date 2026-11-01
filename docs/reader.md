@@ -310,10 +310,9 @@ reader types off paper, and the store item URL is an opaque 32-letter id.
 ## Save as Markdown
 
 **⤓ Markdown** (`reader.js`: `saveMarkdown` + the pure, testable `OBR._buildMarkdown` and
-`OBR._mdFilename`) saves the same `lastArticle` Print uses as a local `.md` file. It is **Beta and off
-by default**: the action exists only while the `markdownExport` setting (an Options checkbox) is on —
-`FLEX_ACTS` marks it with `setting`, and `fitControls` hides both the inline button and its ⋯ twin
-otherwise. The body is
+`OBR._mdFilename`) saves the same `lastArticle` Print uses as a local `.md` file. It is **on by
+default**; the `markdownExport` setting (an Options checkbox) removes it — `FLEX_ACTS` marks it with
+`setting`, and `fitControls` hides both the inline button and its ⋯ twin while the setting is off. The body is
 converted by the **vendored** `turndown.js` (Turndown, MIT — injected before `reader.js`, notice in
 `TURNDOWN-LICENSE.md`); output is YAML front matter (`title`, `author` when there is a byline,
 `source`), the title as an H1, then the body. Three choices hold it together:

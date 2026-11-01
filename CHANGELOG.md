@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Save as Markdown is on for everyone.** The ⤓ Markdown button is now in the reader's toolbar
+  (or its ⋯ menu) without turning anything on first, and it is no longer marked Beta. Anyone who
+  switched it off in Options keeps it off.
+
 ## [1.16.1] - 2026-11-01
 
 - No change to the extension. 1.16.0 was tagged but never reached the Chrome Web Store: its
