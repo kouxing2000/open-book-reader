@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-11-03
+
 - **Save as Markdown is on for everyone.** The ⤓ Markdown button is now in the reader's toolbar
   (or its ⋯ menu) without turning anything on first, and it is no longer marked Beta. Anyone who
   switched it off in Options keeps it off.
@@ -644,7 +646,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.16.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.17.0...HEAD
+[1.17.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.17.0
 [1.16.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.16.1
 [1.16.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.16.0
 [1.15.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.15.2
