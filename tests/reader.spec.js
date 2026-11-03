@@ -2242,7 +2242,13 @@ test.describe('width-aware toolbar (Aa + ⋯)', () => {
     const seen = {};
     for (const width of [1280, 900, 700, 520, 412, 360]) {
       await page.setViewportSize({ width, height: 800 });
-      await page.waitForTimeout(300); // the resize handler is debounced 150ms
+      // The resize handler refits after a 150ms debounce, and on a busy browser that timer fires
+      // late, so the fixed wait alone can read the bar before the refit runs: poll for a bar that
+      // fits. Keep the wait too: a bar still laid out for the previous width can already fit
+      // here, and would pass the poll at once.
+      await page.waitForTimeout(300);
+      await expect.poll(() => placement(page).then((q) => ({ overflow: q.overflow, oneRow: q.barH < 70 })),
+        { message: `bar settles at ${width}px` }).toEqual({ overflow: false, oneRow: true });
       const p = await placement(page);
       for (const [act, at] of Object.entries(p.where)) expect(at, `${act} at ${width}px`).toMatch(/^(inline|menu)$/);
       expect(p.where.settings).toBe('menu');
