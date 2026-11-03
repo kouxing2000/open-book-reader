@@ -19,7 +19,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -169,7 +169,7 @@ async function packageExtension() {
 function createZip(zipPath) {
   return new Promise((resolve, reject) => {
     const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } }); // max compression
+    const archive = new ZipArchive({ zlib: { level: 9 } }); // max compression
 
     output.on('close', () => resolve((archive.pointer() / 1024).toFixed(2)));
     archive.on('error', (err) => reject(err));
