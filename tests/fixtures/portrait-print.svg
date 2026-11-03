@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1500" viewBox="0 0 900 1500">
+  <rect width="900" height="750" fill="#4a6fa5"/>
+  <rect y="750" width="900" height="750" fill="#e07a5f"/>
+  <text x="450" y="375" font-size="64" fill="#ffffff" text-anchor="middle">PORTRAIT TOP</text>
+  <text x="450" y="1125" font-size="64" fill="#ffffff" text-anchor="middle">PORTRAIT BOTTOM</text>
+</svg>

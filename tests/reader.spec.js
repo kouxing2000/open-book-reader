@@ -2001,6 +2001,60 @@ test('printReader prints the landing-site host beside a QR that still opens the 
   expect(r.qr).toBe(r.storeQr);
 });
 
+// A portrait picture at the text width stands taller than a printed sheet, and Chrome slices such
+// a picture across two sheets; a long strip shrunk to one sheet would be a sliver instead. Counted
+// in the PDF Chromium prints from the exact document printReader hands to print(): sheets with
+// each picture minus sheets with neither.
+test('print fits a tall picture on one sheet and lets a long strip flow', async ({ page, context }) => {
+  test.skip(process.env.HEADED === 'true', 'page.pdf() needs headless Chromium');
+  await gotoFixture(page, 'print-pictures.html');
+  await seedSettings(page, { printSourceUrl: false, printBranding: false });
+  await injectReader(page);
+  await openReader(page);
+  const html = await page.evaluate(() => new Promise((resolve, reject) => {
+    const de = document.documentElement, append = de.appendChild;
+    de.appendChild = function (n) {
+      const ret = append.call(this, n);
+      if (n.tagName === 'IFRAME') n.contentWindow.print = () => resolve('<!doctype html>' + n.contentDocument.documentElement.outerHTML);
+      return ret;
+    };
+    try { globalThis.OBR.printReader(); } catch (e) { reject(e); } finally { de.appendChild = append; }
+  }));
+  expect(html).toContain('portrait-print.svg');
+  expect(html).toContain('narrow-long.svg');
+  // The portrait and the strip are loading="lazy", which never loads in the off-screen print frame.
+  expect(html).not.toContain('loading="lazy"');
+  const sheets = async (keep) => {
+    const p = await context.newPage();
+    // The print iframe's own size: a window shorter than the page area would hide a cap that
+    // measured the window instead of the paper.
+    await p.setViewportSize({ width: 820, height: 1160 });
+    await p.goto('/print-pictures.html'); // same origin, so the absolute picture URLs load
+    await p.setContent(html, { waitUntil: 'load' });
+    await p.evaluate((k) => document.querySelectorAll('img').forEach((im) => {
+      if (!k.some((name) => im.src.includes(name))) im.remove();
+    }), keep);
+    const pdf = await p.pdf({ format: 'Letter' });
+    await p.close();
+    return (pdf.toString('latin1').match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+  };
+  const none = await sheets([]);
+  expect(none).toBeGreaterThan(0);
+  expect(await sheets(['portrait-print.svg']) - none).toBe(1);        // whole, on a sheet of its own
+  expect(await sheets(['narrow-long.svg']) - none).toBeGreaterThanOrEqual(2); // not shrunk to one sheet
+  // A width attribute still holds the printed size. Freed to its file's size, this viewBox-only
+  // icon would print as wide as the text, one icon to a sheet.
+  const icon = await context.newPage();
+  await icon.goto('/print-pictures.html');
+  await icon.setContent(html, { waitUntil: 'load' });
+  await icon.emulateMedia({ media: 'print' });
+  expect(await icon.evaluate(() => {
+    const im = Array.from(document.images).find((i) => i.src.includes('glyph-viewbox.svg'));
+    return im ? Math.round(im.getBoundingClientRect().width) : -1;
+  })).toBe(16);
+  await icon.close();
+});
+
 // Chrome proposes the saved PDF's file name from the TOP page's title, never the print
 // iframe's, so the page carries the article's title for exactly as long as the dialog is open.
 // The spaced case: document.title collapses whitespace on read, so a raw-title comparison

@@ -321,6 +321,28 @@ MIT — injected before `reader.js`; pure array math, CSP-safe). `_buildPrintDoc
 display domain is the landing site's host (`OBR.SITE_URL`), not the store's: it is the line a
 reader types off paper, and the store item URL is an opaque 32-letter id.
 
+**A picture prints on one sheet, a long strip flows across sheets.** Chrome slices a picture taller
+than the page area across two sheets (`break-inside: avoid` cannot help a single picture taller than
+a sheet), and a portrait photo at the text width is one. So `printCSS` caps a picture tagged
+`obr-print-fit` at `calc(100vh - 3em)`: in print, `vh` is the page area, not the iframe's 1160px
+window (measured on Letter through the hidden iframe's own `print()`, and with `page.pdf` on Letter
+and A4). `markPrintFitPictures` tags every loaded picture under `STRIP_MIN_ASPECT` just before
+`print()`. A longer strip is left untagged and keeps flowing, because shrunk to one sheet it is a
+sliver; so is a picture whose size is still unknown, since sliced across sheets it stays readable.
+`printReader` switches every `loading="lazy"` picture to eager first: in the off-screen frame a lazy
+one never loads, so its size could not be read and every print would wait out the full 2s. A `width`
+attribute still holds the printed size, so the capped rule adds `object-fit: contain` to keep such a
+picture from stretching. **Do not add the reader's `width: auto` to print**: it frees every icon
+and avatar to its file's size, and a `width="16"` icon drawn from a viewBox-only SVG printed
+640px square, one per sheet (measured: six inline icons went from 1 sheet to 6).
+Two limits. The `3em` reserve holds a one-line caption: a longer one moves alone to the next sheet,
+with the picture whole above it (measured on Letter and A4). And a narrow picture past
+`STRIP_MIN_ASPECT` but under two sheets tall, say 400x1300 against a Letter page area of about
+920px, is still sliced where the reader keeps it whole: the tag is set before the dialog, where
+the paper size is picked, so print cannot apply the reader's height test.
+Pinned by `print fits a tall picture on one sheet and lets a long strip flow`, which counts sheets in
+the PDF Chromium prints from the document `printReader` builds and checks an icon keeps its size.
+
 ## Save as Markdown
 
 **⤓ Markdown** (`reader.js`: `saveMarkdown` + the pure, testable `OBR._buildMarkdown` and

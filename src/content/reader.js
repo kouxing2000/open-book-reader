@@ -641,7 +641,15 @@
       p { text-align: justify; hyphens: auto; orphans: 2; widows: 2; margin: 0 0 1em; }
       a { color: inherit; text-decoration: underline; }
       img, figure, table, pre, blockquote { break-inside: avoid; }
+      /* No width auto here, unlike the reader: a width attribute keeps holding the printed size,
+         or a 16px icon would print at its file's size, up to a whole sheet. */
       img { max-width: 100%; height: auto; }
+      /* In print 100vh is the page area. A picture taller than a sheet at the text width is
+         sliced across two sheets, so one printReader marks obr-print-fit is shrunk to fit one,
+         with room left for a one-line caption. A long strip is never marked and keeps flowing.
+         object-fit: a width attribute holds the width while the cap shrinks the height, and
+         without it the picture would be stretched to that box. */
+      img.obr-print-fit { max-height: calc(100vh - 3em); object-fit: contain; }
       figure { margin: 1em 0; }
       figcaption { font-size: .85em; color: #555; text-align: center; }
       blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid #ccc; color: #333; }
@@ -708,6 +716,15 @@
       + '</body></html>';
   }
   OBR._buildPrintDoc = buildPrintDoc;
+
+  // Marks the pictures printCSS fits on one sheet: every loaded one under STRIP_MIN_ASPECT. A
+  // longer strip was made to scroll, and shrunk to one sheet it would be a sliver. A picture whose
+  // size is unknown when print fires is left unmarked: sliced across sheets it is still readable.
+  function markPrintFitPictures(doc) {
+    doc.querySelectorAll('img').forEach((im) => {
+      if (im.naturalWidth && im.naturalHeight < im.naturalWidth * STRIP_MIN_ASPECT) im.classList.add('obr-print-fit');
+    });
+  }
 
   // Pure: does the back-cover colophon FIT the last content spread's already-blank page, or
   // would its break-before push it onto a fresh spread whose facing page is blank? The
@@ -806,12 +823,17 @@
       // (which would blank the preview / fail the save), and clear it once afterprint wins.
       try { win.addEventListener('afterprint', cleanup); } catch (e) {}
       timer = setTimeout(cleanup, 600000);
+      try { markPrintFitPictures(doc); } catch (e) { /* unmarked pictures print at full size */ }
       if (title && document.title !== title) {
         pageTitle = document.title; document.title = title; shownTitle = document.title;
       }
       try { win.focus(); win.print(); } catch (e) { cleanup(); }
     };
 
+    // A loading="lazy" picture (WordPress sets it on every content image) never loads in an
+    // off-screen frame: the wait below would run out with it unloaded, and markPrintFitPictures
+    // could not read its size. Every picture in the print is wanted, so all of them load now.
+    Array.from(doc.images || []).forEach((im) => { if (im.loading === 'lazy') im.loading = 'eager'; });
     // Let images settle so figures aren't dropped, but cap the wait so a slow or
     // broken image can't hang the print.
     const pending = Array.from(doc.images || []).filter((im) => !im.complete);
