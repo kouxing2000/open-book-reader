@@ -162,6 +162,20 @@ full-screen size. Headless Chromium refuses every `requestFullscreen` ("TypeErro
 so the test (`gallery.spec.js`, mode switching) stands in for the Fullscreen API. Real full
 screen is checked by hand.
 
+The browser's OWN full screen (the green button, Ctrl+Cmd+F, F11) is the window's, not the
+page's: `document.fullscreenElement` stays null in it and `document.exitFullscreen` cannot leave
+it. So the button also reads `OBR._winFs`, the worker's last answer to `obr-window`
+(`chrome.windows`, no permission), asked again on open, on `fullscreenchange` and on every
+debounced resize, since that is the only page-visible sign of the window changing. In that state
+the button and F ask the worker to leave, never `requestFullscreen` on top of it. Leaving
+restores the state the page last saw before full screen (`OBR._winPrior`): `windows.update` to
+`'normal'` calls `Restore()`, which un-maximizes a window that was maximized before it. That state
+is seen only while an overlay is open, so a reader opened when the window was already full screen
+leaves to `'normal'`. During the page's own full screen the window reports `'fullscreen'` too, so
+those answers leave `_winFs` alone and the `fullscreenchange` that ends it asks again. A
+user's close still ends only the page's own full screen: a browser full screen the user chose
+stays. The worker half is pinned in `extension-load.spec.js` with real window states.
+
 ## Page-turn animation
 
 **Page-turn animation** (`reader.js`: `flip` → `bookFlip` / `curlFlip` / `endActiveFlip`, setting

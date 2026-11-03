@@ -115,22 +115,8 @@
     return out;
   }
 
-  // Round-trip a message to the background service worker (which has the
-  // downloads permission + host access for cross-origin fetches).
-  function sendSW(msg) {
-    return new Promise((resolve) => {
-      try {
-        if (globalThis.chrome && chrome.runtime && chrome.runtime.sendMessage) {
-          chrome.runtime.sendMessage(msg, (resp) => {
-            void chrome.runtime.lastError; // swallow "no receiver" in tests
-            resolve(resp || null);
-          });
-        } else resolve(null);
-      } catch (e) {
-        resolve(null);
-      }
-    });
-  }
+  // The background service worker has the downloads permission + host access for cross-origin fetches.
+  const sendSW = (msg) => OBR.sendSW(msg);
 
   /* Retrying across the worker's death.
    *
@@ -167,6 +153,7 @@
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, wrap, gridEl, scrollerEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbVideo, lbCounter, lbStrip, lbSecsEl, lbControls;
   let fsBtn; // the bar's full-screen toggle (OBR.syncFullscreenBtn keeps it current)
+  const syncFs = () => OBR.syncFullscreenBtn(fsBtn);
   let active = false, built = false;
   let openedByAuto = false; // this session was sentinel-opened (tempers the chip's ask moment)
   let images = [];           // [{url, full, w, h, ...}]; a video also carries {video: true, poster, loop}
@@ -860,11 +847,11 @@
     wrap.querySelector('.close').addEventListener('click', close);
     fsBtn = wrap.querySelector('.fullscreen');
     fsBtn.addEventListener('click', (e) => {
-      OBR.toggleFullscreen();
+      OBR.toggleFullscreen(syncFs);
       e.currentTarget.blur(); // drop focus so Space / PageDown drive the grid instead of re-clicking it
     });
     // The button follows full screen however it changed: its own click, the reader's F, or Esc.
-    document.addEventListener('fullscreenchange', () => { if (active) OBR.syncFullscreenBtn(fsBtn); });
+    document.addEventListener('fullscreenchange', () => { if (active) OBR.refreshWindowFs(syncFs); });
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(OBR.normalizeHost(location.href)); });
     wrap.querySelector('.report').addEventListener('click', () => {
       if (OBR.reportBroken) OBR.reportBroken({
@@ -959,6 +946,7 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         if (!active || !built) return;
+        OBR.refreshWindowFs(syncFs); // the browser's own full screen comes and goes with a resize
         // A tile player going fullscreen resizes the viewport; a re-layout would rebuild its tile
         // out from under it. Leaving fullscreen restores the size the layout was built for. The
         // shadow root's, not the document's: the full-screen button makes <html> the document's,
@@ -2285,7 +2273,7 @@
     document.documentElement.style.overflow = 'hidden';
     watchCtx();
     active = true;
-    OBR.syncFullscreenBtn(fsBtn); // the reader may have changed it while this was closed
+    OBR.refreshWindowFs(syncFs); // the reader, or the browser, may have changed it while this was closed
     openedByAuto = trigger === 'auto';
     if (OBR.bumpUsage) OBR.bumpUsage(); // engagement counters: opens + distinct days (local)
     if (t) t.mark('build');

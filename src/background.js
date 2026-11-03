@@ -1407,6 +1407,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  // The full-screen button's view of the browser's OWN full screen (the green button, Ctrl+Cmd+F,
+  // F11), which a page can neither see nor leave (settings.js: OBR.refreshWindowFs). Only the
+  // sender's own window. Leaving takes the state the page saw before full screen: 'normal' would
+  // un-maximize a window that was maximized before it (windows.update calls Restore()).
+  if (msg.type === 'obr-window') {
+    const tab = _sender && _sender.tab;
+    if (!tab || tab.windowId == null) { sendResponse(null); return true; }
+    chrome.windows.get(tab.windowId, (w) => {
+      if (chrome.runtime.lastError || !w) { sendResponse(null); return; }
+      if (!msg.exitFullscreen || w.state !== 'fullscreen') { sendResponse({ state: w.state }); return; }
+      const state = msg.restore === 'maximized' ? 'maximized' : 'normal';
+      chrome.windows.update(w.id, { state }, (u) => {
+        if (chrome.runtime.lastError || !u) { sendResponse({ state: w.state }); return; }
+        sendResponse({ state: u.state });
+      });
+    });
+    return true; // async response
+  }
+
   // The ⚠ Report button relays here — content scripts can't call chrome.tabs.create. Open the
   // bundled report page (first-party, offline) with the diagnostics in the URL #fragment (which
   // never leaves the device — it's the extension's own page). The page offers email or a web form.

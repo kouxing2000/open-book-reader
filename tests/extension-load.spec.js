@@ -656,6 +656,31 @@ test('the report path survives a page the reader cannot draw on: menu item + wor
   expect(meta.pageUrl).toBe('https://news.test/story/7');
 });
 
+// The worker half of the full-screen button in the browser's OWN full screen (the page half is in
+// gallery.spec.js): the sender's window is read through the real chrome.windows, and leaving
+// takes the state the page saw before full screen, since 'normal' would un-maximize the window.
+test('obr-window reads the sender window and leaves full screen to the state it had before', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/src/options/options.html`);
+  const cdp = await page.context().newCDPSession(page);
+  const { windowId } = await cdp.send('Browser.getWindowForTarget');
+  const setWin = async (windowState) => {
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState } });
+    await expect.poll(async () => (await cdp.send('Browser.getWindowBounds', { windowId })).bounds.windowState).toBe(windowState);
+  };
+  const ask = (m) => page.evaluate((m) => new Promise((r) => chrome.runtime.sendMessage(m, r)), m);
+  const leave = (restore) => ask({ type: 'obr-window', exitFullscreen: true, restore });
+
+  await setWin('maximized');
+  expect(await ask({ type: 'obr-window' })).toEqual({ state: 'maximized' });
+  expect(await leave('normal')).toEqual({ state: 'maximized' }); // not in full screen: nothing changes
+  await setWin('fullscreen');
+  expect(await ask({ type: 'obr-window' })).toEqual({ state: 'fullscreen' });
+  expect(await leave('maximized')).toEqual({ state: 'maximized' });
+  await setWin('normal');
+  await setWin('fullscreen');
+  expect(await leave('normal')).toEqual({ state: 'normal' });
+});
+
 test('an orphaned engine gets the "reload this page" state, not another dead click', async ({ page, serviceWorker }) => {
   await page.goto('/');
   const out = await serviceWorker.evaluate(async () => {

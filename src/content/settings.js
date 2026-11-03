@@ -425,14 +425,63 @@
     fullscreenExit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>',
   };
 
+  // Round-trip a message to the service worker. Resolves the reply, or null when there is none:
+  // no worker, a dead extension context, a closed channel, or a test harness without one.
+  OBR.sendSW = function (msg) {
+    return new Promise((resolve) => {
+      try {
+        if (globalThis.chrome && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage(msg, (resp) => {
+            void chrome.runtime.lastError; // swallow "no receiver" in tests
+            resolve(resp || null);
+          });
+        } else resolve(null);
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  };
+
   // Full screen for both reading overlays (each toolbar's button; F in the reader). The PAGE goes
   // full screen, never an overlay host: both hosts sit under <html>, so the Text ⇄ Images switch
   // keeps it, and the page-level banner and chips stay on screen. Each engine's video checks read
   // its own shadow root's fullscreenElement, which this leaves null.
   OBR.isFullscreen = () => document.fullscreenElement === document.documentElement;
-  OBR.toggleFullscreen = function () {
-    const p = OBR.isFullscreen() ? document.exitFullscreen() : document.documentElement.requestFullscreen();
-    p.catch((e) => { try { console.warn('[OpenBookReader] full screen refused: ' + e.message); } catch (_) { /* */ } });
+  // The browser's OWN full screen (the green button, Ctrl+Cmd+F, F11) belongs to the window, not
+  // the page: document.fullscreenElement stays null in it and document.exitFullscreen cannot
+  // leave it. Only the worker can read or change a window (chrome.windows, no permission), so the
+  // page keeps the worker's last answer. A window goes in and out of full screen with a resize,
+  // so each engine asks again on resize, on fullscreenchange and on open. A null answer (worker
+  // unreachable, test harness) keeps the last value. Both survive a re-run of this file (the
+  // sentinel's injection runs it again in a world where an engine is open).
+  OBR._winFs = OBR._winFs === true;
+  // The window's state before full screen, as last seen while an overlay was open. The worker
+  // restores it on the way out: windows.update to 'normal' un-maximizes a maximized window.
+  OBR._winPrior = OBR._winPrior === 'maximized' ? 'maximized' : 'normal';
+  function noteWindow(r) {
+    if (!r || typeof r.state !== 'string') return;
+    if (r.state === 'normal' || r.state === 'maximized') OBR._winPrior = r.state;
+    // During the page's own full screen the window reports 'fullscreen' too, so the answer cannot
+    // tell whether the browser's is under it: keep the last value, and ask again once it ends.
+    if (!document.fullscreenElement) OBR._winFs = r.state === 'fullscreen';
+  }
+  // sync draws the engine's button: now from what is known, again once the worker answers.
+  OBR.refreshWindowFs = function (sync) {
+    sync();
+    return OBR.sendSW({ type: 'obr-window' }).then((r) => { noteWindow(r); sync(); });
+  };
+  OBR.toggleFullscreen = function (sync) {
+    const refused = (e) => { try { console.warn('[OpenBookReader] full screen refused: ' + e.message); } catch (_) { /* */ } };
+    if (OBR.isFullscreen()) return void document.exitFullscreen().catch(refused);
+    if (OBR._winFs) {
+      return void OBR.sendSW({ type: 'obr-window', exitFullscreen: true, restore: OBR._winPrior })
+        .then((r) => {
+          if (!r) refused({ message: 'the service worker did not answer' });
+          noteWindow(r);
+          if (sync) sync();
+        });
+    }
+    document.documentElement.requestFullscreen().catch(refused);
   };
   // A user's close (✕, Esc, the toolbar icon) ends it too; a mode switch does not. Pure DOM, so the
   // orphaned-context teardowns can call it.
@@ -445,7 +494,7 @@
   // The reader passes its own keys: their (F) hint takes each locale's own parentheses.
   OBR.syncFullscreenBtn = function (btn, enterKey, exitKey) {
     if (!btn) return;
-    const on = OBR.isFullscreen();
+    const on = OBR.isFullscreen() || OBR._winFs;
     const label = OBR.t(on ? exitKey || 'fullscreenExit' : enterKey || 'fullscreenEnter');
     btn.hidden = !document.fullscreenEnabled;
     btn.innerHTML = on ? OBR.ICONS.fullscreenExit : OBR.ICONS.fullscreen;

@@ -600,7 +600,7 @@
     });
     if (act === 'settings') return OBR.openOptions && OBR.openOptions(OBR.normalizeHost(location.href));
     if (act === 'theme') return val ? setTheme(val) : cycleTheme();
-    if (act === 'fullscreen') return OBR.toggleFullscreen();
+    if (act === 'fullscreen') return OBR.toggleFullscreen(syncFsBtn);
     if (act === 'font+') return changeFont(1);
     if (act === 'font-') return changeFont(-1);
     if (act === 'columns') return setColumns(Number(val));
@@ -1713,6 +1713,7 @@
     document.documentElement.style.overflow = 'hidden';
     host.style.display = '';
     fitControls(); // a resize during the pick was skipped while the host was hidden
+    OBR.refreshWindowFs(syncFsBtn); // and so was the browser's own full screen coming or going
     if (node) {
       lastArticle = extractFromNode(node);
       pickNode = node;
@@ -4123,7 +4124,7 @@
     host.style.display = '';
     document.documentElement.style.overflow = 'hidden';
     active = true;
-    syncFsBtn(); // the gallery may have changed it while this was closed
+    OBR.refreshWindowFs(syncFsBtn); // the gallery, or the browser, may have changed it while this was closed
     fitControls(); // first point where the bar has real widths to measure
     readMs = 0;
     heldMs = 0;
@@ -4343,7 +4344,7 @@
   /* ---------------------------------------------------------------- events */
   let resizeTimer;
   // The button follows full screen however it changed: its own click, F, the gallery, or Esc.
-  document.addEventListener('fullscreenchange', () => { if (active) syncFsBtn(); });
+  document.addEventListener('fullscreenchange', () => { if (active) OBR.refreshWindowFs(syncFsBtn); });
 
   window.addEventListener('resize', () => {
     if (!active || pickerActive) return; // don't relayout against the hidden overlay mid-pick
@@ -4356,7 +4357,9 @@
     // the resize and the fullscreen-state change lands first.
     resizeTimer = setTimeout(() => {
       // Closed or torn down since: a hidden host lays out as one column and saves page 1.
-      if (!active || pickerActive || root.fullscreenElement) return;
+      if (!active || pickerActive) return;
+      OBR.refreshWindowFs(syncFsBtn); // the browser's own full screen comes and goes with a resize
+      if (root.fullscreenElement) return;
       fitControls();
       relayoutKeepingPlace();
     }, 150);
@@ -4400,7 +4403,7 @@
       case '+': case '=': if (mod) break; e.preventDefault(); changeFont(1); break;
       case '-': case '_': if (mod) break; e.preventDefault(); changeFont(-1); break;
       case 't': case 'T': if (mod) break; e.preventDefault(); cycleTheme(); break;
-      case 'f': case 'F': if (mod) break; e.preventDefault(); OBR.toggleFullscreen(); break;
+      case 'f': case 'F': if (mod) break; e.preventDefault(); OBR.toggleFullscreen(syncFsBtn); break;
       case 'p': case 'P': e.preventDefault(); printReader(); break; // capture Cmd/Ctrl+P too — clean print, not the clipped native one
     }
   }, true);

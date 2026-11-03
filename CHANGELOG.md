@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Save as Markdown is on for everyone.** The ⤓ Markdown button is now in the reader's toolbar
   (or its ⋯ menu) without turning anything on first, and it is no longer marked Beta. Anyone who
   switched it off in Options keeps it off.
+- **The full-screen button knows about the browser's own full screen.** When the window is full
+  screen through the green button, Ctrl+Cmd+F or F11, the reader's and the gallery's button now
+  shows Exit, and it (or F) leaves full screen. A window last seen maximized while the reader or
+  gallery was open comes back maximized.
 
 ## [1.16.1] - 2026-11-01
 

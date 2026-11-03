@@ -10,7 +10,7 @@ import path from 'path';
 import {
   gotoImages, injectGallery, openGallery, galleryState, clickInGallery, sentMessages,
   gotoArticle, injectAll, readState, clickInReader, gotoIllustratedArticle, gotoLazyImages,
-  gotoGrowNoImages, gotoFixture, openReader,
+  gotoGrowNoImages, gotoFixture, openReader, CONTENT_FILES,
 } from './helpers.js';
 
 // Headless Chromium refuses every requestFullscreen, from any button, with "TypeError: not
@@ -808,6 +808,96 @@ test.describe('mode switching', () => {
     await expect.poll(fsOn).toBe(true);
     await clickInGallery(page, '.close');
     await expect.poll(fsOn).toBe(false);
+  });
+
+  // The browser's OWN full screen (the green button, Ctrl+Cmd+F, F11) leaves fullscreenElement
+  // null, and a page cannot leave it: only the worker reads and changes a window. A stand-in
+  // worker answers obr-window with the state the test sets, and 'fullscreen' while the page's own
+  // full screen is on, as Chrome does; the real handler is pinned in extension-load.spec.js. The
+  // Fullscreen API shim makes a wrong requestFullscreen visible.
+  test("the browser's own full screen flips both buttons, and each button leaves it", async ({ page }) => {
+    await gotoArticle(page);
+    await page.evaluate(fullscreenShim);
+    await page.evaluate(() => {
+      window.__win = 'maximized';
+      window.__winAsks = [];
+      window.__winSilent = false; // the worker never answers
+      chrome.runtime = {
+        lastError: null,
+        sendMessage(m, cb) {
+          if (m && m.type === 'obr-window') {
+            window.__winAsks.push(m);
+            if (window.__winSilent) return;
+            if (m.exitFullscreen && window.__win === 'fullscreen') window.__win = m.restore;
+          }
+          const state = document.fullscreenElement ? 'fullscreen' : window.__win;
+          const resp = m && m.type === 'obr-window' ? { state } : { ok: true };
+          if (cb) setTimeout(() => cb(resp), 0);
+        },
+      };
+    });
+    await injectAll(page);
+    await openReader(page);
+    const pageFs = () => page.evaluate(() => document.fullscreenElement !== null);
+    const label = (hostId, sel) => page.evaluate(([h, s]) =>
+      document.getElementById(h).shadowRoot.querySelector(s).getAttribute('aria-label'), [hostId, sel]);
+    const enterBrowserFs = () => page.evaluate(() => { window.__win = 'fullscreen'; dispatchEvent(new Event('resize')); });
+    const lastAsk = () => page.evaluate(() => window.__winAsks[window.__winAsks.length - 1]);
+    const READER_FS = '.obr-controls [data-act="fullscreen"]';
+    await expect.poll(() => label('obr-host', READER_FS)).toBe('Full screen (F)');
+
+    await enterBrowserFs();
+    await expect.poll(() => label('obr-host', READER_FS)).toBe('Exit full screen (F)');
+    await clickInReader(page, READER_FS);
+    await expect.poll(() => page.evaluate(() => window.__win)).toBe('maximized'); // the state it had before
+    expect(await lastAsk()).toEqual({ type: 'obr-window', exitFullscreen: true, restore: 'maximized' });
+    expect(await pageFs()).toBe(false);           // never a page full screen on top of it
+    await expect.poll(() => label('obr-host', READER_FS)).toBe('Full screen (F)');
+
+    await enterBrowserFs();
+    await expect.poll(() => label('obr-host', READER_FS)).toBe('Exit full screen (F)');
+    await page.keyboard.press('f');               // F takes the same way out
+    await expect.poll(() => page.evaluate(() => window.__win)).toBe('maximized');
+    expect(await pageFs()).toBe(false);
+
+    // The browser's own full screen replacing the page's at the same size (F11 over it): no
+    // resize, so only the fullscreenchange can tell the button.
+    await clickInReader(page, READER_FS);
+    await expect.poll(pageFs).toBe(true);
+    await page.evaluate(() => { window.__win = 'fullscreen'; return document.exitFullscreen(); });
+    await expect.poll(() => label('obr-host', READER_FS)).toBe('Exit full screen (F)');
+    await clickInReader(page, READER_FS);
+    await expect.poll(() => page.evaluate(() => window.__win)).toBe('maximized');
+
+    // Closed during the page's own full screen, whose 'fullscreen' answer was not the browser's:
+    // with the worker silent from then on, the reopened button still offers to enter.
+    const asked = await page.evaluate(() => window.__winAsks.length);
+    await clickInReader(page, READER_FS);
+    await expect.poll(pageFs).toBe(true);
+    await expect.poll(() => page.evaluate(() => window.__winAsks.length)).toBeGreaterThan(asked);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 0))); // its answer is delivered
+    await page.evaluate(() => { window.__winSilent = true; });
+    await clickInReader(page, '.obr-controls [data-act="close"]');
+    await expect.poll(pageFs).toBe(false);
+    await openReader(page);
+    expect(await label('obr-host', READER_FS)).toBe('Full screen (F)');
+    await page.evaluate(() => { window.__winSilent = false; });
+
+    await page.evaluate(() => { window.__win = 'fullscreen'; }); // no resize: the gallery asks on open
+    await clickInReader(page, '.obr-seg-btn[data-act="images"]');
+    await expect.poll(() => galleryState(page).then((s) => s.hostDisplay)).not.toBe('none');
+    await expect.poll(() => label('obr-gallery-host', '.btn.fullscreen')).toBe('Exit full screen');
+    await clickInGallery(page, '.btn.fullscreen');
+    await expect.poll(() => page.evaluate(() => window.__win)).toBe('maximized');
+    expect(await pageFs()).toBe(false);
+    await expect.poll(() => label('obr-gallery-host', '.btn.fullscreen')).toBe('Full screen');
+    await enterBrowserFs();                        // and while the gallery is open
+    await expect.poll(() => label('obr-gallery-host', '.btn.fullscreen')).toBe('Exit full screen');
+    // Enabling auto-open injects the sentinel, which runs settings.js again in this same world.
+    await page.addScriptTag({ path: CONTENT_FILES[0] });
+    await clickInGallery(page, '.btn.fullscreen');
+    await expect.poll(() => page.evaluate(() => window.__win)).toBe('maximized');
+    expect(await pageFs()).toBe(false);
   });
 
   test('the reader mode toggle advertises the page image count on the Images segment', async ({ page }) => {
