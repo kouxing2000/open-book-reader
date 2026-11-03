@@ -10,7 +10,7 @@ import path from 'path';
 import {
   gotoImages, injectGallery, openGallery, galleryState, clickInGallery, sentMessages,
   gotoArticle, injectAll, readState, clickInReader, gotoIllustratedArticle, gotoLazyImages,
-  gotoGrowNoImages, gotoFixture, openReader, CONTENT_FILES,
+  gotoGrowNoImages, gotoFixture, openReader, holdReaderChrome, CONTENT_FILES,
 } from './helpers.js';
 
 // Headless Chromium refuses every requestFullscreen, from any button, with "TypeError: not
@@ -781,6 +781,7 @@ test.describe('mode switching', () => {
     const READER_FS = '.obr-controls [data-act="fullscreen"]';
     expect(await btn('obr-host', READER_FS)).toEqual({ label: 'Full screen (F)', hidden: false });
 
+    await holdReaderChrome(page);
     await clickInReader(page, READER_FS);
     await expect.poll(fsOn).toBe(true);
     await expect.poll(() => btn('obr-host', READER_FS)).toMatchObject({ label: 'Exit full screen (F)' });
@@ -789,6 +790,7 @@ test.describe('mode switching', () => {
     await page.keyboard.press('f');
     await expect.poll(fsOn).toBe(true);
 
+    await holdReaderChrome(page);
     await clickInReader(page, '.obr-seg-btn[data-act="images"]');
     await expect.poll(() => galleryState(page).then((s) => s.hostDisplay)).not.toBe('none');
     expect(await fsOn()).toBe(true);              // the switch kept it
@@ -801,6 +803,7 @@ test.describe('mode switching', () => {
     await expect.poll(() => readState(page).then((s) => s.hostDisplay)).not.toBe('none');
     expect(await fsOn()).toBe(true);
 
+    await holdReaderChrome(page);
     await clickInReader(page, '.obr-controls [data-act="close"]');
     await expect.poll(fsOn).toBe(false);          // a user's close ends it
     await page.evaluate(() => OBR.openGallery());
@@ -848,6 +851,7 @@ test.describe('mode switching', () => {
 
     await enterBrowserFs();
     await expect.poll(() => label('obr-host', READER_FS)).toBe('Exit full screen (F)');
+    await holdReaderChrome(page);
     await clickInReader(page, READER_FS);
     await expect.poll(() => page.evaluate(() => window.__win)).toBe('maximized'); // the state it had before
     expect(await lastAsk()).toEqual({ type: 'obr-window', exitFullscreen: true, restore: 'maximized' });
@@ -862,21 +866,25 @@ test.describe('mode switching', () => {
 
     // The browser's own full screen replacing the page's at the same size (F11 over it): no
     // resize, so only the fullscreenchange can tell the button.
+    await holdReaderChrome(page);
     await clickInReader(page, READER_FS);
     await expect.poll(pageFs).toBe(true);
     await page.evaluate(() => { window.__win = 'fullscreen'; return document.exitFullscreen(); });
     await expect.poll(() => label('obr-host', READER_FS)).toBe('Exit full screen (F)');
+    await holdReaderChrome(page);
     await clickInReader(page, READER_FS);
     await expect.poll(() => page.evaluate(() => window.__win)).toBe('maximized');
 
     // Closed during the page's own full screen, whose 'fullscreen' answer was not the browser's:
     // with the worker silent from then on, the reopened button still offers to enter.
     const asked = await page.evaluate(() => window.__winAsks.length);
+    await holdReaderChrome(page);
     await clickInReader(page, READER_FS);
     await expect.poll(pageFs).toBe(true);
     await expect.poll(() => page.evaluate(() => window.__winAsks.length)).toBeGreaterThan(asked);
     await page.evaluate(() => new Promise((r) => setTimeout(r, 0))); // its answer is delivered
     await page.evaluate(() => { window.__winSilent = true; });
+    await holdReaderChrome(page);
     await clickInReader(page, '.obr-controls [data-act="close"]');
     await expect.poll(pageFs).toBe(false);
     await openReader(page);
@@ -884,6 +892,7 @@ test.describe('mode switching', () => {
     await page.evaluate(() => { window.__winSilent = false; });
 
     await page.evaluate(() => { window.__win = 'fullscreen'; }); // no resize: the gallery asks on open
+    await holdReaderChrome(page);
     await clickInReader(page, '.obr-seg-btn[data-act="images"]');
     await expect.poll(() => galleryState(page).then((s) => s.hostDisplay)).not.toBe('none');
     await expect.poll(() => label('obr-gallery-host', '.btn.fullscreen')).toBe('Exit full screen');

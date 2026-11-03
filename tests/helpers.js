@@ -219,15 +219,19 @@ export async function clickInReader(page, selector) {
 /** Hold the reader's toolbar up the way a user does before reaching for it: the desktop bar hides
  *  after a short idle (CHROME_HIDE_MS), and a slow machine can spend that long between opening
  *  the reader and the click, or let the hide fire mid-click, leaving the button off-screen. Any
- *  move over the reader shows the bar; a pointer resting where the bar sits (the top edge of the
- *  window) keeps it up (overControls) once it slides in under it. */
+ *  move over the reader shows the bar; a pointer moved onto the bar (the top edge of the window)
+ *  keeps it up (overControls). The move waits for the bar to finish sliding in: a pointer that
+ *  arrives while the bar is still above it never enters it, and the bar hides again on schedule. */
 export async function holdReaderChrome(page) {
   const hidden = () => page.evaluate(() => document.getElementById('obr-host').shadowRoot
     .querySelector('.obr-overlay').classList.contains('obr-chrome-hidden'));
+  const barTop = () => page.evaluate(() => document.getElementById('obr-host').shadowRoot
+    .querySelector('.obr-topbar').getBoundingClientRect().top);
   const { width, height } = page.viewportSize();
   await page.mouse.move(Math.round(width / 2), Math.round(height / 2));
   await page.mouse.move(Math.round(width / 2) + 1, Math.round(height / 2));
   await expect.poll(hidden).toBe(false);
+  await expect.poll(barTop).toBeGreaterThanOrEqual(0);
   await page.mouse.move(Math.round(width / 2), 20);
 }
 
