@@ -1126,9 +1126,26 @@
     } catch (e) { return html; }
   }
 
+  // A theme can tag the post body itself with where its share buttons go: the JNews WordPress
+  // theme sets class="entry-content no-share" on every post, or "with-share" when its floating
+  // share bar is on. Readability's share-widget rule matches the word "share" in either and
+  // drops the block whenever it holds under 500 characters of text, which every picture post
+  // does. That rule runs in both parses, so the image rescue below cannot bring the block back.
+  // Only those two exact tokens leave the clone before parsing: a longer name such as
+  // with-share-buttons is what a real share bar is called, and the share bar inside the body
+  // keeps its own classes for Readability to judge.
+  const SHARE_MODIFIER = /^(no|with)-share$/i;
+  function stripShareModifiers(base) {
+    base.querySelectorAll('[class]').forEach((n) => {
+      const drop = Array.from(n.classList).filter((c) => SHARE_MODIFIER.test(c));
+      if (drop.length) n.classList.remove(...drop);
+    });
+  }
+
   function parseBaseDoc(base) {
     hydrateLazyImages(base);
     stripHeadingChrome(base);
+    stripShareModifiers(base);
     // parse() mutates the document it's given, so hand each pass its own copy.
     let article = new Readability(base.cloneNode(true)).parse();
     if (!article || !article.content) return article || null;
@@ -1498,7 +1515,9 @@
     const RX = R.REGEXPS;
     let context = '';
     for (let n = img; n; n = n === root ? null : n.parentElement) {
-      const match = (typeof n.className === 'string' ? n.className : '') + ' ' + (n.id || '');
+      // The class list the parse saw: parseBaseDoc strips share modifiers first.
+      const cls = typeof n.className === 'string' ? n.className.split(/\s+/).filter((c) => !SHARE_MODIFIER.test(c)).join(' ') : '';
+      const match = cls + ' ' + (n.id || '');
       const token = (re) => { const m = match.match(re); return m ? m[0] : ''; };
       if (!R._isProbablyVisible(n)) {
         const how = n.style && n.style.display === 'none' ? 'display:none'

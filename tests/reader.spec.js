@@ -2557,6 +2557,20 @@ test.describe('heading chrome', () => {
   });
 });
 
+// The whole-page read of the same post shape: the share-modifier pass sits in parseBaseDoc, which
+// the pick test above also reaches, so this pins the automatic path on its own.
+for (const token of ['no-share', 'with-share']) {
+  test(`the whole-page read keeps a picture post whose body is marked ${token}`, async ({ page }) => {
+    await gotoFixture(page, 'share-modifier-post.html');
+    await page.evaluate((t) => { document.getElementById('post-body').className = 'entry-content ' + t; }, token);
+    await injectReader(page);
+    await openReader(page);
+    const kept = await page.evaluate(() => document.getElementById('obr-host').shadowRoot
+      .querySelectorAll('.obr-pages img[src*="?post-"]').length);
+    expect(kept).toBe(12);
+  });
+}
+
 test.describe('content override', () => {
   test.beforeEach(async ({ page }) => {
     await gotoWrongContent(page);
@@ -2899,6 +2913,28 @@ test.describe('content override', () => {
     expect(lines[2]).toContain('kept 1/1 via readability'); // swapped still shows; swapped= says so
     expect(lines[2]).toMatch(/swapped=.*"from":"data-src"/);
     expect(lines[2]).toMatch(/notCollected=.*"what":"background-image","at":"div.hero","box":"300x200"/);
+  });
+
+  test('a picked picture post whose body is marked no-share or with-share keeps its pictures', async ({ page }) => {
+    // The JNews theme sets class="entry-content no-share" on every post body, or "with-share"
+    // when its floating share bar is on. Readability's share-widget rule matches either token and
+    // drops any such block under 500 characters of text, which every picture post is. The rule
+    // runs in both parses, so the image rescue cannot bring it back, and the featured picture
+    // kept outside the body keeps the pick off the raw-block fallback: the parse kept 1 of 13.
+    const kept = await page.evaluate(() => ['no-share', 'with-share'].map((token) => {
+      const prose = '<p>' + 'Real paragraph text that is long enough to score as content in Readability. '.repeat(6) + '</p>';
+      const el = document.createElement('div');
+      el.className = 'post';
+      el.innerHTML = '<h1>A picture post</h1><figure><img src="/pic-700.png?lead" width="700" height="470"></figure>' + prose
+        + `<div class="entry-content ${token}"><p>Part one.</p>`
+        + Array.from({ length: 12 }, (_, i) => `<img src="/pic-700.png?${token}-${i}" width="700" height="470">`).join('')
+        + '</div>' + prose;
+      document.body.appendChild(el);
+      const a = OBR._extractFromNode(el);
+      el.remove();
+      return token + ': ' + (a && a.content.match(new RegExp(token + '-\\d+', 'g')) || []).length;
+    }));
+    expect(kept).toEqual(['no-share: 12', 'with-share: 12']);
   });
 
   test('_cssPathFor builds a selector that round-trips to the element', async ({ page }) => {
