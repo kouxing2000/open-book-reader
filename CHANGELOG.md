@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   screen through the green button, Ctrl+Cmd+F or F11, the reader's and the gallery's button now
   shows Exit, and it (or F) leaves full screen. A window last seen maximized while the reader or
   gallery was open comes back maximized.
+- **Picture posts on some WordPress sites keep their pictures.** A theme that marks the post body
+  for its share bar made the reader drop most of a picture post, and picking the content by hand
+  could not bring the pictures back. The whole post now comes through.
+- **Print / Save as PDF keeps a picture on one sheet.** A tall photo used to be sliced across two
+  pages; it now shrinks to fit the page. A long strip, such as a full-page screenshot, still flows
+  across pages.
 
 ## [1.16.1] - 2026-11-01
 
