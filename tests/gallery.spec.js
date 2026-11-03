@@ -769,6 +769,9 @@ test.describe('mode switching', () => {
   // Full screen belongs to the page, not to one overlay: the switch keeps it, each toolbar's
   // button reads it, and a user's close of either mode ends it.
   test('full screen survives the Text <-> Images switch and ends when reading does', async ({ page }) => {
+    // Software rendering (Linux CI) can drop to a frame a second once the page idles, and each
+    // click then waits about 2s on its stability check.
+    test.slow();
     await gotoArticle(page);
     await page.evaluate(fullscreenShim);
     await injectAll(page);
@@ -819,6 +822,7 @@ test.describe('mode switching', () => {
   // full screen is on, as Chrome does; the real handler is pinned in extension-load.spec.js. The
   // Fullscreen API shim makes a wrong requestFullscreen visible.
   test("the browser's own full screen flips both buttons, and each button leaves it", async ({ page }) => {
+    test.slow(); // the same per-click frame wait as the test above
     await gotoArticle(page);
     await page.evaluate(fullscreenShim);
     await page.evaluate(() => {
