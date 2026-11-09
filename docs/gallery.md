@@ -13,11 +13,24 @@ page's web form).
 
 **Lazy / progressive images** (`gallery.js`): collection is placeholder-aware — an `<img>` showing
 only a placeholder with a `data-*` lazy URL contributes the lazy URL and skips the size filter
-(`eachGalleryImg`, shared by `collect()` / `imageCount()`). A `MutationObserver` + delayed re-collects
-live-merge later images (`mergeNewImages`). Since the gallery scroll-locks the page, its lazy loaders
+(`eachGalleryImg`, shared by `collect()` / `imageCount()`). The named lazy attributes come first
+(`lazyAttrUrl`, the gallery's own priority); past them it takes the reader's attribute scan,
+`OBR.attrImageUrl` (`settings.js`): any other attribute holding an image-file URL (`data-echo`,
+`data-actualsrc`, a forum's `file=`), read only while the picture has no srcset or `<picture>`
+source and its src has shown itself a stand-in: none, inline data, or loaded under the size
+filter. A src still loading may be the real picture even when its name reads like a placeholder
+(`gray-hoodie.jpg`), and would land as a second tile once it loads. That is what recovers a picture the page's own loader never swaps in, the
+same set the reader recovers. A `MutationObserver` + delayed re-collects
+live-merge later images (`mergeNewImages`): added nodes, and a `src`/`srcset` swap on an existing
+`<img>`, since a site's loader often swaps the URL in after a sweep step's merge has run. Since the gallery scroll-locks the page, its lazy loaders
 won't fire, so `hydratePage()` scrolls the *real* page in small dwelling steps to trigger native
 `loading=lazy` / IntersectionObserver / virtualized rows — on demand (progressive near the grid end,
-gated by `galleryAutoLoad`) or fully via **⟳ Load all** (`OBR._galleryRescan`). Bounded against
+gated by `galleryAutoLoad`; `fillAhead` re-checks after every chunk or merge that grew the grid, not only on scroll, because a grid
+shorter than the 1.5-screen buffer has nothing to scroll and would stop after its first chunk. Once the grid's
+end is on screen the user has seen every tile, so an empty chunk no longer pauses loading there: it sweeps on through
+a stretch of the page with no pictures until the page ends, at most `END_SWEEP_MAX` empty chunks per arrival) or fully via **⟳ Load all** (`OBR._galleryRescan`;
+asked for while a chunk runs, it stops that chunk at its next step and takes over, since that
+chain can keep chunks running for seconds). Bounded against
 infinite scroll; `close()` puts the page back where the user had it, or at the grid's spot (next
 section), never where the sweep left it. The cursor (`sweepY`) starts each open where the page
 stands, not at its top: the grid can open mid-way, and a first chunk swept from the top finds

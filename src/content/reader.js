@@ -937,30 +937,18 @@
   // the now-empty post gets cleaned away as low-content.
   //
   // We don't know the attribute name up front, so don't hardcode one: scan every
-  // attribute for a value that looks like an image URL and pick the first that
-  // isn't a placeholder/decoy. No attribute names or site domains are baked in —
-  // this generalizes across data-src / data-original / data-echo / custom names.
-  // A bare image URL token (absolute, protocol-relative, or relative path), same
-  // shape Readability's own _fixLazyImages uses to recognise an image attribute.
-  const IMG_URL = /^\S+\.(?:jpe?g|png|webp|gif|avif|bmp)(?:[?#]\S*)?$/i;
-  // Generic placeholder / decoy signals (not tied to any one site): data URIs,
-  // 1x1 / blank / spacer pixels, "loading" spinners, and anti-adblock bait.
-  const DECOY_URL = /^data:|\b(?:blank|spacer|placeholder|loading|pixel|transparent|grey|gray|default|1x1)\b|ad-?blo/i;
-
-  // Widest URL in a srcset string. Defined once on the shared OBR namespace (settings.js,
-  // which loads before this file); lets us rescue the very common responsive pattern
-  // <picture><source srcset><img src="grey-placeholder.png">, where the real image lives in
-  // a sibling <source> the <img>'s own attributes never hold.
-  const bestSrcsetUrl = OBR.bestFromSrcset;
+  // attribute for a value that looks like an image URL (OBR.attrImageUrl, shared with the
+  // gallery so both modes recover the same pictures). No attribute names or site domains
+  // are baked in — this generalizes across data-src / data-original / data-echo / custom names.
+  const IMG_URL = OBR.IMAGE_URL_RE;
+  const DECOY_URL = OBR.DECOY_URL_RE;
+  const realSrcset = OBR.realSrcset;
 
   // The lazy-loading conventions: an attribute under one of these names holds the real URL
   // whatever it looks like, so a CDN URL with no file extension (/img/123?w=800) still counts.
   const LAZY_ATTRS = OBR.LAZY_IMAGE_ATTRS;
   const LAZY_SRCSET_ATTRS = OBR.LAZY_IMAGE_SRCSET_ATTRS;
   const absUrl = (u) => { try { return new URL(u, document.baseURI).href; } catch (e) { return u; } };
-
-  // A srcset's widest candidate, or null when that candidate is a placeholder.
-  const realSrcset = (v) => { const u = bestSrcsetUrl(v); return u && !DECOY_URL.test(u) ? u : null; };
 
   function hydrateLazyImages(doc) {
     doc.querySelectorAll('img').forEach((img) => {
@@ -988,20 +976,8 @@
       }
       // 1) the image's own srcset, then a sibling <source srcset> in an enclosing <picture>.
       //    A placeholder candidate is no rescue: it would stop every later step from running.
-      let rescued = realSrcset(img.getAttribute('srcset'));
-      if (!rescued) {
-        const pic = img.closest('picture');
-        if (pic) for (const s of pic.querySelectorAll('source[srcset]')) {
-          rescued = realSrcset(s.getAttribute('srcset'));
-          if (rescued) break;
-        }
-      }
       // 2) any other attribute holding a bare image URL (data-src / data-original / ...).
-      if (!rescued) for (const at of img.attributes) {
-        if (at.name === 'src' || at.name === 'alt') continue;
-        const v = (at.value || '').trim();
-        if (IMG_URL.test(v) && !DECOY_URL.test(v)) { rescued = v; break; }
-      }
+      let rescued = OBR.srcsetImageUrl(img) || OBR.attrImageUrl(img);
       // 3) a lazy-convention attribute, whatever its URL looks like.
       if (!rescued) for (const name of LAZY_ATTRS) {
         const v = (img.getAttribute(name) || '').trim();

@@ -660,9 +660,10 @@ CLONE of `el`, so baseURI/relative-URL resolution survives and the live page is 
 selection / picker / saved-pick specs in `reader.spec.js`.
 
 **Lazy pictures** (`hydrateLazyImages`, on every clone before Readability parses). A picture the
-page has not loaded yet carries a placeholder src (`DECOY_URL`: any `data:` URI, spacer/blank/1x1
+page has not loaded yet carries a placeholder src (`OBR.DECOY_URL_RE`: any `data:` URI, spacer/blank/1x1
 names) and its real URL elsewhere; the pass takes, in order, the picture's srcset, a `<picture>`
-source, any attribute whose value ends in an image file extension, then the `LAZY_ATTRS` /
+source (`OBR.srcsetImageUrl`), any attribute whose value ends in an image file extension
+(`OBR.attrImageUrl`, which the gallery shares, so both modes recover the same pictures), then the `LAZY_ATTRS` /
 `LAZY_SRCSET_ATTRS` names whatever their URL looks like — a CDN URL such as `/img/123?w=800` has no
 extension. A placeholder candidate never counts as a rescue (it would stop the later steps), and a
 srcset of placeholders alone does not save a picture from the render drop, which removes any

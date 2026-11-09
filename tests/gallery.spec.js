@@ -1273,6 +1273,142 @@ test.describe('lazy / late images', () => {
     await expect(page.locator('#obr-gallery-host >> .tile img')).toHaveAttribute('src', /\/pic-700\.png\?w=700$/);
   });
 
+  // Placeholder src, real URL under a name no lazy convention fixes, and no page script to swap
+  // it in: the reader recovers these by scanning attributes, so the gallery must too.
+  test('reader and gallery keep pictures whose URL sits under an unconventional attribute', async ({ page }) => {
+    // A placeholder can also be a real file (here a 1px gif): the scan counts once it has loaded tiny.
+    const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    await page.route('**/img/loading.gif', (route) => route.fulfill({ contentType: 'image/gif', body: gif }));
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      const ph = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      const prose = '<p>' + 'A complete paragraph with enough readable text to keep this illustrated article in extraction. '.repeat(8) + '</p>';
+      document.body.innerHTML = '<article>' + prose
+        + `<p><img src="${ph}" data-echo="/pic-700.png?c=echo"></p>` + prose
+        + `<p><img src="${ph}" data-actualsrc="/pic-700.png?c=actualsrc"></p>` + prose
+        + `<p><img src="${ph}" file="/pic-700.png?c=file"></p>` + prose
+        + '<p><img src="/img/loading.gif" data-echo="/pic-700.png?c=gif"></p>' + prose + '</article>';
+    });
+    await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth === 1));
+    await injectAll(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    const want = [/c=echo$/, /c=actualsrc$/, /c=file$/, /c=gif$/];
+    await openReader(page);
+    const readerSrcs = await page.locator('#obr-host >> .obr-content img').evaluateAll((els) => els.map((e) => e.getAttribute('src')));
+    expect(readerSrcs).toHaveLength(4);
+    want.forEach((re, i) => expect(readerSrcs[i]).toMatch(re));
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    expect((await galleryState(page)).tiles).toBe(4);
+    expect(await page.evaluate(() => globalThis.OBR._imageCount())).toBe(4);
+    const tileSrcs = await page.locator('#obr-gallery-host >> .tile img').evaluateAll((els) => els.map((e) => e.getAttribute('src')));
+    want.forEach((re, i) => expect(tileSrcs[i]).toMatch(re));
+  });
+
+  // The attribute scan is a last resort: beside a real src or srcset that simply has not loaded
+  // yet (native loading=lazy, far below the fold), another image URL is a thumbnail, not the
+  // picture, even when the real file's name carries a placeholder-like word (c=gray).
+  test('an attribute-scanned URL never replaces a real src or srcset that has not loaded yet', async ({ page }) => {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      const ph = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      document.body.innerHTML = '<div style="height:30000px;position:relative">'
+        + '<img loading="lazy" src="/pic-700.png?c=real" data-thumb="/pic.png?c=thumb" style="position:absolute;top:25000px;width:320px;height:240px">'
+        + `<img loading="lazy" src="${ph}" srcset="/pic-700.png?c=set 700w" data-thumb="/pic.png?c=thumb2" style="position:absolute;top:26000px;width:320px;height:240px">`
+        + '<img loading="lazy" src="/pic-700.png?c=gray" data-thumb="/pic.png?c=thumb3" style="position:absolute;top:27000px;width:320px;height:240px">'
+        + '</div>';
+    });
+    expect(await page.evaluate(() => [...document.images].map((i) => i.complete))).toEqual([false, false, false]);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(3);
+    const tileSrcs = await page.locator('#obr-gallery-host >> .tile img').evaluateAll((els) => els.map((e) => e.getAttribute('src')));
+    expect(tileSrcs[0]).toMatch(/c=real$/);
+    expect(tileSrcs[1]).toMatch(/c=set$/);
+    expect(tileSrcs[2]).toMatch(/c=gray$/);
+  });
+
+  // Pictures whose URL only the page's own loader knows (built in script from an id), one per
+  // screen: the gallery gets them only by scrolling the page. Its first chunk surfaces too few to
+  // fill the screen, so the grid has nothing to scroll; the next chunk must not wait for a scroll.
+  // n pictures one screen apart; then, optionally, `gap` screens with none, and `more` pictures.
+  const JS_ONLY_PAGE = ([ph, n, gap = 0, more = 0]) => {
+    const pic = (k) => `<div style="height:${innerHeight}px"><img data-id="${k}" src="${ph}" style="width:320px;height:240px"></div>`;
+    let html = '';
+    for (let k = 0; k < n; k++) html += pic(k);
+    if (gap) html += `<div style="height:${gap * innerHeight}px"><p>No pictures here.</p></div>`;
+    for (let k = n; k < n + more; k++) html += pic(k);
+    document.body.innerHTML = '<article>' + html + '</article>';
+    const io = new IntersectionObserver((es) => es.forEach((e) => {
+      if (e.isIntersecting) { e.target.src = '/pic-700.png?k=' + e.target.dataset.id; io.unobserve(e.target); }
+    }));
+    document.querySelectorAll('img[data-id]').forEach((i) => io.observe(i));
+  };
+  const GIF_1PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+  test('auto-load keeps sweeping while the grid is too short to scroll', async ({ page }) => {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(JS_ONLY_PAGE, [GIF_1PX, 8]);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    await expect.poll(() => galleryState(page).then((s) => s.tiles), { timeout: 15000 }).toBe(8);
+  });
+
+  test('reaching the end of the grid sweeps on past a stretch of the page with no pictures', async ({ page }) => {
+    test.slow(); // three empty chunks of page sweeping before the last pictures
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(JS_ONLY_PAGE, [GIF_1PX, 15, 5, 6]);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    // Scroll the grid to its end as a reader would, until every picture below the gap is in.
+    await expect.poll(() => page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      const s = r.querySelector('.scroll');
+      s.scrollTop = s.scrollHeight;
+      return r.querySelectorAll('.tile').length;
+    }), { timeout: 40000 }).toBe(21);
+  });
+
+  test('Load all asked for while a chunk runs waits it out, then sweeps the whole page', async ({ page }) => {
+    test.slow();
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(JS_ONLY_PAGE, [GIF_1PX, 3, 5, 3]);
+    await injectGallery(page);
+    // The grid opens too short to scroll, so a chunk is already sweeping when Load all arrives.
+    await page.evaluate(async () => { await globalThis.OBR.openGallery(); await globalThis.OBR._galleryRescan(); });
+    expect((await galleryState(page)).tiles).toBe(6);
+  });
+
+  test('switching to the reader during a sweep leaves the page scroll-locked', async ({ page }) => {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      const prose = '<p>' + 'A complete paragraph with enough readable text to keep this article in extraction. '.repeat(12) + '</p>';
+      document.body.innerHTML = '<article><h1>T</h1><p><img src="/pic-700.png?k=a" width="320" height="240"></p>'
+        + prose.repeat(40) + '</article>';
+    });
+    await injectAll(page);
+    await page.evaluate(() => globalThis.OBR.openGallery()); // one tile: the grid's end is on screen, so it sweeps
+    await page.waitForTimeout(300);
+    await openReader(page);
+    await page.waitForTimeout(700); // past the step the gallery's sweep was dwelling in
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden');
+  });
+
+  test('merges a picture whose src the page swaps in after every scheduled merge', async ({ page }) => {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(([ph]) => {
+      document.body.innerHTML = '<img src="/pic-700.png?k=first" style="width:320px;height:240px">'
+        + `<img id="late" src="${ph}" style="width:320px;height:240px">`;
+    }, [GIF_1PX]);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false })); // no sweep merges
+    await openGallery(page);
+    await page.waitForTimeout(2200); // past the open-time merges at 600 and 1800ms
+    expect((await galleryState(page)).tiles).toBe(1);
+    await page.evaluate(() => { document.getElementById('late').src = '/pic-700.png?k=late'; });
+    await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(2);
+  });
+
   test('lazy-image source priority stays specific to each mode', async ({ page }) => {
     const png = fs.readFileSync(new URL('./fixtures/photo-400.png', import.meta.url));
     await page.route('**/media/**', (route) => route.fulfill({ contentType: 'image/png', body: png }));

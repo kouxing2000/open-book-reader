@@ -159,13 +159,16 @@
   let images = [];           // [{url, full, w, h, ...}]; a video also carries {video: true, poster, loop}
   let lightboxIndex = -1;
   let busy = false;          // a batch download is in flight
-  let sweeping = false;      // a hydration chunk / Load-all is in flight
+  let sweeping = false;      // the sweep in flight: false, 'chunk' (progressive) or 'all' (Load all)
+  let sweepRun = null;       // settles when that sweep ends, for a Load all that waits out a chunk
+  let allWanted = false;     // a Load all is waiting: the running chunk stops at its next step
   let sweepY = 0;            // how far down the page we've hydrated so far (px)
   let topY = null;           // "Load all"'s own cursor through the page above where the grid
                              // opened (null = nothing owed)
   let fullyHydrated = false; // confirmed end of page (set by "Load all"); stop for good
   let softDone = false;      // chunk path hit the end with nothing new — pause auto-
                              // prefetch until more content appears (self-heals on merge)
+  let endSweeps = 0;         // empty chunks swept in a row with the grid's last tiles on screen
   let savedPageX = 0, savedPageY = 0; // user's real page scroll, restored on close
   let domObserver = null;    // watches the page for late/inserted images
   let mergeTimer = null, hydrateTimers = [], resizeTimer = null; // debounced re-collect / relayout
@@ -228,7 +231,14 @@
   // Gallery favors data-original before data-lazy-src when both conventions coexist.
   const LAZY_ATTRS = OBR.LAZY_IMAGE_ATTRS.slice().sort((a, b) => Number(a === 'data-lazy-src') - Number(b === 'data-lazy-src'));
   // The real image URL a lazy <img> defers into a non-standard attribute (data-src
-  // and friends), or null if it has none. The supported names are shared with the reader.
+  // and friends), or null if it has none. The supported names are shared with the reader;
+  // past them, the reader's own scan (OBR.attrImageUrl) finds a URL under any other name
+  // (data-echo, a forum's file=), so a page whose lazy loader never runs loses no picture
+  // here that the reader keeps.
+  // That scan takes a src with a placeholder-like word in it for a stand-in, and a real file
+  // name can carry one (gray-hoodie.jpg). So it runs only once the src has shown itself a
+  // stand-in: none, inline data, or loaded under the size filter. A src still loading may be
+  // the real picture, and would land as a second tile once it loads.
   function lazyAttrUrl(img) {
     for (const name of LAZY_ATTRS) {
       const url = (img.getAttribute(name) || '').trim();
@@ -238,7 +248,10 @@
       const url = bestFromSrcset(img.getAttribute(name));
       if (url) return url;
     }
-    return null;
+    const src = (img.getAttribute('src') || '').trim();
+    const standIn = !src || /^data:/i.test(src)
+      || (img.complete && img.naturalWidth < MIN() && img.naturalHeight < MIN());
+    return standIn ? OBR.attrImageUrl(img) : null;
   }
 
   // Walk every page <img> that passes the tiny-image filter, calling fn(url, w, h)
@@ -1792,7 +1805,7 @@
       else if (ordered) appendOrderedTiles(startIdx); // append rows; re-justify only touched rows
       else { if (!cols.length) buildColumns(); for (let i = startIdx; i < images.length; i++) placeTile(images[i], i); }
       updateSelUI();
-      softDone = false;
+      softDone = false; endSweeps = 0;
       if (lightboxIndex >= 0) { // keep the open lightbox's filmstrip + counter in sync as images hydrate
         buildFilmstrip();
         syncFilmstripActive(lightboxIndex);
@@ -1804,6 +1817,9 @@
     // refresh here too (not just on render/hide/reveal), else it sits stale/invisible on
     // exactly the lazy-forum pages the filter is for.
     updateHiddenToggle();
+    // A grid that grew may still not reach past the screen, and then nothing can scroll to ask
+    // for the next chunk. Inside a sweep, the sweep re-checks once it ends.
+    if (added && !sweeping) fillAhead();
     return added;
   }
 
@@ -1821,10 +1837,14 @@
         n.nodeType === 1 && (n.tagName === 'IMG' || n.tagName === 'VIDEO' || (n.querySelector && n.querySelector('img, video')));
       domObserver = new MutationObserver((muts) => {
         for (const m of muts) {
+          // A lazy loader swapping the real URL into an <img> the page already had: it often
+          // lands after a sweep step's merge (a debounced scroll handler fires only once the
+          // scrolling stops), and no later merge may come.
+          if (m.type === 'attributes') { if (m.target.tagName === 'IMG') { scheduleMerge(); return; } continue; }
           for (const n of m.addedNodes) if (containsImg(n)) { scheduleMerge(); return; }
         }
       });
-      domObserver.observe(document.documentElement, { childList: true, subtree: true });
+      domObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset'] });
     }
     // A couple of delayed sweeps catch images still in flight at open time.
     hydrateTimers = [setTimeout(mergeNewImages, 600), setTimeout(mergeNewImages, 1800)];
@@ -1848,9 +1868,14 @@
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function hydratePage(toBottom) {
+    // Load all while a chunk runs (the end-of-grid chain runs them back to back for seconds):
+    // stop that chunk at its next step, then sweep the whole page, rather than drop the click.
+    if (toBottom && sweeping === 'chunk') { allWanted = true; await sweepRun; allWanted = false; return hydratePage(true); }
     if (!active || busy || sweeping || fullyHydrated) return 0;
     if (!toBottom && softDone) return 0;
-    sweeping = true;
+    sweeping = toBottom ? 'all' : 'chunk';
+    let endRun;
+    sweepRun = new Promise((r) => { endRun = r; });
     const btn = wrap && wrap.querySelector('.rescan');
     if (toBottom && btn) btn.disabled = true;
     setStatus(toBottom ? OBR.t('galleryLoadingAll') : OBR.t('galleryLoadingMore'));
@@ -1863,6 +1888,7 @@
     let added = 0, noGrow = 0;
     try {
       for (let i = 0; i < maxSteps; i++) {
+        if (allWanted) break; // a Load all is waiting (it is only ever set while a chunk runs)
         const h0 = de.scrollHeight;
         let y;
         if (toBottom && topY !== null) {
@@ -1895,8 +1921,11 @@
     } catch (e) {
       /* ignore — partial hydration is fine */
     } finally {
-      de.style.overflow = active ? 'hidden' : ''; // re-lock (gallery still open)
+      // Re-lock while the gallery is open. Once closed, close() has unlocked the page, and the
+      // reader may have locked it again since: a closed gallery's sweep leaves it alone.
+      if (active) de.style.overflow = 'hidden';
       sweeping = false;
+      endRun();
       // A progressive chunk that surfaced NO new images means there's nothing more to
       // pull here right now — pause auto-prefetch and let auto-scroll reach its stop
       // condition. The atBottom/no-growth check inside the loop misses the nasty case
@@ -1911,16 +1940,36 @@
       setStatus(added ? OBR.t('galleryAddedImages', [String(added)]) : (fullyHydrated ? OBR.t('galleryAllImagesLoaded') : ''));
       clearStatusIn(2500);
     }
+    // The chunk may not have filled the screen, or may have found nothing with the grid's end in view.
+    if (!toBottom && active && !allWanted) setTimeout(fillAhead, 0);
     return added;
   }
 
   // Prefetch the next chunk EARLY — while the user is still ~1.5 screens from the
   // bottom of the gallery — so the new tiles are there before they scroll to them.
+  // Re-run whenever the grid grows, not only on scroll: a grid shorter than that buffer
+  // has nothing to scroll, so a scroll-only trigger stops after the first chunk. Short of the
+  // grid's end, a chunk that adds nothing sets softDone, which ends the chain.
+  // At the grid's end the user has seen every tile, so an empty chunk is no reason to stop: the
+  // page may only have a stretch with no pictures. Keep sweeping down until the page itself ends,
+  // at most END_SWEEP_MAX empty chunks in a row (about Load all's reach) for a feed that grows
+  // forever without a picture; scrolling away from the end re-arms it.
+  const END_SWEEP_MAX = 26;
+  function fillAhead() {
+    if (!scrollerEl || sweeping || fullyHydrated || !settings.galleryAutoLoad) return;
+    const remaining = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight;
+    if (remaining <= 8) {
+      const pageEnded = sweepY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+      if (pageEnded || endSweeps >= END_SWEEP_MAX) return;
+      endSweeps++; softDone = false; hydratePage(false);
+      return;
+    }
+    endSweeps = 0;
+    if (!softDone && remaining < scrollerEl.clientHeight * 1.5) hydratePage(false);
+  }
   function onScrollerScroll() {
     if (hideMenuOpen()) closeHideMenu(); // a fixed popover would detach from its tile on scroll
-    if (!scrollerEl || sweeping || fullyHydrated || softDone || !settings.galleryAutoLoad) return;
-    const remaining = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight;
-    if (remaining < scrollerEl.clientHeight * 1.5) hydratePage(false);
+    fillAhead();
   }
 
   // Explicit keyboard scroll toward the bottom: unlike the passive prefetch above this
@@ -2266,7 +2315,7 @@
     } catch (e) { back = null; }
     // Fresh hydration cursor per open, from where the page stands: the grid can open mid-way, and
     // a first chunk swept from the page's top would find nothing new and pause loading.
-    sweepY = savedPageY; topY = savedPageY > 0 ? 0 : null; fullyHydrated = false; softDone = false;
+    sweepY = savedPageY; topY = savedPageY > 0 ? 0 : null; fullyHydrated = false; softDone = false; endSweeps = 0;
     autoScroll = false; autoFrac = 0; autoRetriedAtBottom = false; // fresh auto-scroll state
     slideOn = false; clearTimeout(slideTimer); slideTimer = 0; // fresh slideshow state
     host.style.display = '';

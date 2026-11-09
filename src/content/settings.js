@@ -414,6 +414,46 @@
     ...OBR.LAZY_IMAGE_SRCSET_ATTRS.flatMap((n) => OBR.srcsetUrls(img.getAttribute(n) || '')),
   ];
 
+  // Placeholder recovery shared by the reader's hydration and the gallery's collection, so both
+  // modes recover the same pictures from a page whose own lazy loader has not run.
+  // A bare image URL token (absolute, protocol-relative, or relative path), the same shape
+  // Readability's own _fixLazyImages uses to recognise an image attribute.
+  OBR.IMAGE_URL_RE = /^\S+\.(?:jpe?g|png|webp|gif|avif|bmp)(?:[?#]\S*)?$/i;
+  // Generic placeholder / decoy signals (not tied to any one site): data URIs,
+  // 1x1 / blank / spacer pixels, "loading" spinners, and anti-adblock bait.
+  OBR.DECOY_URL_RE = /^data:|\b(?:blank|spacer|placeholder|loading|pixel|transparent|grey|gray|default|1x1)\b|ad-?blo/i;
+  // A srcset's widest candidate, or null when that candidate is a placeholder.
+  OBR.realSrcset = (v) => { const u = OBR.bestFromSrcset(v); return u && !OBR.DECOY_URL_RE.test(u) ? u : null; };
+  // The real URL an <img>'s own srcset offers, else a sibling <source srcset> in its <picture>
+  // (the responsive pattern whose <img> holds only a grey placeholder).
+  OBR.srcsetImageUrl = (img) => {
+    const own = OBR.realSrcset(img.getAttribute('srcset'));
+    if (own) return own;
+    const pic = img.closest('picture');
+    if (pic) for (const s of pic.querySelectorAll('source[srcset]')) {
+      const u = OBR.realSrcset(s.getAttribute('srcset'));
+      if (u) return u;
+    }
+    return null;
+  };
+  // The real URL of an <img> with nothing real to show, kept in an attribute whose name no lazy
+  // convention fixes (data-echo, data-actualsrc, a forum's file=): the first attribute other than
+  // src/alt holding a bare image URL that is not itself a decoy. Scanning, rather than naming,
+  // also gets past a page that orders an anti-adblock decoy ahead of the real URL. Beside a real
+  // src, srcset or <picture> source such an attribute is a thumbnail or a zoom variant, never the
+  // missing picture, so it then yields null.
+  OBR.attrImageUrl = (img) => {
+    const src = (img.getAttribute('src') || '').trim();
+    if (src && !OBR.DECOY_URL_RE.test(src)) return null;
+    if (OBR.srcsetImageUrl(img)) return null;
+    for (const at of img.attributes) {
+      if (at.name === 'src' || at.name === 'alt') continue;
+      const v = (at.value || '').trim();
+      if (OBR.IMAGE_URL_RE.test(v) && !OBR.DECOY_URL_RE.test(v)) return v;
+    }
+    return null;
+  };
+
   // Mode-switch glyphs shared by the reader and gallery toolbars (an open book + a framed
   // picture). Defined once here — settings.js loads before both engines — so the two stay
   // visually identical instead of carrying byte-for-byte copies that can drift apart.
