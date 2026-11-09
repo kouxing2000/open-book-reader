@@ -287,7 +287,10 @@ npm run ranking          # store-search rank per keyword/locale → metrics/ (gi
   fails loudly on that mismatch instead of reporting a clean zero.
 
 - **Tag-driven CI release** (`.github/workflows/release.yml`): `npm run bump -- minor` (or
-  `patch`/`major`/`X.Y.Z`), then `git push --follow-tags`. Pushing a `v*` tag runs the suite, packages,
+  `patch`/`major`/`X.Y.Z`), then `git push origin master`, wait for that push's `ci.yml` run to pass
+  (`gh run watch <id> --exit-status`, `<id>` from `gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)"`),
+  then `git push origin vX.Y.Z`: a tag pushed onto a red master burns
+  its version, since the tag ruleset below forbids moving it. Pushing a `v*` tag runs the suite, packages,
   uploads, and submits for review (`AUTO_PUBLISH='true'`) — the pushed tag is the release gesture; the
   version goes live once Google's review passes. The store rejects any non-incremented version, so the
   bump is mandatory; `bump-version.mjs` is its single source (don't hand-edit the two version fields).

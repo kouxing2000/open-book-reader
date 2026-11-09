@@ -2,7 +2,7 @@
 
 /**
  * Bump the extension version in lock-step across manifest.json + package.json,
- * then commit + tag so a `git push --follow-tags` triggers the release workflow.
+ * then commit + tag; pushing the tag, once master's CI is green, triggers the release workflow.
  *
  * The Chrome Web Store rejects any upload whose version is not strictly higher
  * than the live one, so every release MUST move this number. This script is the
@@ -19,7 +19,7 @@
  * Refuses to run if "## [Unreleased]" in CHANGELOG.md is empty (a shipped version with no
  * release notes is almost always a forgotten step) — override with --allow-empty-changelog.
  *
- * After it runs:  git push --follow-tags
+ * After it runs:  git push origin master, wait for its CI to pass, then git push origin <tag>
  */
 
 import fs from 'fs';
@@ -170,5 +170,8 @@ execSync(`git commit -m "chore(release): ${tag}"`, { cwd: rootDir, stdio: 'inher
 execSync(`git tag -a ${tag} -m "Open Book Reader ${tag}"`, { cwd: rootDir, stdio: 'inherit' });
 
 console.log(`\n✓ Committed and tagged ${tag}.`);
-console.log(`\nNext step — push to trigger the release workflow:`);
-console.log(`   git push --follow-tags\n`);
+console.log(`\nNext steps — push master, wait for its CI, then push the tag to start the release:`);
+console.log(`   git push origin master`);
+console.log(`   gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)"   # re-run until it lists the run`);
+console.log(`   gh run watch <that run's id> --exit-status`);
+console.log(`   git push origin ${tag}\n`);

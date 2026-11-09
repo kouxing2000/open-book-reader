@@ -1,7 +1,8 @@
 name: Release to Chrome Web Store
 
 # Tag-driven release. Cut a version with `npm run bump -- minor` (which commits +
-# tags vX.Y.Z), then `git push --follow-tags`. Pushing the tag runs tests, packages
+# tags vX.Y.Z), then `git push origin master`, wait for its ci.yml run to pass, then
+# `git push origin vX.Y.Z`. Pushing the tag runs tests, packages
 # the allowlisted zip, uploads it to the Web Store, and SUBMITS it for review.
 #
 # AUTO_PUBLISH is true: fully hands-off. The pushed tag is the deliberate release

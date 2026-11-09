@@ -45,7 +45,7 @@ helper, the packaging allowlist, the test-harness shim). Adding a language is no
 4. **Detailed description:** translate `.meta/LISTING.md`'s Description into `.meta/listings/<loc>.txt` (keep the 22 bullets, the GitHub URL, and the keyboard shortcuts verbatim; weave the local reader-mode terms; ASO, not literal).
 5. **Verify:** `npm run verify:locales` (parity, placeholders, tokens, char limits, src/manifest coverage). Then `npm test` — it runs the verify as `pretest` AND exercises the localized UI. **Read the exit code / full summary, never a `tail`.**
 6. **Eyeball it:** `./scripts/test-locale.sh <loc>` launches an isolated Chrome for Testing in that language with the extension + a test article (check `de`/`ru` for toolbar overflow — long words).
-7. **Ship:** `npm run bump -- patch` → `git push --follow-tags`. After it's live, the store's per-language dropdown appears — paste `.meta/listings/<loc>.txt` into that locale's Description.
+7. **Ship:** `npm run bump -- patch` → `git push origin master`, wait for its CI to pass → `git push origin vX.Y.Z`. After it's live, the store's per-language dropdown appears — paste `.meta/listings/<loc>.txt` into that locale's Description.
 
 ## Translation rules (keys NEVER change; translate only human-readable words)
 - Keep verbatim: `$TOKENS$` (`$COUNT$`, `$MINUTES$`, …) and every entry's `placeholders` block; glyphs/emoji (⌖ 🖨 ⚠ ⚙ ✕ 🖼 ⟳ ← → ↑↓ · — …); the `<b>…</b>` in `readerPickBarInstruction`; keyboard key names in `readerFooterHint` (`Space`, `T`, `P`, `Esc`) and shortcut letters in `(T)`/`(P)`/`(A)`; `ZIP`, `PDF`, `Mozilla Readability`, `Chrome`, `GitHub`, the repo URL.
