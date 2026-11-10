@@ -1847,6 +1847,95 @@ test.describe('ordered gallery layout', () => {
     const saved = await page.evaluate(() => globalThis.OBR.loadSettings().then((s) => s.galleryFitWidth));
     expect(saved).toBe(true); // persisted to storage.sync
   });
+
+  // Open the Ordered layout on the portrait-pages fixture, pages `w` px wide.
+  async function openOrderedPages(page, w) {
+    await page.goto('about:blank'); // leave the beforeEach page; this needs portrait pages
+    await gotoFixture(page, `ordered-pages.html?w=${w}`);
+    await page.waitForFunction(() => document.images.length === 4
+      && [...document.images].every((i) => i.complete && i.naturalWidth > 0));
+    await injectGallery(page);
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
+  }
+  async function setOrderedCols(page, n) {
+    await page.evaluate((cols) => { // the slider is inverted: value = min + max - columns
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.range');
+      el.value = String(+el.min + +el.max - cols); el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, n);
+    await expect.poll(() => orderedState(page).then((s) => s.rows[0].length)).toBe(n);
+  }
+  // The first row's tiles against the scroller's content box, plus each picture's drawn width.
+  const firstRowBox = (page) => page.evaluate(() => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot;
+    const sc = r.querySelector('.scroll');
+    const left = sc.getBoundingClientRect().left + sc.clientLeft + 12; // .scroll padding
+    const tiles = [...r.querySelector('.row').children];
+    const rects = tiles.map((t) => t.getBoundingClientRect());
+    return { left, right: left + sc.clientWidth - 24,
+      tileLeft: Math.min(...rects.map((b) => b.left)), tileRight: Math.max(...rects.map((b) => b.right)),
+      imgWidths: tiles.map((t) => Math.round(t.querySelector('img').getBoundingClientRect().width)) };
+  });
+
+  // Fewer columns = larger images: with pages wider than any slot, a full row spans the
+  // scroller's whole content width at 1, 2 and 3 columns, never a box narrower than the column
+  // with the rest of the row left empty.
+  test('a full Ordered row spans the available width at few columns', async ({ page }) => {
+    await openOrderedPages(page, 1400);
+    for (const cols of [1, 2, 3]) {
+      await setOrderedCols(page, cols);
+      const m = await firstRowBox(page);
+      expect(m.tileLeft).toBeGreaterThanOrEqual(m.left - 2);   // nothing clipped on the left
+      expect(m.tileRight).toBeLessThanOrEqual(m.right + 2);    // ...or on the right
+      expect(m.tileRight - m.tileLeft).toBeGreaterThanOrEqual(m.right - m.left - 4); // fills the row
+    }
+  });
+
+  // ...but never past the picture's own pixels: an enlarged picture goes soft. A 480px page
+  // stays 480px at 1 and 2 columns, centered in the row, though the slot is far wider.
+  test('Ordered never draws a picture wider than its own pixels', async ({ page }) => {
+    await openOrderedPages(page, 480);
+    for (const cols of [1, 2]) {
+      await setOrderedCols(page, cols);
+      await expect.poll(() => firstRowBox(page).then((m) => m.imgWidths)).toEqual(Array(cols).fill(480));
+      const m = await firstRowBox(page);
+      const slack = (m.tileLeft - m.left) - (m.right - m.tileRight);
+      expect(Math.abs(slack)).toBeLessThanOrEqual(2); // centered: equal space either side
+    }
+  });
+
+  // Ordered over pictures a test supplies in place of the fixture's pages, opened without
+  // waiting for them to load.
+  async function openOrderedWith(page, html) {
+    await page.goto('about:blank');
+    await gotoFixture(page, 'ordered-pages.html');
+    await page.evaluate((h) => { document.getElementById('pages').innerHTML = h; }, html);
+    await injectGallery(page);
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
+  }
+
+  // A picture still loading when its row is laid out has no cap yet; its load re-justifies the
+  // row, so it ends at its own pixels rather than at the full width it was first given.
+  test('a picture that loads after its row is laid out still stops at its own pixels', async ({ page }) => {
+    await openOrderedWith(page, [1, 2].map((n) =>
+      `<img width="400" height="300" src="/photo-400.png?delay=3000&n=${n}">`).join(''));
+    await setOrderedCols(page, 1);
+    expect((await firstRowBox(page)).imgWidths[0]).toBeGreaterThan(400); // still loading: uncapped
+    await expect.poll(() => firstRowBox(page).then((m) => m.imgWidths), { timeout: 10_000 }).toEqual([400]);
+  });
+
+  // A vector never goes soft, so it is not capped: these 500px-wide SVGs still fill wider slots.
+  // (Chrome reports a viewBox-only SVG at a made-up 300x150, so a cap there would be wrong outright.)
+  test('an SVG fills its Ordered slot past its own width', async ({ page }) => {
+    await openOrderedWith(page, [1, 2].map((n) => `<img src="/wide-small.svg?n=${n}">`).join(''));
+    await setOrderedCols(page, 2);
+    await page.waitForFunction(() => [...document.getElementById('obr-gallery-host').shadowRoot
+      .querySelectorAll('.tile img')].every((i) => i.complete && i.naturalWidth > 0));
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))); // past the load handlers
+    const m = await firstRowBox(page);
+    expect(Math.min(...m.imgWidths)).toBeGreaterThan(502);
+  });
 });
 
 /* Image filter — the avatar auto-filter + the manual per-site ⊘ Hide (obr_hidden). Forums flood
@@ -2947,10 +3036,14 @@ test.describe('page scroll and the grid follow each other', () => {
   });
 
   test('scrolling within one tall tile still counts: the reopen keeps that offset', async ({ page }) => {
-    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOrderedCols: 1 })); // one tall tile per row
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOrderedCols: 1 })); // one tile per row
     await openGallery(page);
     await page.evaluate(() => globalThis.OBR._gallerySetLayout(true));
-    await scrollGridBy(page, 150); // still the first tile, scrolled part-way
+    // Part-way into the first tile, as a fraction of its height: a tile is never drawn wider than
+    // its picture, so how tall it is follows the fixture's pixels, not the window.
+    const firstTileH = await page.evaluate(() => document.getElementById('obr-gallery-host')
+      .shadowRoot.querySelector('.tile').getBoundingClientRect().height);
+    await scrollGridBy(page, Math.round(firstTileH * 0.4)); // still the first tile, scrolled part-way
     const left = (await galleryState(page)).scrollTop;
     expect((await gridTop(page)).n).toBe(1); // a positive landmark: the same tile is at the top
     await page.evaluate(() => globalThis.OBR.closeGallery());

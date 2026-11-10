@@ -61,8 +61,12 @@ sequence. **Ordered** fixes that for manga/comics/webtoons/step-by-step shots
 image `i` is always in row `floor(i/N)` at position `i%N` — reading order == visual order, and appending
 only re-justifies the last touched row (**same no-reflow property, for free** — row-major append never
 moves an earlier tile). Rows are **justified** (tiles scaled to a shared per-row height, aspect
-preserved, no crop; unknown-size lazy images use `ORD_FALLBACK_ASPECT` and re-justify their row on
-decode); at **1 column** it's a centered, width-capped (`STRIP_MAX`) reading **strip** — auto-scroll
+preserved, no crop; the height is never clamped, so a full row spans the width, except that no tile
+is drawn wider than its picture's own pixels (a small one sits at its real size, centered: an
+enlarged picture goes soft, and the reader and the lightbox's normal view never enlarge either; SVGs
+and video tiles are not capped, and Wall still enlarges);
+unknown-size lazy images use `ORD_FALLBACK_ASPECT` and re-justify their row on
+decode); at **1 column** it's a full-width reading **strip** (the same formula, one tile per row) — auto-scroll
 turns it into a hands-free webtoon reader. **The Size slider picks a column COUNT, not a px width**
 (`columnCount`/`maxCols`/`syncSizeSlider`, layout-aware: Wall spans 2..max via `galleryColumns`, Ordered
 1..max via `galleryOrderedCols`): inverted (fuller bar = larger = fewer columns), clamped to `maxCols`

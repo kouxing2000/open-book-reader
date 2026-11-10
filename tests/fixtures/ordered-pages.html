@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 3 — sequential pages</title>
+</head>
+<body>
+  <h1>Chapter 3</h1>
+  <div id="pages"></div>
+  <script>
+    // Four portrait manga-shaped pages (aspect ~0.71), generated as canvas data-URIs so
+    // naturalWidth/Height are real. ?w= sets their width: the 1400px default is wider than any
+    // slot the test viewport offers (the fill case); ?w=480 is narrower (the never-enlarge case).
+    function png(w, h, color) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, w, h);
+      return c.toDataURL('image/png');
+    }
+    const W = +new URLSearchParams(location.search).get('w') || 1400, H = Math.round(W * 1.4125);
+    const host = document.getElementById('pages');
+    for (const col of ['#c0392b', '#27ae60', '#2980b9', '#8e44ad']) {
+      const img = document.createElement('img');
+      img.width = W; img.height = H;
+      img.src = png(W, H, col);
+      host.appendChild(img);
+    }
+  </script>
+</body>
+</html>

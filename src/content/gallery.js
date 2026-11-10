@@ -1155,11 +1155,14 @@
     // with unknown dimensions (w/h = 0) used the fallback aspect, so patch its real size on decode
     // and re-justify just that row (bounded — once per unknown-size image, no earlier row moves).
     img.addEventListener(im.video ? 'loadedmetadata' : 'load', () => {
+      // Also re-justify once when the decoded picture is narrower than its tile: justifyRow caps a
+      // tile at its picture's own pixels, which are unknown until now.
       const nw = im.video ? img.videoWidth : img.naturalWidth, nh = im.video ? img.videoHeight : img.naturalHeight;
-      if ((!im.w || !im.h) && nw && nh) {
-        im.w = nw; im.h = nh;
-        if (ordered && tile.parentElement && tile.parentElement.classList.contains('row')) justifyRow(tile.parentElement);
-      }
+      const patch = (!im.w || !im.h) && nw && nh;
+      if (patch) { im.w = nw; im.h = nh; }
+      const row = tile.parentElement && tile.parentElement.classList.contains('row') ? tile.parentElement : null;
+      const cap = capWidthOf(tile);
+      if (ordered && row && (patch || (cap && cap + TILE_BORDER < parseFloat(tile.style.width)))) justifyRow(row);
     });
     tile.appendChild(img);
     if (im.video) {
@@ -1271,10 +1274,8 @@
   // slider makes every notch meaningful (a width slider wastes its whole low-count end on the
   // "2 columns" plateau). MIN_TILE caps how many columns fit, so the slider adapts per screen.
   const MIN_TILE = 140; // narrowest a tile may get before we stop offering more columns
-  const STRIP_MAX = 900;          // px — capped width of the 1-column Ordered reading strip (centered)
-  const ORD_ROW_MIN = 90;         // px — clamp: shortest a justified Ordered row may get
-  const ORD_ROW_MAX = 560;        // px — clamp: tallest a justified Ordered row may get
   const ORD_FALLBACK_ASPECT = 0.72; // w/h for unknown-dimension (lazy) images — portrait-ish
+  const TILE_BORDER = 2;          // px — a tile's 1px border on each side (box-sizing: border-box)
   function maxCols() {
     const inner = (scrollerEl ? scrollerEl.clientWidth : 0) - 24; // .scroll padding
     return Math.max(2, Math.floor((inner + 12) / (MIN_TILE + 12)));
@@ -1527,7 +1528,10 @@
   }
   // Size the tiles of one Ordered row. Neighbour-independent: a partial row (k<N) is scaled as
   // if it had N slots of the same average aspect, so it matches the height of full rows without
-  // stretching a lone trailing image to full width.
+  // stretching a lone trailing image to full width. At 1 column (the strip) the same formula
+  // gives the lone tile the full width. No tile is drawn wider than its picture's own pixels
+  // (an enlarged picture goes soft; the reader and the lightbox's normal view never enlarge either): a small
+  // picture sits at its real size and the row centers it, top-aligned beside fuller neighbours.
   function justifyRow(rowEl) {
     const tiles = rowEl.children;
     const k = tiles.length;
@@ -1535,10 +1539,6 @@
     const GAP = 12;
     const innerW = Math.max(0, scrollerEl.clientWidth - 24); // .scroll padding
     const N = renderedCols || k;
-    if (N <= 1) { // strip: one full-width (capped), centered page per row
-      tiles[0].style.width = Math.min(innerW, STRIP_MAX) + 'px';
-      return;
-    }
     let sumA = 0;
     const aspects = [];
     for (let j = 0; j < k; j++) {
@@ -1547,10 +1547,27 @@
       aspects.push(a); sumA += a;
     }
     const avail = innerW - (N - 1) * GAP;
-    // Divide by (sumA scaled to N slots) so full and partial rows land on the same height.
-    let H = avail / (sumA * (N / k));
-    H = Math.max(ORD_ROW_MIN, Math.min(ORD_ROW_MAX, H));
-    for (let j = 0; j < k; j++) tiles[j].style.width = Math.round(aspects[j] * H) + 'px';
+    // Divide by (sumA scaled to N slots) so full and partial rows land on the same height. No
+    // height clamp: any bound on H breaks the fill — a ceiling leaves few-column rows narrower
+    // than their columns, a floor pushes wide-aspect rows past both edges (the row centers).
+    const H = avail / (sumA * (N / k));
+    for (let j = 0; j < k; j++) {
+      const w = Math.round(aspects[j] * H), cap = capWidthOf(tiles[j]);
+      tiles[j].style.width = (cap ? Math.min(w, cap + TILE_BORDER) : w) + 'px';
+    }
+  }
+  // The widest a tile's picture may be drawn, 0 for no cap: a raster <img>'s decoded width, 0
+  // until it decodes (its load re-justifies). Read off the tile's own element, not the collected
+  // entry: an entry's size can be the page's layout box, which is not the file's pixels. An SVG
+  // is never capped: a vector does not go soft, and Chrome reports a viewBox-only one at a made-up
+  // 300x150. Nor is a video tile: one with a poster learns its size only when it starts playing,
+  // and capping it then would move the player out from under the click.
+  function capWidthOf(tile) {
+    const m = tile.querySelector('img');
+    if (!m || !m.naturalWidth) return 0;
+    const src = m.currentSrc || m.src;
+    const svg = src.startsWith('data:') ? /^data:image\/svg\+xml/i.test(src) : /\.svg(\?|#|$)/i.test(src);
+    return svg ? 0 : m.naturalWidth;
   }
   // Append tiles for images [startIdx..] into the Ordered rows, re-justifying only the rows the
   // append touched (the previously-partial last row + any new rows). Earlier rows never move.
