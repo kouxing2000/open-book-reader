@@ -514,6 +514,21 @@ test.describe('image gallery', () => {
     }
   });
 
+  test('the Size slider bottoms out at 8 columns on a wide monitor', async ({ page }) => {
+    // MIN_TILE alone would offer ~16 columns at 2560px; the cap keeps the smallest end usable.
+    await page.setViewportSize({ width: 2560, height: 900 });
+    await openGallery(page);
+    const r = await page.evaluate(() => {
+      const root = document.getElementById('obr-gallery-host').shadowRoot;
+      const el = root.querySelector('.range');
+      el.value = el.min; // fully left = smallest images = most columns
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return { min: +el.min, max: +el.max, cols: root.querySelectorAll('.col').length };
+    });
+    expect(r.cols).toBe(8);
+    expect(r.max - r.min + 1).toBe(7); // 8..2 columns, one notch each
+  });
+
   test('every Size notch changes the column count (no dead zone)', async ({ page }) => {
     // The old px-width slider wasted its whole low-count end on the "2 columns" plateau. A
     // count slider must move the layout by exactly one column per notch across the range.

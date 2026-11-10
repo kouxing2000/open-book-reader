@@ -73,7 +73,7 @@ window is shown a window at a time down to its bottom first, so a step never pas
 row; Wall's arrows keep their 80px nudge. **The Size slider picks a column COUNT, not a px width**
 (`columnCount`/`maxCols`/`syncSizeSlider`, layout-aware: Wall spans 2..max via `galleryColumns`, Ordered
 1..max via `galleryOrderedCols`): inverted (fuller bar = larger = fewer columns), clamped to `maxCols`
-(what fits at `MIN_TILE` px). **Layout + column count are remembered per-site** (`obr_gallery` map in
+(what fits at `MIN_TILE` px, never more than `MAX_COLS`, the options sliders' `max`, so a wide monitor is not offered 16 columns). **Layout + column count are remembered per-site** (`obr_gallery` map in
 `storage.sync`, mirrors `obr_picks` — bounded/LRU; `OBR.loadGalleryPref`/`saveGalleryPref`); Wall is the
 default, a host opens Ordered only if it was left that way. Reworking the justify math is layout-heavy —
 **verify with a real-Chromium screenshot and MEASURE tile rects** (`getBoundingClientRect`).

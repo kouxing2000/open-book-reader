@@ -1281,13 +1281,15 @@
   // The Size slider picks a COLUMN COUNT, not a px width — the columns are flex (`flex: 1 1 0`),
   // so within one count every width renders identically; only the count is visible. A count
   // slider makes every notch meaningful (a width slider wastes its whole low-count end on the
-  // "2 columns" plateau). MIN_TILE caps how many columns fit, so the slider adapts per screen.
+  // "2 columns" plateau). MIN_TILE caps how many columns fit, so the slider adapts per screen;
+  // MAX_COLS caps it on a wide monitor, where MIN_TILE alone would offer 16 columns of postage stamps.
   const MIN_TILE = 140; // narrowest a tile may get before we stop offering more columns
+  const MAX_COLS = 8;   // most columns the slider offers on any screen (matches the options page)
   const ORD_FALLBACK_ASPECT = 0.72; // w/h for unknown-dimension (lazy) images — portrait-ish
   const TILE_BORDER = 2;          // px — a tile's 1px border on each side (box-sizing: border-box)
   function maxCols() {
     const inner = (scrollerEl ? scrollerEl.clientWidth : 0) - 24; // .scroll padding
-    return Math.max(2, Math.floor((inner + 12) / (MIN_TILE + 12)));
+    return Math.max(2, Math.min(MAX_COLS, Math.floor((inner + 12) / (MIN_TILE + 12))));
   }
   // Active-layout column setting + its slider floor. Wall spans 2..maxCols (a 2-up grid is the
   // biggest); Ordered spans 1..maxCols (1 = the single-page reading strip).
