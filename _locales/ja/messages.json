@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "すべて読み込む" },
   "galleryAutoScrollTitle": { "message": "ギャラリーを下方向に自動スクロール (A)" },
   "galleryAutoScroll": { "message": "自動スクロール" },
+  "galleryNextRowTitle": { "message": "次の行へ（↓ ・ ↑ で前の行へ）" },
   "galleryAutoScrollSpeedTitle": { "message": "自動スクロール速度 (ピクセル/秒) — 値を入力するか、矢印または + / − で調整" },
   "galleryAutoScrollSpeedAria": { "message": "自動スクロール速度 (px/秒)" },
   "gallerySpeedUnit": { "message": "px/s" },

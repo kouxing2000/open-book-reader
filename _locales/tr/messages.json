@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "Tümünü yükle" },
   "galleryAutoScrollTitle": { "message": "Galeride otomatik olarak aşağı kaydır (A)" },
   "galleryAutoScroll": { "message": "Otomatik kaydır" },
+  "galleryNextRowTitle": { "message": "Sonraki satır (↓ · ↑ önceki satır)" },
   "galleryAutoScrollSpeedTitle": { "message": "Otomatik kaydırma hızı, saniyedeki piksel — bir değer yazın, okları kullanın veya + / - tuşlarına basın" },
   "galleryAutoScrollSpeedAria": { "message": "Otomatik kaydırma hızı (piksel/sn)" },
   "gallerySpeedUnit": { "message": "px/sn" },

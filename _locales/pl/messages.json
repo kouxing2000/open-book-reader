@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "Wczytaj wszystko" },
   "galleryAutoScrollTitle": { "message": "Automatycznie przewijaj galerię w dół (A)" },
   "galleryAutoScroll": { "message": "Przewijaj" },
+  "galleryNextRowTitle": { "message": "Następny rząd (↓ · ↑ poprzedni)" },
   "galleryAutoScrollSpeedTitle": { "message": "Szybkość autoprzewijania w pikselach na sekundę — wpisz wartość, użyj strzałek lub naciśnij + / −" },
   "galleryAutoScrollSpeedAria": { "message": "Szybkość autoprzewijania (px/s)" },
   "gallerySpeedUnit": { "message": "px/s" },

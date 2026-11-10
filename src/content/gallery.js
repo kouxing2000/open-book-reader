@@ -25,6 +25,9 @@
     '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 4.5v15l12-7.5z"/></svg>';
   const PAUSE_ICON =
     '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+  // Next row (Ordered only): a double chevron pointing down.
+  const NEXT_ROW_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 6 6 6-6"/><path d="m6 13 6 6 6-6"/></svg>';
   // Layout-toggle glyphs: a 2x2 grid (Wall / masonry) and stacked rows (Ordered / in-order).
   const GRID_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
@@ -803,6 +806,7 @@
         <button class="btn rescan icon-only" title="${OBR.t('galleryLoadAllTitle')}">${RESCAN_ICON}<span class="vh">${OBR.t('galleryLoadAll')}</span></button>
         <button class="btn autoscroll icon-only" aria-pressed="false" title="${OBR.t('galleryAutoScrollTitle')}"><span class="icon">${PLAY_ICON}</span><span class="lbl vh">${OBR.t('galleryAutoScroll')}</span></button>
         <label class="autospeed" title="${OBR.t('galleryAutoScrollSpeedTitle')}"><input type="number" class="autospeed-in" min="20" max="400" step="10" aria-label="${OBR.t('galleryAutoScrollSpeedAria')}"> ${OBR.t('gallerySpeedUnit')}</label>
+        <button class="btn next-row icon-only" hidden title="${OBR.t('galleryNextRowTitle')}" aria-label="${OBR.t('galleryNextRowTitle')}">${NEXT_ROW_ICON}</button>
         <button class="btn hidden-toggle" aria-pressed="false" style="display:none" title="${OBR.t('galleryShowFilteredTitle')}"><span class="icon">${EYE_ICON}</span><span class="lbl"></span></button>
         <button class="btn undo-hide" style="display:none" title="${OBR.t('galleryUndoHideTitle')}">${OBR.t('galleryUndo')}</button>
         <span class="status"></span>
@@ -920,8 +924,9 @@
     rangeEl.addEventListener('pointerup', () => { flushSize(); rangeEl.blur(); });
     rangeEl.addEventListener('change', flushSize); // keyboard arrows / programmatic set
 
-    wrap.querySelector('.lay-wall').addEventListener('click', () => setLayout(false));
-    wrap.querySelector('.lay-ordered').addEventListener('click', () => setLayout(true));
+    // Drop focus after a layout pick, so the arrow keys step the grid at once rather than the button.
+    wrap.querySelector('.lay-wall').addEventListener('click', (e) => { setLayout(false); e.currentTarget.blur(); });
+    wrap.querySelector('.lay-ordered').addEventListener('click', (e) => { setLayout(true); e.currentTarget.blur(); });
     wrap.querySelector('.lb-fit-btn').addEventListener('click', (e) => {
       e.stopPropagation(); toggleFit();
       e.currentTarget.blur(); // drop focus so arrow / A keys keep driving the lightbox
@@ -944,6 +949,10 @@
     wrap.querySelector('.autoscroll').addEventListener('click', (e) => {
       toggleAutoScroll();
       e.currentTarget.blur(); // drop focus so Space / PageDown still drive the scroll
+    });
+    wrap.querySelector('.next-row').addEventListener('click', (e) => {
+      stepRow(1);
+      e.currentTarget.blur(); // drop focus so the arrow keys and Space still drive the grid
     });
     // Typing in the speed field applies live (autoStep reads settings each frame); persist
     // on change (blur / Enter / spinner) so a multi-keystroke entry isn't saved per keystroke.
@@ -1622,6 +1631,8 @@
     const w = wrap.querySelector('.lay-wall'), o = wrap.querySelector('.lay-ordered');
     if (w) { w.classList.toggle('is-active', !ordered); w.setAttribute('aria-current', !ordered ? 'true' : 'false'); }
     if (o) { o.classList.toggle('is-active', ordered); o.setAttribute('aria-current', ordered ? 'true' : 'false'); }
+    const n = wrap.querySelector('.next-row');
+    if (n) n.hidden = !ordered; // Wall has no rows to step
   }
   OBR._gallerySetLayout = (on) => setLayout(!!on); // drive (tests)
   OBR._galleryLayoutOrdered = () => ordered;       // state (tests)
@@ -2037,6 +2048,46 @@
     if (!scrollerEl || sweeping || fullyHydrated) return;
     const remaining = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight;
     if (remaining < scrollerEl.clientHeight * 1.5) { softDone = false; hydratePage(false); }
+  }
+
+  // A keyboard or toolbar scroll of the grid. It cancels hands-free auto-scroll, and one toward
+  // the bottom is a clear "give me more": it overrides the soft stop (which otherwise pauses
+  // auto-load and leaves the user stuck mid-feed) and pulls the next chunk directly.
+  function scrollGridTo(top) {
+    stopAutoScroll();
+    const goingDown = top > scrollerEl.scrollTop;
+    scrollerEl.scrollTop = top;
+    if (goingDown) maybeHydrateOnDown();
+  }
+
+  // Ordered: the scrollTop one row on (dir 1) or one row back (dir -1). A row lands where the
+  // first row sits, one padding below the window's top. A row taller than the window is shown
+  // a window at a time first, down to its bottom, so a step never passes over part of a row.
+  function rowStepTop(dir) {
+    const st = scrollerEl.scrollTop, ch = scrollerEl.clientHeight, pg = Math.max(40, ch * 0.9);
+    const pad = parseFloat(getComputedStyle(scrollerEl).paddingTop) || 0;
+    const origin = scrollerEl.getBoundingClientRect().top + scrollerEl.clientTop - st;
+    const rows = [...gridEl.querySelectorAll('.row')].map((r) => {
+      const b = r.getBoundingClientRect();
+      return { top: b.top - origin, bottom: b.bottom - origin };
+    });
+    if (!rows.length) return st;
+    // The row being read: the first one still showing more than a sliver at the window's top.
+    let i = rows.findIndex((r) => r.bottom > st + 2 * pad);
+    if (dir > 0) {
+      if (i < 0) return scrollerEl.scrollHeight;
+      if (rows[i].bottom > st + ch + 1) return Math.min(rows[i].bottom + pad - ch, st + pg); // more of a tall row
+      return i + 1 < rows.length ? rows[i + 1].top - pad : scrollerEl.scrollHeight;
+    }
+    if (i < 0) i = rows.length - 1;
+    if (rows[i].top + pad < st) return Math.max(rows[i].top - pad, st - pg); // back up this row
+    if (i === 0) return 0;
+    // The row above: its top, or its bottom first when it is taller than the window.
+    return Math.max(rows[i - 1].top - pad, rows[i - 1].bottom + pad - ch);
+  }
+  function stepRow(dir) {
+    if (!active || !ordered || !scrollerEl) return;
+    scrollGridTo(rowStepTop(dir));
   }
 
   // After the initial render, if the grid doesn't even fill the viewport there's
@@ -2616,19 +2667,14 @@
       if (e.key === 'PageDown') top = scrollerEl.scrollTop + pg;
       else if (e.key === 'PageUp') top = scrollerEl.scrollTop - pg;
       else if (e.key === ' ') top = scrollerEl.scrollTop + (e.shiftKey ? -pg : pg);
-      else if (e.key === 'ArrowDown') top = scrollerEl.scrollTop + 80;
-      else if (e.key === 'ArrowUp') top = scrollerEl.scrollTop - 80;
+      // The arrows step one row in Ordered, as the toolbar's Next row does; Wall has no rows.
+      else if (e.key === 'ArrowDown') top = ordered ? rowStepTop(1) : scrollerEl.scrollTop + 80;
+      else if (e.key === 'ArrowUp') top = ordered ? rowStepTop(-1) : scrollerEl.scrollTop - 80;
       else if (e.key === 'Home') top = 0;
       else if (e.key === 'End') top = scrollerEl.scrollHeight;
       if (top !== null) {
         e.preventDefault(); e.stopPropagation();
-        stopAutoScroll(); // any manual scroll cancels hands-free auto-scroll
-        const goingDown = top > scrollerEl.scrollTop;
-        scrollerEl.scrollTop = top;
-        // An explicit page/space/End toward the bottom is a clear "give me more" —
-        // override the soft-stop (which otherwise pauses auto-load and leaves the user
-        // stuck mid-feed) and pull the next chunk directly.
-        if (goingDown) maybeHydrateOnDown();
+        scrollGridTo(top);
       }
     }
   }, true);

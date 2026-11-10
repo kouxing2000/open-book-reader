@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "모두 불러오기" },
   "galleryAutoScrollTitle": { "message": "갤러리를 아래로 자동 스크롤 (A)" },
   "galleryAutoScroll": { "message": "자동 스크롤" },
+  "galleryNextRowTitle": { "message": "다음 행 (↓ · ↑ 이전 행)" },
   "galleryAutoScrollSpeedTitle": { "message": "자동 스크롤 속도 (픽셀/초) — 값을 입력하거나 화살표 또는 + / − 로 조절하세요" },
   "galleryAutoScrollSpeedAria": { "message": "자동 스크롤 속도 (px/초)" },
   "gallerySpeedUnit": { "message": "px/s" },

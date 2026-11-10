@@ -69,6 +69,7 @@
   "galleryLoadAll": { "message": "Load all" },
   "galleryAutoScrollTitle": { "message": "Auto-scroll down through the gallery (A)" },
   "galleryAutoScroll": { "message": "Auto-scroll" },
+  "galleryNextRowTitle": { "message": "Next row (↓ · ↑ for the previous row)" },
   "galleryAutoScrollSpeedTitle": { "message": "Auto-scroll speed in pixels/second — type a value, use the arrows, or press + / -" },
   "galleryAutoScrollSpeedAria": { "message": "Auto-scroll speed (px/sec)" },
   "gallerySpeedUnit": { "message": "px/s" },

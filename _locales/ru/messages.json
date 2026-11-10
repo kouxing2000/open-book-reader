@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "Загрузить все" },
   "galleryAutoScrollTitle": { "message": "Автопрокрутка галереи вниз (A)" },
   "galleryAutoScroll": { "message": "Автопрокрутка" },
+  "galleryNextRowTitle": { "message": "Следующий ряд (↓ · ↑ — предыдущий)" },
   "galleryAutoScrollSpeedTitle": { "message": "Скорость автопрокрутки в пикселях/сек — введите значение, используйте стрелки или нажмите + / −" },
   "galleryAutoScrollSpeedAria": { "message": "Скорость автопрокрутки (px/сек)" },
   "gallerySpeedUnit": { "message": "px/с" },

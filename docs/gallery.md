@@ -67,7 +67,10 @@ enlarged picture goes soft, and the reader and the lightbox's normal view never 
 and video tiles are not capped, and Wall still enlarges);
 unknown-size lazy images use `ORD_FALLBACK_ASPECT` and re-justify their row on
 decode); at **1 column** it's a full-width reading **strip** (the same formula, one tile per row) — auto-scroll
-turns it into a hands-free webtoon reader. **The Size slider picks a column COUNT, not a px width**
+turns it into a hands-free webtoon reader. **Next row** (a toolbar button shown only in Ordered) and
+↓/↑ step one row (`rowStepTop`): the row lands where the first row sits, and a row taller than the
+window is shown a window at a time down to its bottom first, so a step never passes over part of a
+row; Wall's arrows keep their 80px nudge. **The Size slider picks a column COUNT, not a px width**
 (`columnCount`/`maxCols`/`syncSizeSlider`, layout-aware: Wall spans 2..max via `galleryColumns`, Ordered
 1..max via `galleryOrderedCols`): inverted (fuller bar = larger = fewer columns), clamped to `maxCols`
 (what fits at `MIN_TILE` px). **Layout + column count are remembered per-site** (`obr_gallery` map in

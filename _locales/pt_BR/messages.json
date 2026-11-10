@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "Carregar tudo" },
   "galleryAutoScrollTitle": { "message": "Rolagem automática pela galeria (A)" },
   "galleryAutoScroll": { "message": "Rolagem automática" },
+  "galleryNextRowTitle": { "message": "Próxima linha (↓ · ↑ para a anterior)" },
   "galleryAutoScrollSpeedTitle": { "message": "Velocidade da rolagem automática em pixels/segundo — digite um valor, use as setas, ou pressione + / -" },
   "galleryAutoScrollSpeedAria": { "message": "Velocidade da rolagem automática (px/s)" },
   "gallerySpeedUnit": { "message": "px/s" },

@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "全部加载" },
   "galleryAutoScrollTitle": { "message": "自动向下滚动浏览图库 (A)" },
   "galleryAutoScroll": { "message": "自动滚动" },
+  "galleryNextRowTitle": { "message": "下一行（↓；↑ 回到上一行）" },
   "galleryAutoScrollSpeedTitle": { "message": "自动滚动速度(像素/秒)— 输入数值、使用箭头，或按 + / −" },
   "galleryAutoScrollSpeedAria": { "message": "自动滚动速度(像素/秒)" },
   "gallerySpeedUnit": { "message": "px/s" },

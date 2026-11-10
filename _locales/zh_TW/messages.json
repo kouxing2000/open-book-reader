@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "全部載入" },
   "galleryAutoScrollTitle": { "message": "自動向下捲動瀏覽圖庫 (A)" },
   "galleryAutoScroll": { "message": "自動捲動" },
+  "galleryNextRowTitle": { "message": "下一行（↓；↑ 回到上一行）" },
   "galleryAutoScrollSpeedTitle": { "message": "自動捲動速度（像素/秒）— 輸入數值、用上下箭頭，或按 + / -" },
   "galleryAutoScrollSpeedAria": { "message": "自動捲動速度（像素/秒）" },
   "gallerySpeedUnit": { "message": "px/s" },

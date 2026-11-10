@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "Cargar todo" },
   "galleryAutoScrollTitle": { "message": "Desplazamiento automático por la galería (A)" },
   "galleryAutoScroll": { "message": "Desplazamiento automático" },
+  "galleryNextRowTitle": { "message": "Fila siguiente (↓ · ↑ para la anterior)" },
   "galleryAutoScrollSpeedTitle": { "message": "Velocidad de desplazamiento en píxeles/segundo: escribe un valor, usa las flechas o pulsa + / -" },
   "galleryAutoScrollSpeedAria": { "message": "Velocidad de desplazamiento (px/s)" },
   "gallerySpeedUnit": { "message": "px/s" },

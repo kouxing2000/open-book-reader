@@ -67,6 +67,7 @@
   "galleryLoadAll": { "message": "Alle laden" },
   "galleryAutoScrollTitle": { "message": "Automatisch durch die Galerie scrollen (A)" },
   "galleryAutoScroll": { "message": "Auto-Scroll" },
+  "galleryNextRowTitle": { "message": "Nächste Zeile (↓ · ↑ für die vorherige)" },
   "galleryAutoScrollSpeedTitle": { "message": "Auto-Scroll-Geschwindigkeit in Pixel/Sekunde — Wert eingeben, Pfeile verwenden oder + / - drücken" },
   "galleryAutoScrollSpeedAria": { "message": "Auto-Scroll-Geschwindigkeit (px/Sek.)" },
   "gallerySpeedUnit": { "message": "px/s" },

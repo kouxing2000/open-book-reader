@@ -1936,6 +1936,91 @@ test.describe('ordered gallery layout', () => {
     const m = await firstRowBox(page);
     expect(Math.min(...m.imgWidths)).toBeGreaterThan(502);
   });
+
+  // Each Ordered row's top and bottom, measured from the top of the grid's window.
+  const rowView = (page) => page.evaluate(() => {
+    const r = document.getElementById('obr-gallery-host').shadowRoot, sc = r.querySelector('.scroll');
+    const top = sc.getBoundingClientRect().top + sc.clientTop;
+    return { ch: sc.clientHeight, st: sc.scrollTop,
+      rows: [...r.querySelectorAll('.row')].map((x) => { const b = x.getBoundingClientRect(); return [b.top - top, b.bottom - top]; }) };
+  });
+  const near = (a, b) => expect(Math.abs(a - b)).toBeLessThanOrEqual(1);
+
+  // Rows shorter than the window: one press, one row, landing where the first row sat at the start.
+  test('Next row and the arrow keys step Ordered one row at a time', async ({ page }) => {
+    await openOrderedWith(page, Array.from({ length: 15 }, (_, n) =>
+      `<img width="400" height="300" src="/photo-400.png?n=${n}">`).join(''));
+    await setOrderedCols(page, 3);
+    await page.waitForFunction(() => [...document.getElementById('obr-gallery-host').shadowRoot
+      .querySelectorAll('.tile img')].every((i) => i.complete && i.naturalWidth > 0));
+    const start = await rowView(page);
+    expect(start.rows.length).toBe(5);
+    expect(start.rows[2][1] - start.rows[2][0]).toBeLessThan(start.ch); // the case under test
+    const r0 = start.rows[0][0];
+    await page.evaluate(() => globalThis.OBR._galleryAutoScroll(true));
+    await clickInGallery(page, '.next-row');
+    expect(await page.evaluate(() => globalThis.OBR._galleryAutoScrollOn())).toBe(false); // a step is a manual scroll
+    near((await rowView(page)).rows[1][0], r0);
+    await page.keyboard.press('ArrowDown');
+    near((await rowView(page)).rows[2][0], r0);
+    await page.keyboard.press('ArrowUp');
+    near((await rowView(page)).rows[1][0], r0);
+  });
+
+  // A row taller than the window shows down to its bottom before the next row comes up, in both
+  // directions; at 1 column a page over two windows tall takes more than one step to get there,
+  // and no step moves past what was on screen.
+  test('a row taller than the window is shown to its bottom before the next row', async ({ page }) => {
+    await openOrderedPages(page, 1400);
+    await setOrderedCols(page, 2);
+    let v = await rowView(page);
+    const r0 = v.rows[0][0];
+    expect(v.rows[0][1] - v.rows[0][0]).toBeGreaterThan(v.ch); // the case under test
+    await page.keyboard.press('ArrowDown');
+    near((await rowView(page)).rows[0][1], v.ch - r0);          // row 1's bottom, one padding above the window's
+    await page.keyboard.press('ArrowDown');
+    near((await rowView(page)).rows[1][0], r0);                 // row 2 at the top
+    await page.keyboard.press('ArrowUp');
+    near((await rowView(page)).rows[0][1], v.ch - r0);
+    await page.keyboard.press('ArrowUp');
+    near((await rowView(page)).rows[0][0], r0);
+
+    await setOrderedCols(page, 1);
+    await page.keyboard.press('Home');
+    v = await rowView(page);
+    expect(v.rows[0][1] - v.rows[0][0]).toBeGreaterThan(2 * v.ch);
+    const steps = [];
+    let bottomShown = false;
+    for (let k = 0; k < 8 && Math.abs(v.rows[1][0] - r0) > 1; k++) {
+      await page.keyboard.press('ArrowDown');
+      const w = await rowView(page);
+      steps.push(w.st - v.st);
+      if (Math.abs(w.rows[0][1] - (w.ch - r0)) <= 1) bottomShown = true;
+      v = w;
+    }
+    near(v.rows[1][0], r0);  // reached page 2
+    expect(bottomShown).toBe(true);
+    expect(steps.length).toBeGreaterThan(2);
+    for (const d of steps) { expect(d).toBeGreaterThan(0); expect(d).toBeLessThanOrEqual(v.ch); }
+  });
+
+  // The arrows also work straight after a click on the layout switch, with no click elsewhere first.
+  test('Next row shows only in Ordered, and the arrows in Wall still scroll 80px', async ({ page }) => {
+    await openGallery(page);
+    const hidden = () => page.evaluate(() => getComputedStyle(
+      document.getElementById('obr-gallery-host').shadowRoot.querySelector('.next-row')).display === 'none');
+    await page.evaluate(() => { document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll').style.maxHeight = '120px'; });
+    expect(await hidden()).toBe(true);
+    await clickInGallery(page, '.lay-ordered');
+    expect(await hidden()).toBe(false);
+    await page.keyboard.press('ArrowDown');
+    expect((await rowView(page)).st).toBeGreaterThan(0);
+    await page.keyboard.press('Home');
+    await clickInGallery(page, '.lay-wall');
+    expect(await hidden()).toBe(true);
+    await page.keyboard.press('ArrowDown');
+    expect((await rowView(page)).st).toBe(80);
+  });
 });
 
 /* Image filter — the avatar auto-filter + the manual per-site ⊘ Hide (obr_hidden). Forums flood
