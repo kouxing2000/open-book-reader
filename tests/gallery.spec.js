@@ -184,6 +184,36 @@ test.describe('image gallery', () => {
     expect(s.tiles).toBe(6);           // all images distributed across them
   });
 
+  // The grid's counterpart to the reader's page indicator: the images reached over the total, and
+  // a hairline that fills as the grid scrolls, ending at N / N and full at the bottom.
+  for (const layout of ['wall', 'ordered']) test(`the ${layout} grid shows how far through the images the reader is`, async ({ page }) => {
+    await page.setViewportSize({ width: 420, height: 420 });
+    await openGallery(page);
+    if (layout === 'ordered') {
+      await clickInGallery(page, '.lay-ordered');
+      await expect.poll(() => page.evaluate(() => !!document.getElementById('obr-gallery-host').shadowRoot.querySelector('.grid .row'))).toBe(true);
+    }
+    const pos = () => page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      const sc = r.querySelector('.scroll'), p = r.querySelector('.pos');
+      return { text: p.hidden ? '' : p.textContent, fill: r.querySelector('.prog-fill').style.width,
+        line: !r.querySelector('.prog').hidden, scrolls: sc.scrollHeight > sc.clientHeight + 1 };
+    });
+    // Every picture is there at open, so the total is final: no "+", and the line shows, although
+    // the page below the window has not been swept yet.
+    await expect.poll(() => pos().then((p) => p.text)).toMatch(/^\d+ \/ 6$/);
+    const top = await pos();
+    expect(top.scrolls).toBe(true); // otherwise the top reading proves nothing
+    expect(top.line).toBe(true);
+    expect(top.fill).toBe('0%');
+    expect(parseInt(top.text, 10)).toBeLessThan(6);
+    await page.evaluate(() => {
+      const sc = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.scroll');
+      sc.scrollTop = sc.scrollHeight;
+    });
+    await expect.poll(pos).toMatchObject({ text: '6 / 6', fill: '100%' });
+  });
+
   // The resize guard skips a relayout only for the gallery's OWN fullscreen element (a tile
   // player). The full-screen button makes <html> the document's, and a grid that stopped
   // following the window then would keep the columns of a window size that is gone.
@@ -1601,6 +1631,40 @@ test.describe('lazy / late images', () => {
     await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(7); // +3 shallow batch
     // The deep batch (only reachable near the bottom) is NOT loaded yet.
     expect(await page.evaluate(() => window.__obrInjected())).toBe(1);
+  });
+
+  // A total that can still grow says so: once the page has added pictures, the total carries a
+  // "+" and the line hides until a sweep reaches the page's end; a dot pulses while a sweep runs.
+  test('the position pill marks a total that can still grow, and pulses while loading', async ({ page }) => {
+    await openManual(page); // 4 tiles up front on a 3500px page, auto-load off
+    const pill = () => page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot, p = r.querySelector('.pos');
+      return { text: p.textContent, busy: p.classList.contains('busy'), line: !r.querySelector('.prog').hidden };
+    });
+    // Nothing has arrived since the open: as far as anyone knows, the total is final.
+    await expect.poll(pill).toMatchObject({ busy: false, line: true, text: expect.stringMatching(/^\d+ \/ 4$/) });
+    const chunk = page.evaluate(() => globalThis.OBR._galleryLoadMore()); // shallow batch only
+    await expect.poll(() => pill().then((p) => p.busy)).toBe(true);
+    await chunk;
+    // The page grew and is still unswept below (the deep batch is not reached): + and no line.
+    await expect.poll(pill).toMatchObject({ busy: false, line: false, text: expect.stringMatching(/ \/ 7\+$/) });
+    await page.evaluate(() => globalThis.OBR._galleryRescan()); // Load all, to the page's end
+    await expect.poll(pill).toMatchObject({ busy: false, line: true, text: expect.stringMatching(/ \/ 10$/) });
+  });
+
+  // The end-of-grid chunks alone (no Load all, so nothing sets fullyHydrated) reaching the page's
+  // end must drop the + and bring the line back, or an auto-load page keeps both for good.
+  test('the + drops once auto-load alone has swept to the page\'s end', async ({ page }) => {
+    await gotoLazyImages(page);
+    await injectGallery(page);
+    await openGallery(page); // auto-load on, the default
+    const atEnd = () => page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot, sc = r.querySelector('.scroll');
+      sc.scrollTop = sc.scrollHeight; // the grid's end: what asks for the next chunk
+      return { text: r.querySelector('.pos').textContent, line: !r.querySelector('.prog').hidden };
+    });
+    await expect.poll(atEnd, { timeout: 15_000 }).toMatchObject({ line: true, text: expect.stringMatching(/ \/ 10$/) });
+    expect(await page.evaluate(() => window.__obrInjected())).toBe(2); // both batches: the page grew
   });
 
   test('Load all sweeps to the bottom and pulls every batch', async ({ page }) => {

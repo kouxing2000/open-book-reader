@@ -78,6 +78,27 @@ row; Wall's arrows keep their 80px nudge. **The Size slider picks a column COUNT
 default, a host opens Ordered only if it was left that way. Reworking the justify math is layout-heavy —
 **verify with a real-Chromium screenshot and MEASURE tile rects** (`getBoundingClientRect`).
 
+## Reading position on the grid
+
+The grid's counterpart to the reader's page indicator + progress hairline (`updateProgress`): a
+bottom-right `N / total` pill (`.pos`, the lightbox counter's string) and a 2px accent hairline along
+the bottom (`.prog`). **N counts the images reached**: every entry but the tiles still wholly below
+the grid's bottom edge, so an entry whose tile is gone (a broken picture removes its own) counts as
+passed and the grid's bottom reads N / N. In Wall a whole row arrives at once, so on a short set N
+runs ahead of the bar. **The total is the running count, not the page's**:
+hydration grows it. **A total that can still grow is marked, and only then** (`more`): once the page
+has added images since the open (`pageGrew`, set by `mergeNewImages`) and the sweep has not reached
+the page's end (`sweptToEnd()`, the same test `fillAhead` stops on) or Load all has not confirmed it,
+the pill reads `N / M+` and the hairline HIDES, since a scroll fraction of the loaded grid reads full
+at the end of what is loaded. Do not key the mark on the unswept bottom alone: every page taller than
+the window starts unswept, so plain pages (every picture collected at open) would wear a false `+`
+for their whole first pass, and a 15k-px page with three pictures keeps it for seconds after its end.
+A dot pulses in the pill while a sweep runs (`.pos.busy`). Refreshes come from four places and each
+is needed: the scroll listener; a `ResizeObserver` on the grid and the scroller (tiles decoding to
+their real height, relayouts, a window resize); `updateSelUI`, the funnel every image-set change
+already goes through, since a tile appended to a short Wall column changes no observed box; and the
+start and end of each sweep in `hydratePage` (the dot, and the end that drops the `+`).
+
 ## Lightbox = paged reader
 
 **Lightbox = paged reader** (already sequential): click any tile → prev/next, an `N / total` counter, a

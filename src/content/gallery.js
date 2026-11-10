@@ -155,6 +155,7 @@
   /* -------------------------------------------------- state */
   let settings = Object.assign({}, OBR.DEFAULTS);
   let host, root, wrap, gridEl, scrollerEl, rangeEl, autoSpeedEl, lbEl, lbImg, lbVideo, lbCounter, lbStrip, lbSecsEl, lbControls;
+  let posEl, posNumEl, progEl, progFillEl; // the grid's reading position: the N / total pill + the bottom hairline
   let fsBtn; // the bar's full-screen toggle (OBR.syncFullscreenBtn keeps it current)
   const syncFs = () => OBR.syncFullscreenBtn(fsBtn);
   let active = false, built = false;
@@ -171,6 +172,7 @@
   let topY = null;           // "Load all"'s own cursor through the page above where the grid
                              // opened (null = nothing owed)
   let fullyHydrated = false; // confirmed end of page (set by "Load all"); stop for good
+  let pageGrew = false;      // images arrived after the open render: the total is a running count
   let softDone = false;      // chunk path hit the end with nothing new — pause auto-
                              // prefetch until more content appears (self-heals on merge)
   let endSweeps = 0;         // empty chunks swept in a row with the grid's last tiles on screen
@@ -626,6 +628,23 @@
       pointer-events: none; }
     .status:empty { display: none; }
     .selall { display: flex; align-items: center; gap: 6px; color: #b8b8c0; cursor: pointer; white-space: nowrap; }
+    /* Reading position over the grid, the gallery's counterpart to the reader's page indicator +
+       progress hairline. Both sit above the tiles (their controls go up to z-index 3) and under
+       the bar's status toast; the lightbox covers them. Neither takes a click. */
+    .pos { position: absolute; right: 24px; bottom: 12px; z-index: 4; pointer-events: none;
+      display: inline-flex; align-items: center; gap: 6px;
+      color: #e8e8ea; font-size: 12px; line-height: 1; font-variant-numeric: tabular-nums;
+      background: rgba(20,20,24,.82); border: 1px solid #34343c; border-radius: 999px;
+      padding: 5px 10px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    /* Pulses while a hydration sweep runs, where the eye is at the grid's end. */
+    .pos-dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: #7c6cff; }
+    .pos.busy .pos-dot { display: block; animation: pos-pulse .8s ease-in-out infinite alternate; }
+    @keyframes pos-pulse { from { opacity: .25; } to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .pos.busy .pos-dot { animation: none; } }
+    .prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; z-index: 4;
+      pointer-events: none; background: rgba(127,127,127,.14); }
+    .prog-fill { height: 100%; width: 0; background: #7c6cff; transition: width .2s ease; }
+    .pos[hidden], .prog[hidden] { display: none; }
     .scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 12px;
       scrollbar-gutter: stable; } /* reserve the scrollbar width so Ordered rows justify against a
                                      stable clientWidth (no over-justify + right-edge clip when the
@@ -820,6 +839,8 @@
         </span>
       </div>
       <div class="scroll"><div class="grid"></div></div>
+      <span class="pos" hidden aria-hidden="true"><span class="pos-n"></span><span class="pos-dot"></span></span>
+      <div class="prog" hidden><div class="prog-fill"></div></div>
       <div class="lb">
         <span class="lb-close">&times;</span>
         <button class="lb-fit-btn" aria-pressed="false" title="${OBR.t('galleryLightboxFitWidthTitle')}">${FIT_ICON}</button>
@@ -848,6 +869,10 @@
     lbStrip = wrap.querySelector('.lb-strip');
     lbSecsEl = wrap.querySelector('.lb-secs-in');
     lbControls = wrap.querySelector('.lb-slideshow');
+    posEl = wrap.querySelector('.pos');
+    posNumEl = wrap.querySelector('.pos-n');
+    progEl = wrap.querySelector('.prog');
+    progFillEl = wrap.querySelector('.prog-fill');
 
     // The two debounced numeric settings. Speed has no live-apply (autoStep reads it each
     // frame); slideshow seconds re-aims the running dwell. (The Size slider is its own thing —
@@ -959,6 +984,11 @@
     autoSpeedEl.addEventListener('input', () => speedSetting.setLive(parseInt(autoSpeedEl.value, 10)));
     autoSpeedEl.addEventListener('change', () => speedSetting.set(parseInt(autoSpeedEl.value, 10)));
     scrollerEl.addEventListener('scroll', onScrollerScroll, { passive: true });
+    // Tiles decoding to their real height, a relayout and a viewport resize move the position
+    // without a scroll event; the grid's and the scroller's boxes catch the ones that change the
+    // grid's height or the window (a tile growing in a shorter Wall column waits for a scroll).
+    const progObserver = new ResizeObserver(scheduleProgress);
+    progObserver.observe(gridEl); progObserver.observe(scrollerEl);
     // Any real user scroll gesture takes over: cancel hands-free auto-scroll. Listen on
     // wheel/touchmove (user-gesture-only) NOT scroll — our own scrollTop writes fire scroll.
     scrollerEl.addEventListener('wheel', () => { if (autoScroll) stopAutoScroll(); }, { passive: true });
@@ -1018,6 +1048,9 @@
     const n = selectedUrls().length;
     // "0 / 15 selected": the selection count also carries the gallery's image total.
     wrap.querySelector('.selcount').textContent = OBR.t('gallerySelectedCount', [n + ' / ' + images.length]);
+    // Every change to the image set comes through here, and a tile added to a short Wall column
+    // grows nothing the ResizeObserver watches, so the position's total is refreshed here too.
+    scheduleProgress();
     const selBtn = wrap.querySelector('.dl-sel');
     const zipBtn = wrap.querySelector('.dl-zip');
     selBtn.disabled = busy || n === 0;
@@ -1833,6 +1866,7 @@
       added++;
     });
     if (added) {
+      pageGrew = true;
       if (!renderedCols) relayoutActive(false);       // was empty-state — first real render
       else if (ordered) appendOrderedTiles(startIdx); // append rows; re-justify only touched rows
       else { if (!cols.length) buildColumns(); for (let i = startIdx; i < images.length; i++) placeTile(images[i], i); }
@@ -1935,6 +1969,7 @@
     if (fullyHydrated) { if (!toBottom) return 0; fullyHydrated = false; topY = 0; }
     if (!toBottom && softDone) return 0;
     sweeping = toBottom ? 'all' : 'chunk';
+    scheduleProgress(); // the position pill's busy dot
     let endRun;
     sweepRun = new Promise((r) => { endRun = r; });
     const btn = wrap && wrap.querySelector('.rescan');
@@ -1996,6 +2031,7 @@
       // reader may have locked it again since: a closed gallery's sweep leaves it alone.
       if (active) de.style.overflow = 'hidden';
       sweeping = false;
+      scheduleProgress(); // busy dot off; the sweep may have reached the page's end (drops the +)
       endRun();
       // A progressive chunk that surfaced NO new images means there's nothing more to
       // pull here right now — pause auto-prefetch and let auto-scroll reach its stop
@@ -2026,12 +2062,14 @@
   // at most END_SWEEP_MAX empty chunks in a row (about Load all's reach) for a feed that grows
   // forever without a picture; scrolling away from the end re-arms it.
   const END_SWEEP_MAX = 26;
+  // The hydration cursor has reached the page's bottom: no part of the page is left unswept. A
+  // page that grows afterwards (infinite scroll) makes this false again.
+  function sweptToEnd() { return sweepY + window.innerHeight >= document.documentElement.scrollHeight - 2; }
   function fillAhead() {
     if (!scrollerEl || sweeping || fullyHydrated || !settings.galleryAutoLoad) return;
     const remaining = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight;
     if (remaining <= 8) {
-      const pageEnded = sweepY + window.innerHeight >= document.documentElement.scrollHeight - 2;
-      if (pageEnded || endSweeps >= END_SWEEP_MAX) return;
+      if (sweptToEnd() || endSweeps >= END_SWEEP_MAX) return;
       endSweeps++; softDone = false; hydratePage(false);
       return;
     }
@@ -2041,6 +2079,40 @@
   function onScrollerScroll() {
     if (hideMenuOpen()) closeHideMenu(); // a fixed popover would detach from its tile on scroll
     fillAhead();
+    scheduleProgress();
+  }
+
+  // Reading position: the pill counts the images reached, every one but the tiles still wholly
+  // below the grid's bottom edge, over the images collected so far, and the hairline is the
+  // scroll fraction. The total is a running count, not the page's: hydration grows it, so both
+  // can step back as a chunk lands, which is the truth about how much is left. The bottom of the
+  // grid reads N / N (N / N+ on a page still loading pictures; see `more` below).
+  let progRaf = 0;
+  function scheduleProgress() {
+    if (!progRaf) progRaf = requestAnimationFrame(() => { progRaf = 0; updateProgress(); });
+  }
+  function updateProgress() {
+    if (!active || !posEl) return;
+    const n = images.length;
+    posEl.hidden = !n;
+    if (!n) { progEl.hidden = true; return; }
+    const bottom = scrollerEl.getBoundingClientRect().bottom;
+    // Counted from the end: an entry with no tile (a broken picture removes its own) is passed,
+    // never pending, or the grid's bottom would read 6 / 7.
+    let below = 0;
+    gridEl.querySelectorAll('.tile').forEach((t) => { if (t.getBoundingClientRect().top >= bottom) below++; });
+    const seen = n - below;
+    // The total can still grow only on a page that has already added images since the open, and
+    // only while part of it is unswept. Then the total carries a "+", since a bare N / N at the
+    // grid's end would read as "that's all", and the hairline hides, since it would read full at
+    // the end of what is loaded. A page that never grew (every picture collected at open) keeps
+    // both as they are: flagging every page whose bottom is unswept puts a false "+" on plain pages.
+    const more = pageGrew && !fullyHydrated && !sweptToEnd();
+    posNumEl.textContent = OBR.t('galleryLightboxCounter', [String(Math.max(0, seen)), n + (more ? '+' : '')]);
+    progEl.hidden = more;
+    posEl.classList.toggle('busy', !!sweeping);
+    const span = scrollerEl.scrollHeight - scrollerEl.clientHeight;
+    progFillEl.style.width = (span <= 1 ? 100 : Math.round(Math.min(1, scrollerEl.scrollTop / span) * 100)) + '%';
   }
 
   // Explicit keyboard scroll toward the bottom: unlike the passive prefetch above this
@@ -2427,7 +2499,7 @@
     } catch (e) { back = null; }
     // Fresh hydration cursor per open, from where the page stands: the grid can open mid-way, and
     // a first chunk swept from the page's top would find nothing new and pause loading.
-    sweepY = savedPageY; topY = savedPageY > 0 ? 0 : null; fullyHydrated = false; softDone = false; endSweeps = 0; rewaits = 0; dryRewaits = 0;
+    sweepY = savedPageY; topY = savedPageY > 0 ? 0 : null; fullyHydrated = false; softDone = false; endSweeps = 0; rewaits = 0; dryRewaits = 0; pageGrew = false;
     autoScroll = false; autoFrac = 0; autoRetriedAtBottom = false; // fresh auto-scroll state
     slideOn = false; clearTimeout(slideTimer); slideTimer = 0; // fresh slideshow state
     host.style.display = '';
