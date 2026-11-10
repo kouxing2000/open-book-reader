@@ -1345,6 +1345,20 @@ test.describe('lazy / late images', () => {
     document.querySelectorAll('img[data-id]').forEach((i) => io.observe(i));
   };
   const GIF_1PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  // n pictures one screen apart, loaded by a scroll listener debounced `ms`: it fires only once
+  // scrolling pauses, and loads just the pictures on screen at that moment.
+  const DEBOUNCED_PAGE = ([ph, n, ms]) => {
+    let html = '';
+    for (let k = 0; k < n; k++) html += `<div style="height:${innerHeight}px"><img data-id="${k}" src="${ph}" style="width:320px;height:240px"></div>`;
+    document.body.innerHTML = '<article>' + html + '</article>';
+    const load = () => document.querySelectorAll('img[data-id]').forEach((i) => {
+      const r = i.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < innerHeight && i.src.startsWith('data:')) i.src = '/pic-700.png?k=' + i.dataset.id;
+    });
+    let t = 0;
+    addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(load, ms); }, { passive: true });
+    load();
+  };
 
   test('auto-load keeps sweeping while the grid is too short to scroll', async ({ page }) => {
     await gotoFixture(page, 'article.html');
@@ -1377,6 +1391,108 @@ test.describe('lazy / late images', () => {
     // The grid opens too short to scroll, so a chunk is already sweeping when Load all arrives.
     await page.evaluate(async () => { await globalThis.OBR.openGallery(); await globalThis.OBR._galleryRescan(); });
     expect((await galleryState(page)).tiles).toBe(6);
+  });
+
+  test('Load all waits out a loader that fires only once scrolling pauses', async ({ page }) => {
+    test.slow();
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(DEBOUNCED_PAGE, [GIF_1PX, 8, 400]);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    expect((await galleryState(page)).tiles).toBe(8);
+  });
+
+  // The second wait is only for a picture's slot on screen that nothing has given a real URL yet.
+  // Pictures already loaded, a stretch with none, and the shapes ordinary pages carry beside
+  // them never qualify, so none of them slows a sweep.
+  test('Load all never waits twice over pictures already loaded or a stretch with none', async ({ page }) => {
+    const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    await page.route('**/px.gif', (route) => route.fulfill({ contentType: 'image/gif', body: gif }));
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      const ph = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      const box = 'width:320px;height:240px';
+      // Each picture has a broken image beside it (a real src that failed).
+      const pic = (k) => `<div style="height:${innerHeight}px"><img src="/pic-700.png?k=${k}" style="${box}"><img src="/missing-${k}.png" style="${box}"></div>`;
+      const icon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10"/></svg>';
+      document.body.innerHTML = '<article>'
+        // a site header pinned on screen, its logo an inline 24px icon
+        + `<header style="position:fixed;top:0;left:0"><img src="data:image/svg+xml,${encodeURIComponent(icon)}" width="24" height="24"></header>`
+        // a placeholder that never loads, at the top: off screen for every step of the sweep
+        + `<img src="${ph}" style="display:block;${box}">`
+        // a carousel slide parked off to the side
+        + `<img src="${ph}" style="position:absolute;left:-2000px;top:${innerHeight}px;${box}">`
+        + pic(0) + pic(1)
+        // a stretch whose only image is a loaded 1px tracker
+        + `<div style="height:${5 * innerHeight}px"><p>No pictures here.<img src="/px.gif"></p></div>`
+        // a placeholder whose real URL the gallery reads from data-src, with no loader to swap it in
+        + `<div style="height:${innerHeight}px"><img src="${ph}" data-src="/pic-700.png?k=ds" style="${box}"></div>`
+        + pic(2) + pic(3) + '</article>';
+    });
+    await page.waitForFunction(() => [...document.images].every((i) => i.complete));
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    const photos = await page.locator('#obr-gallery-host >> .tile img').evaluateAll((els) => els.filter((e) => e.src.includes('/pic-700.png?k=')).length);
+    expect(photos).toBe(5);
+    expect(await page.evaluate(() => globalThis.OBR._gallerySweepRewaits())).toBe(0);
+  });
+
+  // A stand-in that never turns into a picture (a blur-up layer, a stuck spinner) is paid for
+  // twice at most per open, however long the page.
+  test('a stand-in that never turns into a picture stops the second waits after two', async ({ page }) => {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(() => {
+      const ph = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      const pic = (k) => `<div style="height:${innerHeight}px"><img src="/pic-700.png?k=${k}" style="width:320px;height:240px"></div>`;
+      document.body.innerHTML = '<article>'
+        + `<img src="${ph}" style="position:fixed;top:0;left:0;width:320px;height:240px;opacity:0">`
+        + pic(0) + `<div style="height:${5 * innerHeight}px"><p>No pictures here.</p></div>` + pic(1) + '</article>';
+    });
+    await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await openGallery(page);
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    expect(await page.evaluate(() => globalThis.OBR._gallerySweepRewaits())).toBe(2);
+  });
+
+  // 300ms, not 400: the src swap then lands early enough for the page observer's own merge to
+  // collect it during the second wait, before the step's merge runs, so the step reads nothing new.
+  test('auto-load waits out a loader that fires only once scrolling pauses', async ({ page }) => {
+    test.slow();
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(DEBOUNCED_PAGE, [GIF_1PX, 8, 300]);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.openGallery());
+    await expect.poll(() => galleryState(page).then((s) => s.tiles), { timeout: 40000 }).toBe(8);
+  });
+
+  test('Load all after every picture loaded pages through again for ones the page added since', async ({ page }) => {
+    await gotoFixture(page, 'article.html');
+    await page.evaluate(JS_ONLY_PAGE, [GIF_1PX, 2]);
+    await injectGallery(page);
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryAutoLoad: false }));
+    await page.evaluate(async () => { await globalThis.OBR.openGallery(); await globalThis.OBR._galleryRescan(); });
+    expect((await galleryState(page)).tiles).toBe(2);
+    // Two more pictures mounted above, each loaded only once scrolled into view.
+    await page.evaluate(([ph]) => {
+      const io = new IntersectionObserver((es) => es.forEach((e) => {
+        if (e.isIntersecting) { e.target.src = '/pic-700.png?k=new' + e.target.dataset.n; io.unobserve(e.target); }
+      }));
+      for (const n of [1, 2]) {
+        const div = document.createElement('div');
+        div.style.height = innerHeight + 'px';
+        div.innerHTML = `<img data-n="${n}" src="${ph}" style="width:320px;height:240px">`;
+        document.querySelector('article').prepend(div);
+        io.observe(div.firstChild);
+      }
+    }, [GIF_1PX]);
+    await page.evaluate(() => globalThis.OBR._galleryRescan());
+    expect((await galleryState(page)).tiles).toBe(4);
   });
 
   test('switching to the reader during a sweep leaves the page scroll-locked', async ({ page }) => {

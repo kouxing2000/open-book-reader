@@ -162,6 +162,8 @@
   let sweeping = false;      // the sweep in flight: false, 'chunk' (progressive) or 'all' (Load all)
   let sweepRun = null;       // settles when that sweep ends, for a Load all that waits out a chunk
   let allWanted = false;     // a Load all is waiting: the running chunk stops at its next step
+  let rewaits = 0;           // steps this open that waited twice (read by tests)
+  let dryRewaits = 0;        // second waits in a row this open that brought no picture
   let sweepY = 0;            // how far down the page we've hydrated so far (px)
   let topY = null;           // "Load all"'s own cursor through the page above where the grid
                              // opened (null = nothing owed)
@@ -1866,12 +1868,41 @@
    * mounts virtualized rows; we merge cumulatively. The overlay covers the viewport so
    * the page-scroll is invisible; the user's real scroll position is restored on close. */
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Each step dwells DWELL for the page's loaders. A loader debounced past that fires only once
+  // scrolling pauses, and loads what is on screen then, so a step that found nothing while a
+  // stand-in is on screen waits again in place, to SLOW_DWELL in all: the next step would scroll
+  // that screen away. Nothing else waits twice: a stretch with no pictures, or pictures already
+  // loaded, has nothing a longer wait could bring. A page whose stand-ins never turn into
+  // pictures (a blur-up layer beside each photo) stops it after DRY_REWAITS fruitless second
+  // waits in a row, for the rest of the open.
+  const DWELL = 200, SLOW_DWELL = 600, DRY_REWAITS = 2;
+
+  // A picture's slot on screen whose real URL nothing has given the gallery yet: picture-sized,
+  // no lazy attribute naming its URL, and showing no src, an inline placeholder, or a placeholder
+  // file loaded under the size filter. A real src still downloading is no stand-in (its tile is
+  // already there), nor is a broken one, an icon, or a slide parked off to the side.
+  function standInOnScreen() {
+    const min = MIN(), vh = window.innerHeight, vw = window.innerWidth;
+    for (const img of document.images) {
+      const r = img.getBoundingClientRect();
+      if (r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;
+      if (r.width < min && r.height < min) continue;
+      const src = (img.getAttribute('src') || '').trim();
+      const tiny = !img.complete || (img.naturalWidth < min && img.naturalHeight < min);
+      const placeholder = !src || (/^data:/i.test(src) && tiny) || (img.complete && img.naturalWidth > 0 && tiny);
+      if (placeholder && !lazyAttrUrl(img)) return true;
+    }
+    return false;
+  }
 
   async function hydratePage(toBottom) {
     // Load all while a chunk runs (the end-of-grid chain runs them back to back for seconds):
     // stop that chunk at its next step, then sweep the whole page, rather than drop the click.
     if (toBottom && sweeping === 'chunk') { allWanted = true; await sweepRun; allWanted = false; return hydratePage(true); }
-    if (!active || busy || sweeping || fullyHydrated) return 0;
+    if (!active || busy || sweeping) return 0;
+    // Load all is explicit, so it is honoured even after "All images loaded": a loader slower than
+    // the sweep can have left pictures behind, so page through the whole page again from the top.
+    if (fullyHydrated) { if (!toBottom) return 0; fullyHydrated = false; topY = 0; }
     if (!toBottom && softDone) return 0;
     sweeping = toBottom ? 'all' : 'chunk';
     let endRun;
@@ -1902,11 +1933,21 @@
           y = sweepY;
         }
         window.scrollTo(0, y);
-        await wait(200); // let native lazy / IntersectionObserver loaders fire + mount
+        await wait(DWELL); // let native lazy / IntersectionObserver loaders fire + mount
         if (!active) break; // closed mid-sweep: stop scrolling so close() can restore position
-        added += mergeNewImages();
+        let got = mergeNewImages();
         const h1 = de.scrollHeight;
         const atBottom = y + window.innerHeight >= h1 - 2;
+        // At the bottom, the two no-growth steps wait anyway.
+        if (!got && !atBottom && dryRewaits < DRY_REWAITS && standInOnScreen()) {
+          rewaits++;
+          const had = images.length; // the page observer's own merge may collect them first
+          await wait(SLOW_DWELL - DWELL);
+          if (!active) break;
+          got = mergeNewImages();
+          dryRewaits = images.length > had ? 0 : dryRewaits + 1;
+        }
+        added += got;
         // Only conclude "the end" after consecutive bottom hits with no growth AND no
         // new images — otherwise a slow infinite-scroll page looks done before it is.
         if (atBottom && h1 <= h0) {
@@ -1990,6 +2031,7 @@
 
   OBR._galleryLoadMore = () => hydratePage(false); // progressive chunk (tests)
   OBR._galleryRescan = () => hydratePage(true);    // "Load all" (button + tests)
+  OBR._gallerySweepRewaits = () => rewaits; // state (tests)
 
   /* ---- hands-free auto-scroll: rAF-driven smooth descent of the masonry wall ----
    * Toggle on and the wall scrolls down by itself; near the bottom it keeps pulling more
@@ -2315,7 +2357,7 @@
     } catch (e) { back = null; }
     // Fresh hydration cursor per open, from where the page stands: the grid can open mid-way, and
     // a first chunk swept from the page's top would find nothing new and pause loading.
-    sweepY = savedPageY; topY = savedPageY > 0 ? 0 : null; fullyHydrated = false; softDone = false; endSweeps = 0;
+    sweepY = savedPageY; topY = savedPageY > 0 ? 0 : null; fullyHydrated = false; softDone = false; endSweeps = 0; rewaits = 0; dryRewaits = 0;
     autoScroll = false; autoFrac = 0; autoRetriedAtBottom = false; // fresh auto-scroll state
     slideOn = false; clearTimeout(slideTimer); slideTimer = 0; // fresh slideshow state
     host.style.display = '';

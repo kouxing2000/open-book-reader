@@ -30,7 +30,19 @@ shorter than the 1.5-screen buffer has nothing to scroll and would stop after it
 end is on screen the user has seen every tile, so an empty chunk no longer pauses loading there: it sweeps on through
 a stretch of the page with no pictures until the page ends, at most `END_SWEEP_MAX` empty chunks per arrival) or fully via **⟳ Load all** (`OBR._galleryRescan`;
 asked for while a chunk runs, it stops that chunk at its next step and takes over, since that
-chain can keep chunks running for seconds). Bounded against
+chain can keep chunks running for seconds; asked for after "All images loaded", it pages through
+the whole page again from the top). Each step dwells `DWELL` (200ms). A loader debounced past
+that fires only once scrolling pauses and loads what is on screen then, so a step that found
+nothing while a stand-in is on screen waits again in place, to `SLOW_DWELL` (600ms). A stand-in
+(`standInOnScreen`) is a picture's slot nothing has given a real URL yet: picture-sized, on
+screen both ways, no lazy attribute naming its URL, and showing no src, an inline placeholder,
+or a placeholder file loaded under the size filter. A real src still downloading, a broken
+image, an icon, a slide parked off to the side, a stretch with no pictures and pictures already
+loaded never wait twice. A stand-in that never turns into a picture (a blur-up layer) stops the
+second waits after `DRY_REWAITS` fruitless ones in a row, for the rest of the open; fruitless
+means the gallery's image count did not grow, not that the step's own merge found nothing,
+since the page observer's merge often collects a swapped src first. A loader debounced past
+`SLOW_DWELL` still ends part-loaded. Bounded against
 infinite scroll; `close()` puts the page back where the user had it, or at the grid's spot (next
 section), never where the sweep left it. The cursor (`sweepY`) starts each open where the page
 stands, not at its top: the grid can open mid-way, and a first chunk swept from the top finds
