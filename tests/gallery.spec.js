@@ -607,6 +607,45 @@ test.describe('gallery downloads', () => {
     expect(one.filename).toMatch(/\.(png|jpg)$/);
   });
 
+  // The grid keys skip a focused control so it can take Space, and a real click focuses the
+  // control: had it kept focus, the next Space would toggle the selection back or download
+  // again, PageDown would move the Size slider, and the arrows would stop scrolling the grid.
+  test('a clicked control lets go of focus, so Space and the arrows still scroll the grid', async ({ page }) => {
+    const sc = 'document.getElementById("obr-gallery-host").shadowRoot.querySelector(".scroll")';
+    const top = () => page.evaluate(`${sc}.scrollTop`);
+    const home = () => page.evaluate(`${sc}.scrollTop = 0`);
+    // Measured from where the click left the grid: clicking a tile control scrolls it into view.
+    const scrolls = async (key) => { const before = await top(); await page.keyboard.press(key); return (await top()) > before; };
+    const selCount = async () => (await galleryState(page)).selCount;
+    const downloads = async () => (await sentMessages(page)).filter((m) => m.type === 'obr-download-one').length;
+    await page.evaluate(`${sc}.style.maxHeight = '120px'`);
+
+    await clickInGallery(page, '.selall'); // the label, where a reader clicks it
+    expect(await selCount()).toBe('6 / 6 selected');
+    expect(await scrolls(' ')).toBe(true);
+    expect(await selCount()).toBe('6 / 6 selected');
+
+    await home();
+    await clickInGallery(page, '.tile >> nth=0 >> .check');
+    expect(await selCount()).toBe('5 / 6 selected');
+    expect(await scrolls('ArrowDown')).toBe(true);
+    expect(await scrolls(' ')).toBe(true);
+    expect(await selCount()).toBe('5 / 6 selected');
+
+    await home();
+    await clickInGallery(page, '.tile >> nth=1 >> .tile-dl');
+    await expect.poll(downloads).toBe(1);
+    expect(await scrolls(' ')).toBe(true);
+    expect(await downloads()).toBe(1);
+
+    await home();
+    const cols = (await galleryState(page)).cols;
+    const size = page.locator('#obr-gallery-host >> label:has(.range)');
+    await size.click({ position: { x: 4, y: (await size.boundingBox()).height / 2 } }); // its word, not the slider
+    expect(await scrolls('PageDown')).toBe(true);
+    expect((await galleryState(page)).cols).toBe(cols);
+  });
+
   test('Select all + ZIP fetches every image and builds the archive', async ({ page }) => {
     await clickInGallery(page, '.selall-cb');
     expect((await galleryState(page)).selCount).toBe('6 / 6 selected');

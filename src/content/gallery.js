@@ -888,12 +888,19 @@
       e.stopPropagation(); e.preventDefault();
       OBR._ctxLost(hardTeardown);
     }, true);
+    // A click never leaves focus on a button, a checkbox or the Size slider. The grid and
+    // lightbox keys skip a focused control so it can take Space (isFormFocused), so a control
+    // that kept focus would turn the next Space into a second click (another download, a
+    // selection toggled back), and a focused slider takes PageDown and the arrows for itself.
+    // The slider gets this click from its label; a drag lets go on pointerup. Capture phase,
+    // because many controls stop their click's propagation. Number fields keep focus for typing.
+    wrap.addEventListener('click', (e) => {
+      const c = e.target.closest('button, input[type="checkbox"], input[type="range"]');
+      if (c) c.blur();
+    }, true);
     wrap.querySelector('.close').addEventListener('click', close);
     fsBtn = wrap.querySelector('.fullscreen');
-    fsBtn.addEventListener('click', (e) => {
-      OBR.toggleFullscreen(syncFs);
-      e.currentTarget.blur(); // drop focus so Space / PageDown drive the grid instead of re-clicking it
-    });
+    fsBtn.addEventListener('click', () => OBR.toggleFullscreen(syncFs));
     // The button follows full screen however it changed: its own click, the reader's F, or Esc.
     document.addEventListener('fullscreenchange', () => { if (active) OBR.refreshWindowFs(syncFs); });
     wrap.querySelector('.settings').addEventListener('click', () => { if (OBR.openOptions) OBR.openOptions(OBR.normalizeHost(location.href)); });
@@ -929,10 +936,7 @@
     lbControls.addEventListener('mouseleave', revealChrome);
     lbControls.addEventListener('focusin', pinChrome);        // don't fade the controls out from under a focused field
     lbControls.addEventListener('focusout', revealChrome);
-    wrap.querySelector('.lb-play').addEventListener('click', (e) => {
-      e.stopPropagation(); toggleSlideshow();
-      e.currentTarget.blur(); // drop focus so arrow / +/- keys keep driving the lightbox, not the button
-    });
+    wrap.querySelector('.lb-play').addEventListener('click', (e) => { e.stopPropagation(); toggleSlideshow(); });
     // Slideshow seconds: live while typing (setLive re-aims the running dwell; the field
     // isn't normalized so a partial entry like "1" before "12" isn't clobbered), clamp +
     // persist on change.
@@ -949,15 +953,11 @@
     rangeEl.addEventListener('pointerup', () => { flushSize(); rangeEl.blur(); });
     rangeEl.addEventListener('change', flushSize); // keyboard arrows / programmatic set
 
-    // Drop focus after a layout pick, so the arrow keys step the grid at once rather than the button.
-    wrap.querySelector('.lay-wall').addEventListener('click', (e) => { setLayout(false); e.currentTarget.blur(); });
-    wrap.querySelector('.lay-ordered').addEventListener('click', (e) => { setLayout(true); e.currentTarget.blur(); });
-    wrap.querySelector('.lb-fit-btn').addEventListener('click', (e) => {
-      e.stopPropagation(); toggleFit();
-      e.currentTarget.blur(); // drop focus so arrow / A keys keep driving the lightbox
-    });
-    wrap.querySelector('.hidden-toggle').addEventListener('click', (e) => { toggleReveal(); e.currentTarget.blur(); });
-    wrap.querySelector('.undo-hide').addEventListener('click', (e) => { undoLastHide(); e.currentTarget.blur(); });
+    wrap.querySelector('.lay-wall').addEventListener('click', () => setLayout(false));
+    wrap.querySelector('.lay-ordered').addEventListener('click', () => setLayout(true));
+    wrap.querySelector('.lb-fit-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleFit(); });
+    wrap.querySelector('.hidden-toggle').addEventListener('click', () => toggleReveal());
+    wrap.querySelector('.undo-hide').addEventListener('click', () => undoLastHide());
     // The ⊘ Hide scope popover, floated over the overlay (position:fixed → viewport coords).
     hideMenuEl = document.createElement('div');
     hideMenuEl.className = 'hide-menu';
@@ -971,14 +971,8 @@
       if (path.indexOf(hideMenuEl) === -1) closeHideMenu();
     }, true);
     wrap.querySelector('.rescan').addEventListener('click', () => hydratePage(true));
-    wrap.querySelector('.autoscroll').addEventListener('click', (e) => {
-      toggleAutoScroll();
-      e.currentTarget.blur(); // drop focus so Space / PageDown still drive the scroll
-    });
-    wrap.querySelector('.next-row').addEventListener('click', (e) => {
-      stepRow(1);
-      e.currentTarget.blur(); // drop focus so the arrow keys and Space still drive the grid
-    });
+    wrap.querySelector('.autoscroll').addEventListener('click', () => toggleAutoScroll());
+    wrap.querySelector('.next-row').addEventListener('click', () => stepRow(1));
     // Typing in the speed field applies live (autoStep reads settings each frame); persist
     // on change (blur / Enter / spinner) so a multi-keystroke entry isn't saved per keystroke.
     autoSpeedEl.addEventListener('input', () => speedSetting.setLive(parseInt(autoSpeedEl.value, 10)));
