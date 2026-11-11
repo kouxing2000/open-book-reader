@@ -71,7 +71,7 @@
   let colW = 0, colGap = 0, pagesPerSpread = 2;
   let savedScrollY = 0;
   // Whether the user turned a page this session — the one case close() moves the page to the
-  // reader's position instead of back to savedScrollY (see readingKeys).
+  // reader's position instead of back to savedScrollY (see readingAnchors).
   let navigated = false;
   let anchorWhy = ''; // what pageSpot saw on the last open (debug line + OBR._diagReader)
   let mediaTimer = null;
@@ -2653,6 +2653,7 @@
         strip.style.backgroundImage = url;
         strip.style.backgroundSize = width + 'px ' + height + 'px';
         strip.style.backgroundPosition = '0 ' + -top + 'px';
+        strip.dataset.at = String(top / height); // how far into the picture it starts: close scrolls the page there
         box.appendChild(strip);
       }
       stripSource.set(box, { img, node });
@@ -3058,10 +3059,11 @@
    * Open: the reader starts on the spread holding the paragraph at the top of the page
    * (pageSpot + anchorSpread) — unless the page has not moved since the reader last left it,
    * when the saved position is the precise one. Close: after the user turned pages, the page
-   * scrolls to the paragraph the reader is on (readingKeys + syncPage). A paragraph pairs with
-   * its rendered copy by blockKey, unique keys only on both sides. Anything unpaired — body copy
-   * in <div>s, a paragraph Readability rewrote — keeps the plain behaviour: the saved position
-   * on open, savedScrollY on close.
+   * scrolls to the paragraph or picture the reader is on (readingAnchors + syncPage). A
+   * paragraph pairs with its rendered copy by blockKey, unique keys only on both sides; a picture
+   * (close only) with the page's largest visible <img> answering to one of its URLs. Anything
+   * unpaired — body copy in <div>s, a paragraph Readability rewrote — keeps the plain behaviour:
+   * the saved position on open, savedScrollY on close.
    *
    * "Has not moved" is a fingerprint of the page's top paragraph, saved with the position (`p`)
    * when the reader opens and again after a close scrolls the page. Two cases need it exact:
@@ -3229,34 +3231,110 @@
     return Math.floor(colOfEl(a.first) / pagesPerSpread);
   }
 
-  // Keys of the rendered blocks up to and including the one at the top of the current spread,
-  // in order. That is the first block to reach the spread's first column, usually a paragraph
-  // continuing from the spread before. When something unpaired sits above it on the spread — a
-  // short paragraph, a heading, pictures — the block before it stands in, so the page never
-  // ends up with unread lines above the viewport. (A column is too coarse to test "is at the
-  // top": several paragraphs start in one.) Needs the host SHOWN: a hidden host has no boxes.
-  function readingKeys() {
-    const startCol = currentSpread * pagesPerSpread;
-    const top = pagesEl.getBoundingClientRect().top;
-    const keys = [];
-    for (const [k, el] of renderedBlocks()) { // the strip flows in document order
-      if (colOfEl(el, true) < startCol) { keys.push(k); continue; }
-      const rs = el.getClientRects();
-      const atTop = colOfEl(el) < startCol || (colOfEl(el) === startCol && rs.length > 0 && rs[0].top - top < 2);
-      if (atTop || !keys.length) keys.push(k);
-      break;
+  // What close can pair with the page, in article order: paragraphs as { el, key }, pictures as
+  // { el, urls, frac }. Each <img> is a picture, and so is each strip of a long picture cut into
+  // strips, `frac` of the way into it. A picture answers to every URL it carries
+  // (OBR._imageUrls), less any another picture also carries: a shared URL cannot say which one is
+  // meant. Nothing in the colophon pairs: it has no live copy.
+  function renderedAnchors() {
+    const content = pagesEl && pagesEl.querySelector('.obr-content');
+    if (!content) return [];
+    const keyOf = new Map(Array.from(renderedBlocks(), ([k, el]) => [el, k]));
+    const els = Array.from(content.querySelectorAll('p, blockquote, li, img, .obr-strip'))
+      .filter((el) => !(colophonEl && colophonEl.contains(el)));
+    // A strip's picture is the <img> it was cut from; a strips box the page brought has none.
+    const pictureOf = (el) => el.tagName === 'IMG' ? el : (stripSource.get(el.parentElement) || {}).img;
+    const urlsOf = new Map(), carriers = new Map();
+    for (const el of els) {
+      const img = keyOf.has(el) ? null : pictureOf(el);
+      if (!img || urlsOf.has(img)) continue;
+      const urls = OBR._imageUrls(img);
+      urlsOf.set(img, urls);
+      for (const u of urls) carriers.set(u, (carriers.get(u) || 0) + 1);
     }
-    return keys;
+    const out = [];
+    for (const el of els) {
+      if (keyOf.has(el)) { out.push({ el: el, key: keyOf.get(el) }); continue; }
+      const urls = urlsOf.get(pictureOf(el));
+      const own = urls ? new Set([...urls].filter((u) => carriers.get(u) === 1)) : null;
+      if (own && own.size) out.push({ el: el, urls: own, frac: el.tagName === 'IMG' ? 0 : Number(el.dataset.at) || 0 });
+    }
+    return out;
   }
 
-  // Scroll the page to the live copy of the last reading block that has a visible one; false
-  // when none does.
-  function syncPage(keys) {
-    if (!keys || !keys.length) return false;
-    const live = liveBlocks();
-    for (let i = keys.length - 1; i >= 0; i--) {
-      const twin = live.get(keys[i]);
-      if (twin && !clipped(twin)) { OBR._revealOnPage(twin); return true; }
+  // The anchors up to and including the one at the top of the current spread, in order. That is
+  // the first anchor to reach the spread's first column, usually a paragraph continuing from the
+  // spread before. When something unpaired sits above it on the spread — a short paragraph, a
+  // heading — the anchor before it stands in, so the page never ends up with unread lines above
+  // the viewport. (A column is too coarse to test "is at the top": several paragraphs start in
+  // one.) Needs the host SHOWN: a hidden host has no boxes.
+  function readingAnchors() {
+    const startCol = currentSpread * pagesPerSpread;
+    const top = pagesEl.getBoundingClientRect().top;
+    const anchors = [];
+    anchors.far = 0; // pictures left out for ending before the column just before the spread
+    for (const a of renderedAnchors()) {
+      const el = a.el;
+      // A picture never breaks across columns, and one narrower than the column would read as
+      // ending in the column before: its last fragment is measured from the right edge.
+      const first = colOfEl(el), last = a.urls ? first : colOfEl(el, true);
+      // A picture stands in only from the column just before the spread. Further back, what lies
+      // between pairs with nothing, so the picture says nothing about where the reader is: on an
+      // article whose text does not pair it is the title picture, one page turn in, and the page
+      // would jump back to its top. Counted in `far` for the debug line.
+      if (a.urls && first < startCol - 1) { anchors.far++; continue; }
+      if (last < startCol) { anchors.push(a); continue; }
+      const rs = el.getClientRects();
+      const atTop = first < startCol || (first === startCol && rs.length > 0 && rs[0].top - top < 2);
+      if (atTop || !anchors.length) anchors.push(a);
+      break;
+    }
+    return anchors;
+  }
+
+  // The page's visible <img>s answering to the anchors' URLs, looked up by any of them: the
+  // largest wins, so a thumbnail strip reusing a photo's URL loses to the photo. A lazy picture
+  // that never loaded may measure 0x0 and still counts: after reading to the end in the reader,
+  // the pictures at the end of the page are exactly the ones that never came on screen. Only an
+  // image with a wanted URL is styled, so a feed of thousands costs little more than its URLs.
+  function livePictures(anchors) {
+    const wanted = new Set();
+    for (const a of anchors) if (a.urls) a.urls.forEach((u) => wanted.add(u));
+    const best = new Map();
+    for (const img of document.images) {
+      const urls = [...OBR._imageUrls(img)].filter((u) => wanted.has(u));
+      if (!urls.length || (img.checkVisibility && !img.checkVisibility()) || clipped(img) || OBR._pinned(img)) continue;
+      const r = img.getBoundingClientRect(), area = r.width * r.height;
+      for (const u of urls) {
+        const b = best.get(u);
+        if (!b || area > b.area) best.set(u, { img: img, area: area });
+      }
+    }
+    return (urls) => {
+      let pick = null;
+      for (const u of urls) { const b = best.get(u); if (b && (!pick || b.area > pick.area)) pick = b; }
+      return pick && pick.img;
+    };
+  }
+
+  // Scroll the page to the live copy of the last reading anchor that has a visible one — for a
+  // strip, as far into the picture as the strip is. Says what it scrolled to (for the debug
+  // line); false when nothing had a visible copy.
+  function syncPage(anchors) {
+    if (!anchors || !anchors.length) return false;
+    let live = null, pictures = null;
+    for (let i = anchors.length - 1; i >= 0; i--) {
+      const a = anchors[i];
+      if (a.urls) {
+        if (!pictures) pictures = livePictures(anchors);
+        const img = pictures(a.urls);
+        if (!img) continue;
+        OBR._revealOnPage(img, a.frac * img.getBoundingClientRect().height);
+        return a.frac ? 'picture, ' + Math.round(a.frac * 100) + '% in,' : 'picture';
+      }
+      if (!live) live = liveBlocks();
+      const twin = live.get(a.key);
+      if (twin && !clipped(twin)) { OBR._revealOnPage(twin); return 'paragraph'; }
     }
     return false;
   }
@@ -4289,16 +4367,29 @@
     heldMs = 0; // an open closed untouched keeps none of its per-article time
     // Only a turned page moves the page: untouched, the reader still shows what the page did
     // (or the saved position, which the next open defers to anyway), so it goes back as it was.
-    let keys = null;
+    let anchors = null;
+    let why = navigated ? 'host detached' : 'no page turned'; // why the page goes back, for the debug line
     // Before the host hides, and only while it is attached: a detached host measures every block
     // at column 0, which would read as "at the end" and scroll the page to the last paragraph.
-    if (navigated && host.isConnected) { try { keys = readingKeys(); } catch (e) { keys = null; } }
+    if (navigated && host.isConnected) {
+      try { anchors = readingAnchors(); why = ''; } catch (e) { anchors = null; why = 'measure threw: ' + e.message; }
+    }
     host.style.display = 'none';
     document.documentElement.style.overflow = '';
-    let synced = false;
-    try { synced = syncPage(keys); } catch (e) { synced = false; } // after the unlock: scrolling needs it
+    let synced = false; // or what the page was synced to
+    try { synced = syncPage(anchors); } catch (e) { synced = false; why = 'scroll threw: ' + e.message; } // after the unlock: scrolling needs it
     if (!synced) window.scrollTo(0, savedScrollY);
     else { try { const at = pageSpot(false); if (at) pagePk = at.key; } catch (e) { /* keep the open-time spot */ } }
+    if (OBR._debug) {
+      if (!synced && !why) {
+        why = anchors.length ? 'none of ' + anchors.length + ' paragraphs and pictures is visible on the page' : 'no paragraph or picture in the reader';
+        if (anchors.far) why += '; ' + anchors.far + ' pictures too far back';
+      }
+      try {
+        console.info('[OBR reader] close  spread=' + (currentSpread + 1) + '/' + totalSpreads + '  '
+          + (synced ? 'page synced to the ' + synced + ' at y=' + Math.round(window.scrollY) : 'page back to y=' + Math.round(savedScrollY) + ' (' + why + ')'));
+      } catch (e) { /* console unavailable */ }
+    }
     // Flush now, not after the debounce (the tab may go away) — and after the sync, so the saved
     // position carries the page's new spot.
     flushPosition();

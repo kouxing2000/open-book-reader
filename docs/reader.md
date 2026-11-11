@@ -415,8 +415,11 @@ at the article's opening, since nothing was scrolled past. The gallery's open cu
 same rule (`docs/gallery.md`).
 
 **Close:** the page moves only after a page turn (`navigated`: `flip`, which touch taps route
-through, plus Home/End). It then scrolls to the paragraph at the top of the current spread
-(`readingKeys` + `syncPage`). With no page turned, it goes back to `savedScrollY` as before.
+through, plus Home/End). It then scrolls to the paragraph or picture at the top of the current
+spread (`readingAnchors` + `syncPage`). With no page turned, it goes back to `savedScrollY` as
+before. With debug timing on, a `[OBR reader] close` line says which way the page went and why
+(what it synced to; or no page turned, nothing in the reader that can pair, nothing found visible
+on the page).
 
 Measure a change here with the real-site sweep through `npm run test:manual`: scroll each page in
 `tests/fixtures/sweep-sites.json` to 25%, 50% and 75% of its height. A sweep that scrolls to a
@@ -446,6 +449,20 @@ known paragraph cannot fail this way, which is how the scrolled-past gap first w
 - **Pairing** is the split-body merge's own: leaf p/blockquote/li of 20+ words, keyed by their
   first 80 chars (`proseBlocks` / `blockKey`). A key two blocks share on EITHER side is dropped
   (`uniqueByKey`), or a teaser repeating a paragraph would send the close to the teaser.
+- **Pictures pair too, on close only**, so an article of pictures with short captions still
+  follows. A picture answers to every URL its `<img>` carries (`OBR._imageUrls`: what it shows,
+  src, srcset, its `<picture>` sources, and every attribute holding an image URL), on both sides.
+  The reader's copy can take its src from any of them: Readability's lazy pass copies every
+  image-like attribute into src on a `class="lazy"` image, the last one winning. A URL two
+  rendered pictures share is dropped. The live copy is the largest visible one, so a thumbnail
+  strip reusing the URL loses to the photo, and a lazy picture that never loaded (0x0) still
+  counts: after reading to the end in the reader, the end of the page is all such pictures. A
+  strip of a long picture lands as far into the live picture as it starts into the drawn one
+  (`data-at`, `OBR._revealOnPage`'s offset). A picture at the top of a spread anchors itself
+  rather than letting the paragraph before it stand in. A picture stands in only from the column
+  just before the spread: further back, what lies between pairs with nothing. On an article whose
+  text does not pair (paulgraham.com) the only picture is the title one, and a single page turn
+  would otherwise send the page back to its top. Open still pairs paragraphs only.
 - **Live blocks must actually be visible.** They need a box (`height > 0`), so a hidden duplicate
   cannot void the visible one, and they must not be `OBR._clipped` by an `overflow: hidden` ancestor
   (a collapsed "Read more", a carousel). The walk stops at the first ancestor that SCROLLS and

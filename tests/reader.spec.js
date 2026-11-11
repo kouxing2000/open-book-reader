@@ -1170,6 +1170,109 @@ test('closing after turning pages scrolls the page to the paragraph the reader i
   expect(Math.abs(top.top)).toBeLessThan(2); // ...at the top of the viewport
 });
 
+// The reader's first picture on the visible spread: its number and the URL it shows.
+const firstPictureOnSpread = (page) => page.evaluate(() => {
+  const root = document.getElementById('obr-host').shadowRoot;
+  const vp = root.querySelector('.obr-viewport').getBoundingClientRect();
+  const img = [...root.querySelectorAll('.obr-content img')].find((i) => i.getBoundingClientRect().left >= vp.left - 2);
+  return img ? { n: Number(new URL(img.src).searchParams.get('n')), src: img.src } : null;
+});
+
+test('closing at the end of an article of pictures scrolls the page to the picture the reader is on', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  // Pictures with captions too short to pair, so only the pictures can say where the reader is.
+  // The second half never loaded: no src, no size, so each live copy measures 0x0. Their URL
+  // sits under a name no lazy convention uses (data-echo), and class="lazy" with a WordPress
+  // data-large-file after it, which Readability's lazy pass copies into the reader's src last.
+  await page.evaluate(() => {
+    const a = document.querySelector('article');
+    let html = a.querySelector('h1').outerHTML;
+    for (let n = 1; n <= 16; n++) {
+      const img = n <= 8
+        ? `<img src="/photo-400.png?n=${n}" width="400" height="300" alt="">`
+        : `<img class="lazy" data-echo="/photo-400.png?n=${n}" data-large-file="/photo-400.png?n=${n}&size=large" alt="">`;
+      html += `<p>${img}</p><p>Photo ${n}, from the ridge above the valley in the early light.</p>`;
+    }
+    a.innerHTML = html;
+    document.body.insertAdjacentHTML('beforeend', '<div style="height: 3000px"></div>'); // room to scroll the last ones up
+  });
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await openReader(page);
+  await page.keyboard.press('End');
+  const { n, src } = await firstPictureOnSpread(page);
+  expect(n).toBeGreaterThan(8); // the case that matters: a picture the page never loaded...
+  expect(src).toContain('size=large'); // ...shown in the reader from its last image attribute
+  await page.evaluate(() => globalThis.OBR.close());
+
+  const live = await page.evaluate((n) => {
+    const img = document.querySelector(`img[data-echo="/photo-400.png?n=${n}"]`);
+    return { top: img.getBoundingClientRect().top, scrollY: window.scrollY };
+  }, n);
+  expect(live.scrollY).toBeGreaterThan(0);
+  expect(Math.abs(live.top)).toBeLessThan(2);
+});
+
+test('a picture far behind the reader is no place to close on: an article whose text does not pair goes back as it was', async ({ page }) => {
+  await gotoFixture(page, 'long-article.html');
+  // Body copy in <div>s, which pairs with nothing (the reader's copy turns them into <p>s), and
+  // a title picture at the top: the only thing on the page close could pair with.
+  await page.evaluate(() => {
+    const a = document.querySelector('article');
+    for (const p of [...a.querySelectorAll('p')]) {
+      const d = document.createElement('div');
+      d.textContent = p.textContent;
+      p.replaceWith(d);
+    }
+    a.querySelector('h1').insertAdjacentHTML('afterend', '<p><img src="/photo-400.png?title" width="400" height="300" alt=""></p>');
+  });
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  const y = await page.evaluate(() => { window.scrollTo(0, 2000); return window.scrollY; });
+  // One page turn, where the title picture is still on the spread before, and the end.
+  for (const turn of ['ArrowRight', 'End']) {
+    await openReader(page);
+    expect(await page.evaluate(() => !!document.getElementById('obr-host').shadowRoot
+      .querySelector('.obr-content img[src*="title"]'))).toBe(true); // the picture close could pair with
+    await page.keyboard.press('Home');
+    await page.keyboard.press(turn);
+    expect((await readState(page)).translateX).toBeLessThan(0); // a page turned: close does try to sync
+    await page.evaluate(() => globalThis.OBR.close());
+    expect(await page.evaluate(() => window.scrollY)).toBe(y);
+  }
+});
+
+test('closing inside a long picture cut into strips scrolls the page as far into the picture', async ({ page }) => {
+  await gotoFixture(page, 'long-picture.html');
+  await injectReader(page);
+  await page.evaluate(() => globalThis.OBR.saveSettings({ pageTurn: 'off' }));
+  await openReader(page);
+  // Turn until the spread's left page is a strip of the infographic past its first.
+  const stripOnLeft = () => page.evaluate(() => {
+    const root = document.getElementById('obr-host').shadowRoot;
+    const vp = root.querySelector('.obr-viewport').getBoundingClientRect();
+    const box = root.querySelector('.obr-content .obr-strips[aria-label="Long infographic"]');
+    const strip = box && [...box.children].find((s) => Math.abs(s.getBoundingClientRect().left - vp.left) < vp.width / 4);
+    if (!strip) return null;
+    const cs = getComputedStyle(strip);
+    return { from: -parseFloat(cs.backgroundPositionY), height: parseFloat(cs.backgroundSize.split(' ')[1]) };
+  });
+  let shown = null;
+  for (let i = 0; i < 30 && !(shown && shown.from > 0); i++) {
+    await page.keyboard.press('ArrowRight');
+    shown = await stripOnLeft();
+  }
+  expect(shown && shown.from).toBeGreaterThan(0);
+  await page.evaluate(() => globalThis.OBR.close());
+
+  // The page's top edge is as far down the live picture as the strip starts down the drawn one.
+  const into = await page.evaluate(() => {
+    const r = document.querySelector('img[alt="Long infographic"]').getBoundingClientRect();
+    return -r.top / r.height;
+  });
+  expect(into).toBeCloseTo(shown.from / shown.height, 2);
+});
+
 test('a viewport showing no paragraph (a code listing, a picture) opens on the one scrolled past', async ({ page }) => {
   await gotoFixture(page, 'long-article.html');
   await page.evaluate(() => {

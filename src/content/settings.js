@@ -416,8 +416,9 @@
 
   // Placeholder recovery shared by the reader's hydration and the gallery's collection, so both
   // modes recover the same pictures from a page whose own lazy loader has not run.
-  // A bare image URL token (absolute, protocol-relative, or relative path), the same shape
-  // Readability's own _fixLazyImages uses to recognise an image attribute.
+  // A bare image URL token (absolute, protocol-relative, or relative path), close to the shape
+  // Readability's own _fixLazyImages recognises; it also takes anything after the extension,
+  // which OBR._imageUrls matches with its own wider pattern.
   OBR.IMAGE_URL_RE = /^\S+\.(?:jpe?g|png|webp|gif|avif|bmp)(?:[?#]\S*)?$/i;
   // Generic placeholder / decoy signals (not tied to any one site): data URIs,
   // 1x1 / blank / spacer pixels, "loading" spinners, and anti-adblock bait.
@@ -574,20 +575,65 @@
     return false;
   };
 
-  // Scroll the page so `el` sits at the top of the viewport. Only the window and boxes that
-  // scroll are moved: content inside its own scroll box still follows, while a box that clips
-  // (a collapsed "Read more", a carousel) keeps the offset the page gave it. Instant, so a
-  // site's smooth scroll-behavior cannot leave a measurement of the page mid-animation.
-  OBR._revealOnPage = function (el) {
+  // Pinned to the screen (a sticky or fixed header): always on screen, so it says nothing about
+  // where the page is. A box that scrolls the element vertically ends the walk: inside a fixed
+  // app shell or a scrolling modal it moves like page content. The body is never a pin, since
+  // pinning it is how a site locks its own scroll.
+  OBR._pinned = function (el) {
+    for (let a = el; a && a !== document.documentElement && a !== document.body; a = a.parentElement) {
+      const o = getComputedStyle(a);
+      if (a !== el && (o.overflowY === 'auto' || o.overflowY === 'scroll') && a.scrollHeight > a.clientHeight) return false;
+      if (o.position === 'fixed' || o.position === 'sticky') return true;
+    }
+    return false;
+  };
+
+  // Every URL an <img> answers to, absolute: what it shows, its src and srcset, its <picture>'s
+  // sources, and every attribute holding an image URL or a srcset. The reader's copy of a picture
+  // can take its src from any of them: hydrateLazyImages rescues one, then Readability's lazy pass
+  // copies EVERY image-like attribute into src on a class="lazy" image, the last one winning
+  // (WordPress puts data-orig-file / data-medium-file / data-large-file on each). Inline data is
+  // left out: a placeholder pixel is shared by every image waiting to load.
+  const IMAGE_ATTR_RE = /^\S+\.(?:jpe?g|png|webp|gif|avif|bmp)\S*$/i;
+  const SRCSET_ATTR_RE = /\.(?:jpe?g|png|webp|gif|avif)\S*\s+\d/i;
+  OBR._imageUrls = function (img) {
+    const out = new Set();
+    const add = (u) => {
+      u = (u || '').trim();
+      if (!u || /^data:/i.test(u)) return;
+      try { out.add(new URL(u, document.baseURI).href); } catch (e) { /* not a URL */ }
+    };
+    const sets = [img.getAttribute('srcset')];
+    add(img.currentSrc);
+    add(img.getAttribute('src'));
+    OBR.lazyImageUrls(img).forEach(add);
+    for (const at of img.attributes) {
+      const v = (at.value || '').trim();
+      if (IMAGE_ATTR_RE.test(v)) add(v);
+      else if (SRCSET_ATTR_RE.test(v)) sets.push(v);
+    }
+    const pic = img.parentElement && img.parentElement.tagName === 'PICTURE' ? img.parentElement : null;
+    if (pic) for (const s of pic.querySelectorAll('source[srcset]')) sets.push(s.getAttribute('srcset'));
+    for (const s of sets) if (s) OBR.srcsetUrls(s).forEach(add);
+    return out;
+  };
+
+  // Scroll the page so `el` sits at the top of the viewport, or the point `dy` px down it. Only
+  // the window and boxes that scroll are moved: content inside its own scroll box still follows,
+  // while a box that clips (a collapsed "Read more", a carousel) keeps the offset the page gave
+  // it. Instant, so a site's smooth scroll-behavior cannot leave a measurement of the page
+  // mid-animation.
+  OBR._revealOnPage = function (el, dy) {
+    const down = dy || 0;
     for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
       const oy = getComputedStyle(a).overflowY;
       if ((oy === 'auto' || oy === 'scroll') && a.scrollHeight > a.clientHeight) {
-        a.scrollTo({ top: a.scrollTop + el.getBoundingClientRect().top - a.getBoundingClientRect().top, behavior: 'instant' });
+        a.scrollTo({ top: a.scrollTop + el.getBoundingClientRect().top + down - a.getBoundingClientRect().top, behavior: 'instant' });
       }
     }
     // The site's own scroll-padding-top is how it says "my sticky header is this tall".
     const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
-    window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - pad, behavior: 'instant' });
+    window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top + down - pad, behavior: 'instant' });
   };
 
   // The cue both engines play when an open lands where the page was: what the page had scrolled

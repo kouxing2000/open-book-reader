@@ -1454,18 +1454,7 @@
     for (const u of OBR.srcsetUrls(img.srcset)) add(u);
     return out;
   }
-  // Pinned to the screen (a sticky or fixed header): always on screen, so it says nothing about
-  // where the page is. A box that scrolls the image vertically ends the walk: inside a fixed app
-  // shell or a scrolling modal it moves like page content. The body is never a pin, since
-  // pinning it is how a site locks its own scroll.
-  function pinned(el) {
-    for (let a = el; a && a !== document.documentElement && a !== document.body; a = a.parentElement) {
-      const o = getComputedStyle(a);
-      if (a !== el && (o.overflowY === 'auto' || o.overflowY === 'scroll') && a.scrollHeight > a.clientHeight) return false;
-      if (o.position === 'fixed' || o.position === 'sticky') return true;
-    }
-    return false;
-  }
+  const pinned = (el) => OBR._pinned(el); // a sticky or fixed ancestor (settings.js)
   // The live <img> elements showing a gallery image, in page order, with their gallery entry.
   function eachLiveImage(fn) {
     for (const img of document.querySelectorAll('img')) {
