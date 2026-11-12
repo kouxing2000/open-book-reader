@@ -142,9 +142,24 @@ export const test = base.extend({
   },
 
   // Reuse the persistent context's initial page instead of opening a new one.
+  // PUT THIS PAGE BACK IN FRONT OF THE WELCOME TAB. On a fresh profile onInstalled opens
+  // src/welcome.html about half a second after launch, in front of this page. On Linux a tab
+  // that is not in front draws about one frame a second, and scroll events, IntersectionObserver
+  // callbacks and rAF run only in a frame, so a test that needs them a few seconds in fails on CI
+  // alone (macOS keeps drawing). Bring to front, never close: a page closing while a test runs
+  // context.route makes that call throw "Target page, context or browser has been closed".
   page: async ({ context }, use) => {
     const page = context.pages()[0] || (await context.newPage());
+    const frontOfWelcome = async (p) => {
+      if (p === page) return;
+      await p.waitForLoadState('domcontentloaded').catch(() => {});
+      if (p.url().includes('/src/welcome.html')) await page.bringToFront().catch(() => {});
+    };
+    const onPage = (p) => { frontOfWelcome(p); };
+    context.on('page', onPage);
+    for (const p of context.pages()) frontOfWelcome(p);
     await use(page);
+    context.off('page', onPage);
   },
 });
 
