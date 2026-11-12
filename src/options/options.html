@@ -329,6 +329,15 @@
       <label><span data-i18n="optGalSlideSpeed">Slideshow speed</span> <span class="hint" data-i18n-html="optGalSlideSpeedHint">Seconds each image is shown when you play the slideshow in the big-image view (lightbox <b>▶</b> button / <b>A</b> key; <b>+</b>/<b>-</b> to nudge). Plays once and stops on the last image.</span></label>
       <span><input type="range" id="gallerySlideSeconds" min="1" max="30" step="1" /><span class="val" id="gallerySlideSecondsVal"></span></span>
     </div>
+
+    <div class="row">
+      <label><span data-i18n="optGalOtherVideos">Starting a video in the grid</span> <span class="hint" data-i18n="optGalOtherVideosHint">What the videos already playing do when you start another one. Closing the gallery or opening the big view pauses them all.</span></label>
+      <select id="galleryOtherVideos">
+        <option value="mute" data-i18n="optGalOtherVideosMute">Mutes the others (they keep playing)</option>
+        <option value="pause" data-i18n="optGalOtherVideosPause">Pauses the others</option>
+        <option value="play" data-i18n="optGalOtherVideosPlay">Leaves the others playing with sound</option>
+      </select>
+    </div>
   </details>
 
   <details class="card">

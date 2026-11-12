@@ -128,10 +128,18 @@ embeds, which the overlays keep out.
   skipped while the gallery's shadow root reports a fullscreen element; a rebuild would destroy
   the player mid-fullscreen. The shadow root's, never the document's: the toolbar's full-screen
   button makes `<html>` the document's fullscreen element, and the grid must follow that resize.
-  One tile plays at a time (`tileVideo`). The big view, close and a re-layout stop it: the first
-  two pause it explicitly (`pauseTiles`), since the overlay is only covered or hidden, and the
-  browser pauses a tile that a re-layout removes. The big view starts where the tile stopped
-  (`tileTime`).
+  Starting, resuming or unmuting a tile claims it (`claimTile`, `tileVideo`), and the
+  `galleryOtherVideos` setting (Options, Image gallery card) says what that does to the tiles
+  already playing: `mute` (the default) mutes them and they keep playing, so one is heard;
+  `pause` pauses them, one plays at a time; `play` leaves them alone, sound and all. In mute
+  mode a tile muted for another (`autoMuted`) gets its sound back when it is claimed again, a
+  tile the user muted stays silent when resumed and leaves the heard one alone, and a paused
+  tile is never muted. The `play` event a tile's own start queues is skipped
+  (`ownPlay`): it can run after a later tile took over, and claiming then would take the sound
+  back from the tile just started. The big view, close and a re-layout stop every tile: the
+  first two pause them all explicitly (`pauseTiles`), since the overlay is only covered or
+  hidden, and the browser pauses a tile that a re-layout removes. The big view starts where the
+  tile stopped (`tileTime`).
 - **Big view:** `.lb-video`, with native controls, replaces `.lb-img` (`showLbMedia`) and starts
   from the beginning with sound; a refused play (no user gesture, as on a slideshow advance)
   retries muted (`lbAutoMuted` unmutes the next video; a mute the user chose stays). It sits above

@@ -347,6 +347,9 @@
     galleryFitWidth: false, // image-gallery lightbox: fit a tall page to the WIDTH (fills across +
                             // scrolls down) instead of shrinking the whole page to fit the viewport
                             // — for reading manga/comic/scan pages one at a time. Toggle in the lightbox.
+    galleryOtherVideos: 'mute', // image-gallery grid: what the tile videos already playing do when
+                            // another one starts — 'mute' (keep playing, one is heard), 'pause',
+                            // or 'play' (keep playing with sound). Close and the big view pause all.
     galleryHideAvatars: true, // image-gallery: high-precision auto-filter that drops avatar/icon
                             // images (profile pics, emoji, badges) — detected by profile-link wrapper
                             // + avatar/gravatar/emoji class/alt/src token, NOT by size, so album art /

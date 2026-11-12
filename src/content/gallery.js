@@ -1259,7 +1259,12 @@
   // badge click is the gesture Chrome wants; a refused play retries muted). From then on its
   // clicks belong to the controls: the tile drops its link, whose activation would otherwise
   // navigate to the file, and its "open large" button reaches the big view instead.
-  let tileVideo = null; // the tile player that played last: only one plays at a time
+  // Starting one hands it the slot; what that does to the tiles already playing is the
+  // galleryOtherVideos setting: 'pause' them, 'mute' them (they keep playing, one is heard), or
+  // 'play' (left alone, sound and all).
+  let tileVideo = null; // the tile player that was started, resumed or unmuted last
+  const ownPlay = new WeakSet(); // tiles whose `play` event from playInTile's own play() is still queued
+  const autoMuted = new WeakSet(); // tiles muted for another tile, which get their sound back on a claim
   function playInTile(tile, video) {
     tile.classList.add('is-player');
     tile.removeAttribute('href');
@@ -1269,28 +1274,53 @@
     video.muted = false;
     video.preload = 'auto';
     // Claimed now as well as on `play`: the event is queued while `paused` flips at once, so another
-    // tile, the big view or a close could otherwise act before this tile is the one they pause.
-    // The listener covers a resume from the player's own controls. A queued `play` can also run
-    // after another tile has already taken over and paused this one; claiming then would pause the
-    // tile now playing and leave nothing playing, so a stale event (paused again) is ignored.
-    video.addEventListener('play', () => { if (!video.paused) claimTile(video); });
+    // tile, the big view or a close could otherwise act before this tile is the one they act on.
+    // The listener covers a resume from the player's own controls. The event the play() below
+    // queues is skipped: it can run after another tile has already taken over, and claiming then
+    // would take the slot (and in mute mode the sound) back from the tile just started. A queued
+    // `play` from a resume can be just as late, so one that finds the tile paused again is ignored.
+    video.addEventListener('play', () => {
+      if (ownPlay.delete(video)) return;
+      if (!video.paused) claimTile(video);
+    });
+    // A tile the user unmutes while it plays takes the sound. A mute or unmute made here finds the
+    // tile muted, paused or already claimed by the time its event runs, so it is ignored; in play
+    // mode a late one can re-point the slot, which there only gates the muted retry.
+    video.addEventListener('volumechange', () => {
+      if (!video.paused && !video.muted && video !== tileVideo) claimTile(video);
+    });
     claimTile(video);
-    video.play().catch((e) => {
+    startOwn(video).catch((e) => {
       // Retry muted only while this is still the tile in play: a retry that lands after a close,
       // the big view or another tile took over would start it again behind them.
       if (e && e.name === 'NotAllowedError' && tileVideo === video && active && lightboxIndex < 0) {
-        video.muted = true; video.play().catch(() => {});
+        video.muted = true; startOwn(video).catch(() => {});
       }
     });
     video.focus({ preventScroll: true }); // the badge that held focus is gone; Space should reach the player
   }
+  function startOwn(video) {
+    // play() queues a `play` event only when it flips `paused`; a refused play queues none.
+    if (video.paused) ownPlay.add(video);
+    return video.play().catch((e) => { ownPlay.delete(video); throw e; });
+  }
   function claimTile(video) {
-    if (tileVideo && tileVideo !== video) tileVideo.pause();
+    const mode = settings.galleryOtherVideos;
+    // A tile the user muted stays silent when resumed, so the one being heard keeps its sound.
+    const heard = !video.muted || autoMuted.has(video);
+    for (const v of tilePlayers()) {
+      if (v === video) continue;
+      if (mode === 'mute') {
+        if (heard && !v.paused && !v.muted) { v.muted = true; autoMuted.add(v); }
+      } else if (mode !== 'play') v.pause();
+    }
+    if (autoMuted.delete(video)) video.muted = false;
     tileVideo = video;
   }
-  // Pause the playing tile. Needed where the overlay is only hidden (close) or covered (the big
+  function tilePlayers() { return gridEl ? gridEl.querySelectorAll('.tile.is-player video') : []; }
+  // Pause every tile player. Needed where the overlay is only hidden (close) or covered (the big
   // view); a tile a re-layout removes from the page is paused by the browser.
-  function pauseTiles() { if (tileVideo) tileVideo.pause(); }
+  function pauseTiles() { for (const v of tilePlayers()) v.pause(); }
   // Where tile i's player stopped, for the big view to pick up from (0 if it never played or ended).
   function tileTime(i) {
     const v = gridEl && gridEl.querySelector('.tile.is-player[data-idx="' + i + '"] video');

@@ -19,7 +19,7 @@
   try { OBR.bindShareLink(document.getElementById('share-link'), 'options'); } catch (e) { /* never block the page */ } // after localize(): it keeps the label
 
   const SLIDERS = ['fontSize', 'maxBookWidth', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
-  const SELECTS = ['theme', 'fontFamily', 'pageTurn'];
+  const SELECTS = ['theme', 'fontFamily', 'pageTurn', 'galleryOtherVideos'];
   const SEGMENTS = ['columns']; // a group of [data-val] buttons, one pressed
   const CHECKBOXES = ['splitLongPictures', 'readSelection', 'markdownExport', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding', 'colophon', 'colophonLifetime'];
   const savedEl = document.getElementById('saved');

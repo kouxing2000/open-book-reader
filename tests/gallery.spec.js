@@ -2648,7 +2648,8 @@ test.describe('gallery videos (plain-source <video>)', () => {
     expect(r.bottom).toBeLessThanOrEqual(r.vh - 200 + 1);
   });
 
-  test('only one tile plays at a time', async ({ page }) => {
+  test('in pause mode only one tile plays at a time', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOtherVideos: 'pause' }));
     await openGallery(page);
     await clickInGallery(page, '.tile[data-idx="1"] >> .tile-play');
     await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
@@ -2665,6 +2666,7 @@ test.describe('gallery videos (plain-source <video>)', () => {
   });
 
   test('a late play event from a tile already handed over does not take the slot back', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOtherVideos: 'pause' }));
     // `play` is queued while `paused` flips at once, so tile 1's event can run after tile 3 has
     // taken over and paused it. Claiming on that late event would pause tile 3 and leave nothing
     // playing. The late event is replayed here in that order.
@@ -2681,6 +2683,7 @@ test.describe('gallery videos (plain-source <video>)', () => {
   });
 
   test('resuming a paused tile from its own player takes the slot from the tile playing', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOtherVideos: 'pause' }));
     // Space on a focused player plays it without the badge's immediate claim, so the `play`
     // listener is what hands the slot over here.
     await openGallery(page);
@@ -2695,6 +2698,102 @@ test.describe('gallery videos (plain-source <video>)', () => {
     await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
     // Paused before its 6s clip could end on its own: only the hand-over stops it that early.
     await expect.poll(() => tileVideo(page, 3).then((s) => s.paused && s.time < 5)).toBe(true);
+  });
+
+  const startTile = async (page, idx) => {
+    await clickInGallery(page, `.tile[data-idx="${idx}"] >> .tile-play`);
+    await expect.poll(() => tileVideo(page, idx).then((s) => s.paused)).toBe(false);
+  };
+  const tileEl = (idx) => `document.getElementById('obr-gallery-host').shadowRoot.querySelector('.tile[data-idx="${idx}"] video')`;
+
+  test('by default a second tile mutes the first, which keeps playing', async ({ page }) => {
+    await openGallery(page);
+    await startTile(page, 1);
+    await startTile(page, 3);
+    expect(await tileVideo(page, 3)).toMatchObject({ paused: false, muted: false });
+    expect(await tileVideo(page, 1)).toMatchObject({ paused: false, muted: true });
+  });
+
+  test('in mute mode the sound follows the tile you unmute or resume', async ({ page }) => {
+    await openGallery(page);
+    await startTile(page, 1);
+    await startTile(page, 3);
+    // Unmuting tile 1 from its own controls takes the sound from tile 3.
+    await page.evaluate(`${tileEl(1)}.muted = false`);
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.muted)).toBe(true);
+    expect(await tileVideo(page, 1)).toMatchObject({ paused: false, muted: false });
+    expect((await tileVideo(page, 3)).paused).toBe(false);
+    // Pause tile 3, which was muted for tile 1, and resume it: it is heard again.
+    await page.evaluate(`${tileEl(3)}.pause(); ${tileEl(3)}.focus()`);
+    await page.keyboard.press(' ');
+    await expect.poll(() => tileVideo(page, 1).then((s) => s.muted)).toBe(true);
+    expect(await tileVideo(page, 3)).toMatchObject({ paused: false, muted: false });
+  });
+
+  test('in mute mode resuming a tile you muted yourself leaves the heard one its sound', async ({ page }) => {
+    await openGallery(page);
+    await startTile(page, 3);
+    await page.evaluate(`${tileEl(3)}.muted = true; ${tileEl(3)}.pause()`);
+    await startTile(page, 1);
+    // Added after the gallery's own `play` listener, so this one runs once the claim has.
+    await page.evaluate(`${tileEl(3)}.addEventListener('play', () => { globalThis.__resumed3 = true; }); ${tileEl(3)}.focus()`);
+    await page.keyboard.press(' ');
+    await expect.poll(() => page.evaluate(() => !!globalThis.__resumed3)).toBe(true);
+    expect(await tileVideo(page, 3)).toMatchObject({ paused: false, muted: true });
+    expect(await tileVideo(page, 1)).toMatchObject({ paused: false, muted: false });
+  });
+
+  test('in mute mode a tile you paused is left alone', async ({ page }) => {
+    await openGallery(page);
+    await startTile(page, 1);
+    await page.evaluate(`${tileEl(1)}.pause()`);
+    await startTile(page, 3);
+    expect(await tileVideo(page, 1)).toMatchObject({ paused: true, muted: false });
+  });
+
+  test('in mute mode two tiles started back to back leave the second heard and never muted', async ({ page }) => {
+    await openGallery(page);
+    // A real click first, so the plays below may have sound, then both starts in the SAME task:
+    // tile 1's queued `play` event runs after tile 3 has taken over.
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.selall-cb');
+    await page.evaluate(() => {
+      const r = document.getElementById('obr-gallery-host').shadowRoot;
+      const v3 = r.querySelector('.tile[data-idx="3"] video');
+      globalThis.__mutedTile3 = 0;
+      v3.addEventListener('volumechange', () => { if (v3.muted) globalThis.__mutedTile3++; });
+      r.querySelector('.tile[data-idx="1"] .tile-play').click();
+      r.querySelector('.tile[data-idx="3"] .tile-play').click();
+    });
+    await expect.poll(() => tileVideo(page, 3).then((s) => s.time)).toBeGreaterThan(0);
+    expect(await tileVideo(page, 3)).toMatchObject({ paused: false, muted: false });
+    expect(await tileVideo(page, 1)).toMatchObject({ paused: false, muted: true });
+    expect(await page.evaluate(() => globalThis.__mutedTile3)).toBe(0);
+  });
+
+  test('in mute mode the big view and a close pause every playing tile', async ({ page }) => {
+    await openGallery(page);
+    await startTile(page, 1);
+    await startTile(page, 3);
+    await clickInGallery(page, '.tile[data-idx="3"] >> .tile-open');
+    expect((await tileVideo(page, 1)).paused).toBe(true);
+    expect((await tileVideo(page, 3)).paused).toBe(true);
+    await page.keyboard.press('Escape'); // closes the big view
+    await expect.poll(() => lb(page).then((s) => s.open)).toBe(false);
+    await page.evaluate(`${tileEl(1)}.play(); ${tileEl(3)}.play()`);
+    await expect.poll(() => tileVideo(page, 1).then((s) => s.paused)).toBe(false);
+    await page.evaluate(() => globalThis.OBR.closeGallery());
+    expect((await tileVideo(page, 1)).paused).toBe(true);
+    expect((await tileVideo(page, 3)).paused).toBe(true);
+  });
+
+  test('in play mode the others keep playing with sound', async ({ page }) => {
+    await page.evaluate(() => globalThis.OBR.saveSettings({ galleryOtherVideos: 'play' }));
+    await openGallery(page);
+    await startTile(page, 1);
+    await startTile(page, 3);
+    expect(await tileVideo(page, 1)).toMatchObject({ paused: false, muted: false });
+    expect(await tileVideo(page, 3)).toMatchObject({ paused: false, muted: false });
   });
 
   test('"open large" pauses the tile and the big view picks up where it stopped', async ({ page }) => {

@@ -196,7 +196,7 @@ npx playwright install chromium                # first run only
   sections opened with their levels kept, video and audio
   under page turns (inert turn clones, pause on turn/close, fullscreen keys).
 - `gallery.spec.js` — image engine: collection + tiny-image filter, masonry, lightbox, download/ZIP
-  (stubbed SW), plain-source videos (still tiles, the in-grid player, big-view playback, Space, slideshow, ZIP skip), mode switching, full screen across both modes (the Fullscreen API stood in for — headless refuses it), page-scroll sync on open/close and the open cue, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
+  (stubbed SW), plain-source videos (still tiles, the in-grid player and what starting one does to the others, big-view playback, Space, slideshow, ZIP skip), mode switching, full screen across both modes (the Fullscreen API stood in for — headless refuses it), page-scroll sync on open/close and the open cue, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
   by real archive parsers.
 - `auto-open.spec.js` — the sentinel's decision ladder end-to-end (content gates, metadata veto,
   suppression + SPA re-arm, enable-time chip, engine chip/suppress integration) plus the pure rule
