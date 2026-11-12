@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The gallery shows how far you are.** An N / total count sits in the grid's corner and a thin
   line along the bottom tracks the scroll, in both layouts. On a page that keeps loading pictures,
   the total reads as a running count (M+) until the whole page has been loaded.
+- **Starting a video in the gallery no longer stops the others.** By default the videos already
+  playing in the grid keep going, muted, so only the one you just started is heard. Options →
+  Image gallery → "Starting a video in the grid" can pause them instead, as before, or leave them
+  playing with sound. Closing the gallery or opening the big view pauses them all.
 - **Image mode finds the lazy pictures read mode finds.** Far fewer pictures that a page loads
   only on scroll go missing from the gallery, and Load all keeps going on pages that load
   pictures only once scrolling pauses, instead of stopping after the first few. Clicking Load all again
