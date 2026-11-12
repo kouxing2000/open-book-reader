@@ -32,6 +32,11 @@
     /* The control cell never wraps: a long description must not push a slider's value under it.
        On a phone the slider narrows instead, so a long single-word label still fits. */
     .row > span:last-child { flex: none; white-space: nowrap; }
+    /* A select is as wide as its longest option. Where a row's select is too wide to sit beside
+       its label (a phone, a longer language), it drops under the label instead of running past
+       the right edge; where both fit, the row looks like any other. */
+    .row.wide-select { flex-wrap: wrap; }
+    .row.wide-select > label { flex: 1 1 200px; }
     @media (max-width: 520px) { input[type="range"] { width: 120px; } }
     .val { display: inline-block; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; opacity: .7; }
     .actions { display: flex; gap: 10px; margin-top: 20px; }
@@ -330,7 +335,7 @@
       <span><input type="range" id="gallerySlideSeconds" min="1" max="30" step="1" /><span class="val" id="gallerySlideSecondsVal"></span></span>
     </div>
 
-    <div class="row">
+    <div class="row wide-select">
       <label><span data-i18n="optGalOtherVideos">Starting a video in the grid</span> <span class="hint" data-i18n="optGalOtherVideosHint">What the videos already playing do when you start another one. Closing the gallery or opening the big view pauses them all.</span></label>
       <select id="galleryOtherVideos">
         <option value="mute" data-i18n="optGalOtherVideosMute">Mutes the others (they keep playing)</option>
