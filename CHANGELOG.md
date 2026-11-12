@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-11-12
+
+- **Ordered steps one row at a time.** In the gallery's Ordered layout, a Next row button sits
+  beside auto-scroll, and the down and up arrows step one row forward or back. A row taller than
+  the window is shown a window at a time, so a step never skips part of a picture.
+- **The gallery shows how far you are.** An N / total count sits in the grid's corner and a thin
+  line along the bottom tracks the scroll, in both layouts. On a page that keeps loading pictures,
+  the total reads as a running count (M+) until the whole page has been loaded.
+- **Image mode finds the lazy pictures read mode finds.** Far fewer pictures that a page loads
+  only on scroll go missing from the gallery, and Load all keeps going on pages that load
+  pictures only once scrolling pauses, instead of stopping after the first few. Clicking Load all again
+  after "All images loaded" goes through the whole page once more.
+- **Ordered rows fill the width.** At a few columns, rows now span the window instead of stopping
+  short; a small picture is shown at its real size, never stretched past it.
+- **The Size slider stops at 8 columns**, so a wide monitor no longer offers a wall of
+  postage stamps.
+- **Space and the arrow keys scroll after a click.** After clicking a gallery button, checkbox or
+  the Size slider, Space no longer clicks it again (no repeat download, no selection flipped
+  back), and the arrows and PageDown scroll the grid instead of moving the slider.
+- **Leaving the reader keeps your place in a picture article.** Closing read mode after reading an
+  article that is mostly pictures now scrolls the page to the picture you were on, as it already
+  did for text.
+
 ## [1.17.0] - 2026-11-03
 
 - **Save as Markdown is on for everyone.** The ⤓ Markdown button is now in the reader's toolbar
@@ -646,7 +669,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.17.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.18.0...HEAD
+[1.18.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.18.0
 [1.17.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.17.0
 [1.16.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.16.1
 [1.16.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.16.0
