@@ -102,6 +102,9 @@ Requested **only on first use, never at install** (optional permissions):
   choice enables both uses, and it also covers the sites you turned auto-open on for
 - per-site host access — granted when you turn on auto-open for a site (a per-origin subset
   of the same optional host permission), so the tiny sentinel can run there on page load
+- your installed fonts — Chrome's own `local-fonts` prompt, not a manifest permission, asked only
+  when you click "Choose from installed fonts" in Options → Reading font. The Options page reads
+  the font names to list them; nothing is sent anywhere, and only the fonts you add are saved
 
 Any of these grants that covers a site also lets a shared article on that site open straight
 in reading mode when you follow a share link to it.

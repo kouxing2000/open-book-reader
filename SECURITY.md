@@ -11,7 +11,8 @@ when you choose to send one. Even so, because the extension injects scripts into
 read and can hold `<all_urls>` host access (optional, granted only through an explicit choice:
 a ZIP prompt's "Allow all sites instead" or the opt-in to open shared links in reading mode),
 security reports matter to us. The README's Permissions section lists every permission and
-what uses it.
+what uses it, including Chrome's prompt for your installed fonts, which Options asks for only
+when you choose to pick from them.
 
 ## Supported versions
 

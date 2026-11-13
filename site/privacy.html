@@ -50,7 +50,7 @@
     <div class="top"><a href="index.html">← Open Book Reader</a></div>
     <div class="card">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 2026-10-29</p>
+      <p class="updated">Last updated: 2026-11-13</p>
 
       <p class="lead">Open Book Reader is designed to be completely private.</p>
 
@@ -81,8 +81,8 @@
       <p>Everything below is written by your own browser and is <strong>never sent to the developer</strong> — except the survey link's page address, and only if you choose to send it with the survey (for the welcome sample, only the fact that it was the sample). Removing the extension clears it from this device. Preferences and per-site choices synced through your Google account may come back if you install the extension again, and the survey tab's entry stays in your browser history (see <a href="#uninstall">Uninstall survey</a>).</p>
       <p class="sub-label">Synced across your signed-in Chrome devices (Chrome's <code>storage.sync</code>, through your own Google account — never through us):</p>
       <ul>
-        <li><strong>Reading preferences</strong> — font size, theme, book width, spine width, line height, and your gallery layout choices.</li>
-        <li><strong>Per-site choices you made deliberately</strong> — a saved content pick, images you hid as repeated noise, per-site gallery settings, and the sites you turned auto-open on for. These are keyed by site name, so the list of sites you set something up on syncs along with them.</li>
+        <li><strong>Reading preferences</strong> — font size, reading font, theme, book width, spine width, line height, and your gallery layout choices, plus <em>Your fonts</em>: the font names you added to the reader's list, which can include fonts installed on your computer.</li>
+        <li><strong>Per-site choices you made deliberately</strong> — a saved content pick, a site's own reading font, images you hid as repeated noise, per-site gallery settings, and the sites you turned auto-open on for. These are keyed by site name, so the list of sites you set something up on syncs along with them.</li>
       </ul>
       <p class="sub-label">Kept on this device only (Chrome's <code>storage.local</code>, never synced):</p>
       <ul>
@@ -106,6 +106,7 @@
       <ul>
         <li><strong>downloads</strong> — used only to save images you explicitly download from the image gallery.</li>
         <li><strong>host access (<code>&lt;all_urls&gt;</code>)</strong> — used only to fetch image bytes when you ask to download a ZIP of selected images, and to open the reader on the shared articles you open. It is one permission for all of these: granting it from either place (the ZIP download's <em>Allow all sites</em>, or a shared-link page's <em>Turn on &amp; read</em>) enables both, and it also covers the sites you turned auto-open on for — so removing it pauses those too until you allow them again. It is never used to monitor or transmit page content.</li>
+        <li><strong>your installed fonts</strong> (Chrome's own <em>local fonts</em> prompt, not an extension permission) — asked for only when you click <em>Choose from installed fonts</em> in Settings → Reading font. Once you allow it, the Settings page reads the names of the fonts on your computer when it opens, to list them there; the list stays on that page and is never sent anywhere. Only the fonts you add are saved, with your reading preferences. Without it, you can still type a font's name.</li>
         <li><strong>per-site host access</strong> — granted only if you turn on <em>auto-open</em> for a site (right-click → Auto-open on this site, or <em>Always open</em> that site <em>in reading mode</em> on a shared-link page). It lets the extension check that one site's pages as they load — entirely inside your browser — to open reading mode on them. Nothing is read for any other purpose and nothing is transmitted; you can revoke it any time in the site's rules or in <code>chrome://extensions</code>.</li>
       </ul>
       <p>The extension only runs when you click its icon, press its keyboard shortcut or use its right-click menu — and otherwise only on sites where you explicitly turned auto-open on, or on a shared article you open from a share link when Open Book may already open it in reading mode (you turned on opening shared links in reading mode, or already gave Open Book access to that site). It does not run in the background or on any other page.</p>
