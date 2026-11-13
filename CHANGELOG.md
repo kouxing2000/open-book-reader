@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-11-13
+
 - **Choose the reading font yourself, per site too.** Aa now lists your fonts, each in its own
   face: Serif, Sans-serif and This site's font (the font the website sets its text in, web fonts
   included) to start with. In Options → Reading font, add any font on your computer, by typing
@@ -682,7 +684,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.18.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.19.0...HEAD
+[1.19.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.19.0
 [1.18.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.18.0
 [1.17.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.17.0
 [1.16.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.16.1
