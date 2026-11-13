@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Choose the reading font yourself, per site too.** Aa now lists your fonts, each in its own
+  face: Serif, Sans-serif and This site's font (the font the website sets its text in, web fonts
+  included) to start with. In Options → Reading font, add any font on your computer, by typing
+  its name (with fallbacks after commas) or by starring it in a list of your installed fonts
+  (Chrome asks for permission first; without it, typing still works), and remove the ones you
+  don't use. **More fonts…** in Aa opens that setting. Tick **Only on** a site under the list to
+  give that site a font of its own; Options lists those sites under Per-site data. The default
+  stays Serif.
+
 ## [1.18.0] - 2026-11-12
 
 - **Ordered steps one row at a time.** In the gallery's Ordered layout, a Next row button sits

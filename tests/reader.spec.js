@@ -2008,12 +2008,12 @@ test('the 🖨 Print button builds a standalone, flat print document (no screen-
       title: 'A & B <Title> "Q"',
       byline: 'By <Jane> & John',
       content: '<p>Body paragraph one.</p><p>Body paragraph two.</p>',
-      fontFamily: 'serif', lineHeight: 1.7,
+      fontStack: '"Chosen Face", serif', lineHeight: 1.7,
       url: 'https://example.com/path',
     });
     // A normal article but NO url — the doc printReader() builds when printSourceUrl is off.
     const noUrl = globalThis.OBR._buildPrintDoc({
-      title: 'T', byline: '', content: '<p>Body.</p>', fontFamily: 'serif', lineHeight: 1.6,
+      title: 'T', byline: '', content: '<p>Body.</p>', fontStack: globalThis.OBR.FONT_STACKS.serif, lineHeight: 1.6,
     });
     const empty = globalThis.OBR._buildPrintDoc({ title: 'X', content: '' });
     return { hasBtn, html, noUrl, empty };
@@ -2035,8 +2035,7 @@ test('the 🖨 Print button builds a standalone, flat print document (no screen-
   expect(r.noUrl).not.toContain('<div class="obr-print-source">');
   expect(r.html).not.toContain('<div class="obr-print-brand">'); // no brand passed -> no branding footer (the CSS class always exists)
   // The chosen font family + line height actually reach the stylesheet
-  expect(r.html).toContain('12pt/1.7');
-  expect(r.html).toContain('Georgia'); // serif stack
+  expect(r.html).toContain('12pt/1.7 "Chosen Face", serif');
   // Empty extraction degrades to a readable fallback, not a blank page
   expect(r.empty).toContain('Could not extract a readable article');
   // Flat paper layout — NONE of the on-screen reader's column / transform / clip machinery,
@@ -2053,7 +2052,7 @@ test('_qrSvg encodes a URL to a self-contained SVG, and the print doc appends th
     const svg = globalThis.OBR._qrSvg('https://example.com/x');
     const same = globalThis.OBR._qrSvg('https://example.com/x'); // deterministic for the same input
     const branded = globalThis.OBR._buildPrintDoc({
-      title: 'T', content: '<p>Body.</p>', fontFamily: 'serif', lineHeight: 1.6,
+      title: 'T', content: '<p>Body.</p>', fontStack: globalThis.OBR.FONT_STACKS.serif, lineHeight: 1.6,
       brand: { name: 'Open Book Reader', tagline: 'Printed with the free, distraction-free reader',
         url: 'openbook.peach-studio.com', qrSvg: globalThis.OBR._qrSvg(storeUrl) },
     });
@@ -2435,6 +2434,166 @@ test.describe('width-aware toolbar (Aa + ⋯)', () => {
 
     await page.evaluate(() => OBR.saveSettings({ columns: 4 })); // as the Options page would
     await expect.poll(() => aa().then((a) => a.cols)).toBe('4');
+  });
+});
+
+test.describe('Reading font', () => {
+  // The font the reader's text actually computes to, and the Aa font list's state.
+  const fonts = (page) => page.evaluate(() => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const rows = [...sr.querySelectorAll('.obr-fonts .obr-font')];
+    const box = sr.querySelector('.obr-font-site');
+    return {
+      text: getComputedStyle(sr.querySelector('.obr-content p')).fontFamily,
+      rows: rows.map((b) => b.dataset.val),
+      labels: rows.map((b) => b.textContent),
+      pressed: rows.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.val),
+      siteBox: { shown: !box.hidden, checked: box.querySelector('input').checked, label: box.textContent },
+    };
+  });
+  const stored = (page) => page.evaluate(() => OBR.loadSettings());
+  const row = (v) => `.obr-fonts .obr-font[data-val='${v}']`;
+
+  test("Site reads in the page's own text font, taken from its paragraphs rather than <body>", async ({ page }) => {
+    // The page's paragraphs use a face of their own; <body> uses another, so a fallback to
+    // <body> would show here.
+    await page.addStyleTag({ content: '@font-face { font-family: "Obr Probe"; src: local("Courier New"), local("Courier"); }'
+      + ' body { font-family: Arial, sans-serif; } p { font-family: "Obr Probe", monospace; }' });
+    await seedSettings(page, { fontFamily: 'site' });
+    await openReader(page);
+    await clickInReader(page, '[data-pop="type"]');
+    const f = await fonts(page);
+    expect(f.text).toBe('"Obr Probe", monospace');
+    expect(f.pressed).toEqual(['site']);
+  });
+
+  test('Aa offers exactly Your fonts: a pick reads and saves, and a list edited in Options rebuilds it', async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '[data-pop="type"]');
+    let f = await fonts(page);
+    expect(f.rows).toEqual(['serif', 'sans', 'site']);
+    expect(f.labels).toEqual(['Serif', 'Sans-serif', "This site's font"]);
+    expect(f.pressed).toEqual(['serif']);
+    expect(f.text).toContain('Georgia');
+
+    await clickInReader(page, row('sans'));
+    f = await fonts(page);
+    expect(f.pressed).toEqual(['sans']);
+    expect(f.text).toContain('system-ui');
+    expect((await stored(page)).fontFamily).toBe('sans');
+
+    // Options drops Serif and Site and adds a font of the user's: the list follows, labelled
+    // with the font's first family, and Aa still stays open.
+    await page.evaluate(() => OBR.saveSettings({ fontList: ['sans', '"Obr Custom", monospace'] }));
+    await expect.poll(() => fonts(page).then((x) => x.rows)).toEqual(['sans', '"Obr Custom", monospace']);
+    expect((await fonts(page)).labels).toEqual(['Sans-serif', 'Obr Custom']);
+    await clickInReader(page, row('"Obr Custom", monospace'));
+    f = await fonts(page);
+    expect(f.pressed).toEqual(['"Obr Custom", monospace']);
+    expect(f.text.startsWith('"Obr Custom", monospace, Georgia')).toBe(true); // the serif stack backs it
+    expect((await stored(page)).fontFamily).toBe('"Obr Custom", monospace');
+
+    // Taken off the list while still in use: Aa keeps showing it, marked, rather than hiding
+    // the font the page is in.
+    await page.evaluate(() => OBR.saveSettings({ fontList: ['sans'] }));
+    await expect.poll(() => fonts(page).then((x) => x.rows)).toEqual(['sans', '"Obr Custom", monospace']);
+    expect((await fonts(page)).pressed).toEqual(['"Obr Custom", monospace']);
+  });
+
+  test('a stored font CSS rejects falls back to Serif instead of keeping the previous font', async ({ page }) => {
+    // style.fontFamily = <invalid> is a silent no-op that keeps whatever was there before,
+    // so without the validation this would stay on sans. 'initial' is valid on its own and
+    // invalid once the serif fallback follows it, so it is checked as used.
+    await seedSettings(page, { fontFamily: 'sans' });
+    await openReader(page);
+    await clickInReader(page, '[data-pop="type"]');
+    for (const bad of ['Broken "Quote', 'initial', 'var(--x)']) {
+      await page.evaluate(() => OBR.saveSettings({ fontFamily: 'sans' }));
+      await expect.poll(() => fonts(page).then((x) => x.text)).toContain('system-ui');
+      await page.evaluate((v) => OBR.saveSettings({ fontFamily: v }), bad);
+      await expect.poll(() => fonts(page).then((x) => x.text)).toContain('Georgia');
+      expect((await fonts(page)).pressed).toEqual(['serif']);
+    }
+  });
+
+  test("Space on the focused 'Only on' box ticks it instead of turning the page", async ({ page }) => {
+    await openReader(page);
+    await clickInReader(page, '[data-pop="type"]');
+    const before = (await readState(page)).translateX;
+    await page.locator('#obr-host >> .obr-font-site input').focus();
+    await page.keyboard.press(' ');
+    await expect.poll(() => fonts(page).then((x) => x.siteBox.checked)).toBe(true);
+    expect((await readState(page)).translateX).toBe(before);
+  });
+
+  test("'Only on this site' sends picks to this site's own font and leaves the global one alone", async ({ page }) => {
+    const host = new URL(page.url()).hostname;
+    // Another site's own font is already stored: every write here must keep it.
+    await seedSettings(page, { fontFamily: 'sans', siteFonts: { 'other.example': 'serif' } });
+    await openReader(page);
+    await clickInReader(page, '[data-pop="type"]');
+    let f = await fonts(page);
+    expect(f.siteBox).toEqual({ shown: true, checked: false, label: 'Only on ' + host });
+
+    // Ticking keeps the font in effect as this site's own; nothing on the page moves.
+    await clickInReader(page, '.obr-font-site input');
+    await expect.poll(() => stored(page).then((x) => x.siteFonts)).toEqual({ 'other.example': 'serif', [host]: 'sans' });
+    expect((await fonts(page)).text).toContain('system-ui');
+
+    // A pick now changes this site only.
+    await clickInReader(page, row('serif'));
+    f = await fonts(page);
+    expect(f.text).toContain('Georgia');
+    expect(f.pressed).toEqual(['serif']);
+    await expect.poll(() => stored(page).then((x) => x.siteFonts)).toEqual({ 'other.example': 'serif', [host]: 'serif' });
+    expect((await stored(page)).fontFamily).toBe('sans');
+
+    // Unticking drops it, and the page reads in the global font again.
+    await clickInReader(page, '.obr-font-site input');
+    f = await fonts(page);
+    expect(f.siteBox.checked).toBe(false);
+    expect(f.text).toContain('system-ui');
+    await expect.poll(() => stored(page).then((x) => x.siteFonts)).toEqual({ 'other.example': 'serif' });
+  });
+
+  test('More fonts asks the SW to open Options at the font setting', async ({ page }) => {
+    await openReader(page);
+    await page.evaluate(() => {
+      window.__obrMsgs = [];
+      chrome.runtime = { lastError: null, sendMessage(m, cb) { window.__obrMsgs.push(m); if (cb) cb({ ok: true }); } };
+    });
+    await clickInReader(page, '[data-pop="type"]');
+    await clickInReader(page, '.obr-font-more');
+    const msgs = await page.evaluate(() => window.__obrMsgs);
+    expect(msgs).toContainEqual({ type: 'obr-open-options', site: '', focus: 'font' });
+  });
+
+  test('site fonts stay bounded: past the cap, the one set longest ago is dropped', async ({ page }) => {
+    const r = await page.evaluate(() => {
+      let m = {};
+      for (let i = 0; i <= OBR.SITE_FONTS_MAX; i++) m = OBR.withSiteFont(m, 'h' + i + '.example', 'serif');
+      const full = Object.keys(m);
+      m = OBR.withSiteFont(m, 'h1.example', 'sans'); // re-set: it becomes the newest
+      return { max: OBR.SITE_FONTS_MAX, full, order: Object.keys(m) };
+    });
+    expect(r.full).toHaveLength(r.max);
+    expect(r.full[0]).toBe('h1.example'); // h0 went first
+    expect(r.order[r.order.length - 1]).toBe('h1.example');
+  });
+
+  test("print escapes '<' in the font value, so a page-supplied font name cannot end the stylesheet", async ({ page }) => {
+    // 'Site' copies a value the PAGE controls into CSS that is written into the print frame
+    // as HTML, where '</style>' ends the style element even inside a quoted CSS string.
+    const r = await page.evaluate(() => ({
+      hostile: OBR._buildPrintDoc({ title: 'T', content: '<p>Body.</p>', lineHeight: 1.6,
+        fontStack: '"</style><script>window.__pwned = 1</script>", serif' }),
+      fallback: OBR._buildPrintDoc({ title: 'T', content: '<p>Body.</p>' }),
+    }));
+    expect(r.hostile).not.toContain('</style><script>');
+    expect(r.hostile).toContain('"\\3c /style>\\3c script>');
+    expect(r.hostile.match(/<\/style>/g)).toHaveLength(1); // only the real one
+    expect(r.fallback).toContain('Georgia'); // no font passed: the serif stack, not "undefined"
+    expect(r.fallback).not.toContain('undefined');
   });
 });
 

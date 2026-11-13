@@ -19,7 +19,7 @@
   try { OBR.bindShareLink(document.getElementById('share-link'), 'options'); } catch (e) { /* never block the page */ } // after localize(): it keeps the label
 
   const SLIDERS = ['fontSize', 'maxBookWidth', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
-  const SELECTS = ['theme', 'fontFamily', 'pageTurn', 'galleryOtherVideos'];
+  const SELECTS = ['theme', 'pageTurn', 'galleryOtherVideos'];
   const SEGMENTS = ['columns']; // a group of [data-val] buttons, one pressed
   const CHECKBOXES = ['splitLongPictures', 'readSelection', 'markdownExport', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding', 'colophon', 'colophonLifetime'];
   const savedEl = document.getElementById('saved');
@@ -270,6 +270,286 @@
       const el = document.getElementById(key);
       el.checked = !!settings[key];
       el.addEventListener('change', () => OBR.saveSettings({ [key]: el.checked }).then(flashSaved));
+    });
+    bindFonts(settings);
+    setSiteFonts(settings);
+  }
+
+  /* ------------------------------------------------ reading font: Your fonts */
+  // Your fonts (settings.fontList) is exactly what the reader's Aa menu offers, and the
+  // Reading font dropdown offers the same entries. List edits are read-modify-writes
+  // (OBR.updateSettings), so a font picked in a reader meanwhile is never overwritten by this
+  // page's older copy. A typed value is added only once CSS takes it (OBR.fontEntry). Adding
+  // never changes the reading font: the dropdown and Aa pick, the list only offers. The
+  // installed-fonts list needs Chrome's local-fonts permission, asked only from the button's
+  // click; refused, dismissed or unsupported, typing a name is the whole feature.
+  const fontSel = document.getElementById('fontFamily');
+  const fontChips = document.getElementById('fontChips');
+  const fontAddBack = document.getElementById('fontAddBack');
+  const fontInput = document.getElementById('fontInput');
+  const fontAddBtn = document.getElementById('fontAddBtn');
+  const fontInputError = document.getElementById('fontInputError');
+  const fontFullNote = document.getElementById('fontFullNote');
+  const fontListBtn = document.getElementById('fontListBtn');
+  const fontListNote = document.getElementById('fontListNote');
+  const fontList = document.getElementById('fontList');
+  const fontPreview = document.getElementById('fontPreview');
+  let fonts = { list: [], current: 'serif' }; // mirror of fontList + fontFamily
+  let installedFonts = null; // family names, once Chrome has handed them over
+
+  // A family name as a font-family value: bare when CSS takes it bare, else quoted.
+  const familyValue = (f) => OBR.cssFontFamily(f) || '"' + f.replace(/["\\]/g, '\\$&') + '"';
+  const sameFont = (a, b) => OBR.fontKey(a) === OBR.fontKey(b);
+  const inList = (entry) => fonts.list.some((e) => sameFont(e, entry));
+  const isFull = () => fonts.list.length >= OBR.FONT_LIST_MAX;
+
+  function setFonts(s) {
+    const next = { list: OBR.fontListOf(s), current: OBR.fontEntry(s.fontFamily) || 'serif' };
+    if (JSON.stringify(next) === JSON.stringify(fonts)) return;
+    fonts = next;
+    renderFonts();
+  }
+
+  function renderFonts() {
+    // The dropdown also carries the font in effect when it is no longer listed, so it never
+    // claims a font other than the one the reader uses.
+    const choices = fonts.list.slice();
+    if (!inList(fonts.current)) choices.push(fonts.current);
+    fontSel.textContent = '';
+    choices.forEach((e) => {
+      const o = document.createElement('option');
+      o.value = e;
+      o.textContent = OBR.fontLabel(e);
+      if (sameFont(e, fonts.current)) o.selected = true;
+      fontSel.appendChild(o);
+    });
+
+    fontChips.textContent = '';
+    fonts.list.forEach((e) => {
+      const chip = document.createElement('span');
+      chip.className = 'font-chip';
+      const name = document.createElement('span');
+      name.textContent = OBR.fontLabel(e);
+      name.style.fontFamily = OBR.fontStackFor(e);
+      if (OBR.FONT_TOKENS.indexOf(e) < 0) chip.title = e;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '✕';
+      remove.title = OBR.t('optFontRemove', [OBR.fontLabel(e)]);
+      remove.setAttribute('aria-label', remove.title);
+      remove.addEventListener('click', () => removeFont(e));
+      chip.append(name, remove);
+      fontChips.appendChild(chip);
+    });
+
+    fontAddBack.querySelectorAll('button').forEach((b) => b.remove());
+    const missing = OBR.FONT_TOKENS.filter((t) => !inList(t));
+    missing.forEach((t) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = '+ ' + OBR.fontLabel(t);
+      b.disabled = isFull();
+      b.addEventListener('click', () => addFont(t));
+      fontAddBack.appendChild(b);
+    });
+    fontAddBack.hidden = !missing.length;
+    fontAddBtn.disabled = isFull();
+    fontFullNote.hidden = !isFull();
+    fontFullNote.textContent = OBR.t('optFontsFull', [String(OBR.FONT_LIST_MAX)]);
+    syncFontInput();
+  }
+
+  // The preview draws the typed font while CSS takes it, else the reading font, with the
+  // reader's own fallback, so a name matching no installed font shows as that fallback.
+  function syncFontInput() {
+    const typed = fontInput.value.trim();
+    const value = OBR.fontEntry(typed);
+    fontInputError.hidden = !typed || !!value;
+    fontPreview.style.fontFamily = OBR.fontStackFor(value || fonts.current);
+    if (installedFonts) renderFontList();
+  }
+
+  // One edit to Your fonts over the stored settings. `change(list, current)` returns the new
+  // { list, current }, or null for no change.
+  function editFonts(change) {
+    let next = null;
+    OBR.updateSettings((raw) => {
+      const s = Object.assign({}, OBR.DEFAULTS, raw);
+      const current = OBR.fontEntry(s.fontFamily) || 'serif';
+      next = change(OBR.fontListOf(s), current);
+      if (!next) return false;
+      raw.fontList = next.list;
+      if (next.current !== current) raw.fontFamily = next.current;
+    }).then((ok) => {
+      if (!next) return;
+      if (ok) { fonts = next; renderFonts(); }
+      flashSaved(ok);
+    });
+  }
+
+  function addFont(value) {
+    const e = OBR.fontEntry(value);
+    if (!e) return syncFontInput(); // the error line says why
+    editFonts((list, current) => {
+      if (list.length >= OBR.FONT_LIST_MAX || list.some((x) => sameFont(x, e))) return null;
+      return { list: list.concat(e), current };
+    });
+  }
+
+  // Removing the font in effect moves the reader to the first one left (Serif when none is).
+  function removeFont(entry) {
+    editFonts((list, current) => {
+      const rest = list.filter((x) => !sameFont(x, entry));
+      if (rest.length === list.length) return null;
+      return { list: rest, current: sameFont(current, entry) ? rest[0] || 'serif' : current };
+    });
+  }
+
+  function addTyped() {
+    const value = OBR.fontEntry(fontInput.value);
+    if (!value) return syncFontInput();
+    addFont(value);
+    fontInput.value = '';
+    syncFontInput();
+  }
+
+  // Shows the button while access can still be asked for, and the list at once when it was
+  // granted before. The button's click is what asks.
+  function checkFontAccess() {
+    if (typeof window.queryLocalFonts !== 'function') return; // typing alone
+    const state = navigator.permissions && navigator.permissions.query
+      ? navigator.permissions.query({ name: 'local-fonts' }).then((p) => p.state, () => 'prompt')
+      : Promise.resolve('prompt');
+    state.then((st) => {
+      if (st === 'granted') return loadInstalledFonts();
+      fontListBtn.hidden = st === 'denied';
+      fontListNote.hidden = st !== 'denied';
+    });
+  }
+
+  function loadInstalledFonts() {
+    return window.queryLocalFonts().then((faces) => {
+      const names = [...new Set(faces.map((f) => f.family))]
+        .filter((f) => f && f[0] !== '.') // macOS's hidden system faces (.SF NS …)
+        .sort((a, b) => a.localeCompare(b));
+      if (!names.length) throw new Error('no fonts');
+      installedFonts = names;
+      fontListBtn.hidden = true;
+      fontListNote.hidden = true;
+      fontList.hidden = false;
+      renderFontList();
+    }).catch(() => {
+      fontListNote.hidden = false; // refused or dismissed: keep typing
+      return navigator.permissions.query({ name: 'local-fonts' })
+        .then((p) => { fontListBtn.hidden = p.state === 'denied'; }, () => {});
+    });
+  }
+
+  // Filtered by what is typed. A click stars or unstars a font (adds it to Your fonts or
+  // takes it off). The buttons are rebuilt only when the shown names change: a click on one
+  // first blurs the box, whose change event lands here, and a rebuild then would swallow it.
+  let shownKey = null;
+  function renderFontList() {
+    const typed = fontInput.value.trim().toLowerCase();
+    const shown = typed ? installedFonts.filter((f) => f.toLowerCase().includes(typed)) : installedFonts;
+    const key = shown.join('\n');
+    if (key !== shownKey) {
+      shownKey = key;
+      fontList.textContent = '';
+      shown.forEach((f) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'option');
+        b.dataset.family = f;
+        b.textContent = f;
+        b.style.fontFamily = familyValue(f) + ', ' + OBR.FONT_STACKS.serif;
+        b.addEventListener('click', () => {
+          const v = familyValue(f);
+          if (inList(v)) removeFont(v); else addFont(v);
+        });
+        fontList.appendChild(b);
+      });
+    }
+    fontList.querySelectorAll('button').forEach((b) => {
+      const on = inList(familyValue(b.dataset.family));
+      b.setAttribute('aria-selected', String(on));
+      b.disabled = !on && isFull();
+    });
+  }
+
+  function bindFonts(settings) {
+    fontSel.addEventListener('change', () => {
+      fonts = { list: fonts.list, current: fontSel.value };
+      syncFontInput();
+      OBR.saveSettings({ fontFamily: fontSel.value }).then(flashSaved);
+    });
+    fontInput.addEventListener('input', syncFontInput);
+    fontInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addTyped(); });
+    fontAddBtn.addEventListener('click', addTyped);
+    fontListBtn.addEventListener('click', loadInstalledFonts);
+    setFonts(settings);
+    checkFontAccess();
+  }
+
+  // The reader's Aa "More fonts…" lands here: open the Reader card if it was left collapsed
+  // and bring the font setting into view.
+  function focusFontSetting() {
+    const row = document.getElementById('fontRow');
+    const card = row.closest('details');
+    if (card) card.open = true;
+    requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
+  /* ------------------------------------------------ site fonts */
+  // Sites with a reading font of their own (settings.siteFonts), set from the reader's Aa
+  // "Only on this site". Listed with the per-site data; removing one reads that site in the
+  // usual font again.
+  let siteFontsMap = {};
+  function setSiteFonts(s) {
+    const next = s.siteFonts && typeof s.siteFonts === 'object' ? s.siteFonts : {};
+    if (JSON.stringify(next) === JSON.stringify(siteFontsMap)) return;
+    siteFontsMap = next;
+    renderSiteFonts();
+  }
+
+  function renderSiteFonts() {
+    renderFocus(); // the focus list and the per-site count include these hosts
+    const wrap = document.getElementById('siteFonts');
+    wrap.textContent = '';
+    let hosts = Object.keys(siteFontsMap).filter((h) => OBR.fontEntry(siteFontsMap[h])).sort();
+    if (filterSite) hosts = hosts.filter((h) => h === filterSite);
+    document.getElementById('siteFontsCount').textContent = hosts.length ? '(' + hosts.length + ')' : '';
+    if (!hosts.length) {
+      const empty = document.createElement('div');
+      empty.className = 'site-empty';
+      empty.textContent = filterSite ? OBR.t('optNoSiteFontsForSite', [filterSite]) : OBR.t('optNoSiteFonts');
+      wrap.appendChild(empty);
+      return;
+    }
+    hosts.forEach((host) => {
+      const entry = OBR.fontEntry(siteFontsMap[host]);
+      const row = document.createElement('div');
+      row.className = 'pick-row';
+      const head = document.createElement('div');
+      head.className = 'pick-head';
+      const h = document.createElement('span');
+      h.className = 'pick-host'; h.textContent = host;
+      const font = document.createElement('span');
+      font.textContent = OBR.fontLabel(entry);
+      font.style.fontFamily = OBR.fontStackFor(entry);
+      const remove = document.createElement('button');
+      remove.className = 'ghost site-remove'; remove.textContent = '✕';
+      remove.title = OBR.t('optRemoveSiteFont');
+      remove.setAttribute('aria-label', host + ': ' + remove.title);
+      remove.addEventListener('click', () => {
+        OBR.saveSiteFont(host, '').then((ok) => {
+          if (ok) { siteFontsMap = OBR.withSiteFont(siteFontsMap, host, ''); renderSiteFonts(); }
+          flashSaved(ok);
+        });
+      });
+      head.append(h, font, remove);
+      row.appendChild(head);
+      wrap.appendChild(row);
     });
   }
 
@@ -806,6 +1086,8 @@
           SEGMENTS.forEach((k) => setSegment(k, s[k]));
           SELECTS.forEach((k) => { document.getElementById(k).value = s[k]; });
           CHECKBOXES.forEach((k) => { document.getElementById(k).checked = !!s[k]; });
+          setFonts(s);
+          setSiteFonts(s);
           rules = [];
           renderSites();
           if (cleared) { picks = {}; hiddenMap = {}; }
@@ -849,6 +1131,7 @@
     renderSites();
     renderPicks();
     renderHidden();
+    renderSiteFonts();
     renderSiteAccess();
   }
 
@@ -863,6 +1146,7 @@
     });
     Object.keys(picks || {}).forEach((h) => { if (h) set.add(h); });
     Object.keys(hiddenMap || {}).forEach((h) => { if ((hiddenMap[h] || []).length) set.add(h); });
+    Object.keys(siteFontsMap || {}).forEach((h) => { if (h) set.add(h); });
     return Array.from(set).sort();
   }
   // Populate + toggle the manual "focus on a site" control. The options page can't read the
@@ -916,13 +1200,8 @@
   setFilterBar(); // initial ?site scope (the data renders below already respect filterSite)
 
   document.getElementById('siteFilterClear').addEventListener('click', () => {
-    filterSite = '';
-    setFilterBar();
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* drop the ?site param */ }
-    renderSites();
-    renderPicks();
-    renderHidden();
-    renderSiteAccess();
+    applySiteFilter(''); // the one place that knows every per-site list
   });
 
   OBR.loadSettings().then((s) => {
@@ -998,18 +1277,33 @@
     } catch (e) { /* local storage unavailable */ }
   }
 
+  // The Aa menu's "More fonts…" stashes 'font' here (background.js openOptionsForSite).
+  const FOCUS_STASH = 'obr_options_focus';
+  function consumeFocus() {
+    if (!local) return;
+    try {
+      local.get(FOCUS_STASH, (d) => {
+        if (d && d[FOCUS_STASH] === 'font') { local.remove(FOCUS_STASH); focusFontSetting(); }
+      });
+    } catch (e) { /* local storage unavailable */ }
+  }
+
   if (!filterSite) consumeStashedSite();
   consumePrefill();
+  consumeFocus();
   if (chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes[SITE_STASH] && changes[SITE_STASH].newValue) consumeStashedSite();
       if (area === 'local' && changes[PREFILL_STASH] && changes[PREFILL_STASH].newValue) consumePrefill();
+      if (area === 'local' && changes[FOCUS_STASH] && changes[FOCUS_STASH].newValue) consumeFocus();
       // Site rules can change under an open Options tab — a context-menu "Always open as…" on
       // another tab, or a sync from another device. Without this refresh, a later edit here would
       // write back a STALE rules array and silently drop those. Reload + re-render only when they
       // actually differ, so our own writes don't trigger a self re-render.
       if (area === 'sync' && changes[OBR.STORAGE_KEY]) {
         OBR.loadSettings().then((s) => {
+          setFonts(s); // a font picked in a reader's Aa menu, or a list edited in another tab
+          setSiteFonts(s);
           const next = s.siteRules || [];
           // renderSiteAccess too: the card attributes each grant to a rule, so a rule change
           // from another tab/device can flip a row between "for auto-open" and "unused".

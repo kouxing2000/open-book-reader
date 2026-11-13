@@ -18,10 +18,7 @@
     { act: 'print', label: 'readerBtnPrintLabel', title: 'readerBtnPrintTitle' },
     { act: 'markdown', label: 'readerBtnMarkdownLabel', title: 'readerBtnMarkdownTitle', setting: 'markdownExport' },
   ];
-  const FONT_STACKS = {
-    serif: 'Georgia, "Songti SC", "STSong", "Noto Serif SC", serif',
-    sans: '-apple-system, system-ui, "PingFang SC", "Noto Sans SC", sans-serif'
-  };
+  const FONT_STACKS = OBR.FONT_STACKS;
   const FONT_MIN = 14, FONT_MAX = 26;
 
   // Mode-switch glyphs (open book + framed picture) — shared with gallery.js, defined once
@@ -219,6 +216,12 @@
             <span class="obr-font-size"></span>
             <button class="obr-btn" data-act="font+" title="${OBR.t('readerBtnFontLargerTitle')}">A+</button>
           </div>
+          <div class="obr-pop-lab">${OBR.t('optFont')}</div>
+          <div class="obr-fontbox">
+            <div class="obr-fonts" role="group" aria-label="${OBR.t('optFont')}"></div>
+            <button class="obr-font obr-font-more" data-act="font-more">${OBR.t('readerFontMore')}<span aria-hidden="true">›</span></button>
+          </div>
+          <label class="obr-font-site"><input type="checkbox"><span></span></label>
           <div class="obr-pop-lab">${OBR.t('optTheme')}</div>
           <div class="obr-set">${THEMES.map((t) => `<button class="obr-set-btn" data-act="theme" data-val="${t}" aria-pressed="false">${OBR.t(THEME_LABELS[t])}</button>`).join('')}</div>
           <div class="obr-pop-lab obr-cols">${OBR.t('optColumns')}</div>
@@ -326,6 +329,8 @@
     });
     overlay.querySelectorAll('[data-act]').forEach((b) =>
       b.addEventListener('click', () => handleAction(b.dataset.act, b.dataset.val, b)));
+    const siteBox = overlay.querySelector('.obr-font-site input');
+    siteBox.addEventListener('change', () => setFontScope(siteBox.checked));
     overlay.querySelectorAll('[data-pop]').forEach((b) =>
       b.addEventListener('click', () => togglePop(b.dataset.pop)));
 
@@ -510,11 +515,20 @@
     const btn = overlay.querySelector('[data-pop="' + name + '"]');
     if (!pop || !btn) return;
     const bar = btn.closest('.obr-topbar').getBoundingClientRect();
-    pop.style.right = Math.max(8, Math.round(bar.right - btn.getBoundingClientRect().right)) + 'px';
+    const right = Math.max(8, Math.round(bar.right - btn.getBoundingClientRect().right));
+    pop.style.right = right + 'px';
     pop.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
     openPop = name;
     if (name === 'type') syncTypePop();
+    // Hung from a button near the middle of a phone's bar, the popover only gets the room to
+    // that button's left: shrink-to-fit squeezes it against the screen edge however it is
+    // nudged afterwards. So measure its natural width (capped at the window by the CSS) and
+    // move its right edge in until that width fits with an 8px margin.
+    pop.style.width = 'max-content';
+    const want = pop.getBoundingClientRect().width;
+    pop.style.width = '';
+    pop.style.right = Math.max(8, Math.min(right, Math.floor(bar.right - 8 - want))) + 'px';
     showChrome();
   }
 
@@ -539,6 +553,43 @@
       b.setAttribute('aria-pressed', String(b.dataset.val === theme)));
     overlay.querySelectorAll('.obr-set-btn[data-act="columns"]').forEach((b) =>
       b.setAttribute('aria-pressed', String(Number(b.dataset.val) === settings.columns)));
+    if (openPop === 'type') syncFontList(); // its This site's font row reads the page; not before Aa opens
+  }
+
+  // Your fonts, one row each, drawn in the font it picks; the one in effect is marked, and is
+  // added at the end when it is no longer listed (removed in Options while a site keeps it), so
+  // the menu never hides the font the page is in. The rows are rebuilt only when that set
+  // changes, so a click never lands on a row that a rebuild has just replaced.
+  function syncFontList() {
+    const box = overlay.querySelector('.obr-fonts');
+    const list = OBR.fontListOf(settings);
+    const inEffect = fontChoice();
+    if (!list.some((e) => OBR.fontKey(e) === OBR.fontKey(inEffect))) list.push(inEffect);
+    const key = list.join('\n');
+    if (box.dataset.key !== key) {
+      box.dataset.key = key;
+      box.textContent = '';
+      list.forEach((entry) => {
+        const b = document.createElement('button');
+        b.className = 'obr-font';
+        b.dataset.val = entry;
+        const name = document.createElement('span');
+        name.textContent = OBR.fontLabel(entry);
+        b.appendChild(name);
+        if (OBR.FONT_TOKENS.indexOf(entry) < 0) b.title = entry; // the fallbacks too
+        b.style.fontFamily = OBR.fontStackFor(entry, siteFont);
+        b.addEventListener('click', () => handleAction('font-family', entry, b));
+        box.appendChild(b);
+      });
+    }
+    const current = OBR.fontKey(inEffect);
+    box.querySelectorAll('.obr-font').forEach((b) =>
+      b.setAttribute('aria-pressed', String(OBR.fontKey(b.dataset.val) === current)));
+    const host = siteHost();
+    const scope = overlay.querySelector('.obr-font-site');
+    scope.hidden = !host;
+    scope.querySelector('span').textContent = OBR.t('readerFontThisSite', [host]);
+    scope.querySelector('input').checked = !!OBR.siteFontOf(settings, host);
   }
 
   // Priority+ toolbar. Widths are MEASURED rather than set by breakpoints because the labels
@@ -604,6 +655,8 @@
     if (act === 'font+') return changeFont(1);
     if (act === 'font-') return changeFont(-1);
     if (act === 'columns') return setColumns(Number(val));
+    if (act === 'font-family') return setFontFamily(val);
+    if (act === 'font-more') { closePop(); return OBR.openOptions && OBR.openOptions('', 'font'); }
     if (act === 'pick') return startPicker();
     if (act === 'print') return printReader();
     if (act === 'markdown') return saveMarkdown();
@@ -628,8 +681,13 @@
   // would leave `printing` latched and every later Print silently dead for the tab.
   const SITE_HOST = new URL(OBR.SITE_URL).host;
 
-  function printCSS({ fontFamily, lineHeight }) {
-    const fam = FONT_STACKS[fontFamily] || FONT_STACKS.serif;
+  // fontStack is a resolved CSS font-family value (fontStack(settings)). It can come from
+  // the PAGE ('site' reads the page's computed font), and this CSS is written into the
+  // print frame as HTML, where a '</style>' inside even a quoted CSS string ends the style
+  // element and lets the rest run as markup on the page's origin. So '<' is escaped as the
+  // CSS escape \3c, which CSS reads back as '<' and HTML never sees.
+  function printCSS({ fontStack, lineHeight }) {
+    const fam = String(fontStack || FONT_STACKS.serif).replace(/</g, '\\3c ');
     const lh = lineHeight || 1.6;
     return `
       @page { margin: 18mm 16mm; }
@@ -694,7 +752,7 @@
     } catch (e) { return ''; }
   }
   OBR._qrSvg = qrSvg;
-  function buildPrintDoc({ title, byline, content, fontFamily, lineHeight, url, brand }) {
+  function buildPrintDoc({ title, byline, content, fontStack, lineHeight, url, brand }) {
     const t = escapeHTML(title || '');
     // `brand.qrSvg` is our own generated markup (a fixed project URL, no user input), so it's
     // injected raw; the name/url text is escaped.
@@ -707,7 +765,7 @@
         + '</div></div>';
     }
     return '<!doctype html><html><head><meta charset="utf-8">'
-      + `<title>${t || OBR.t('readerPrintDefaultTitle')}</title><style>${printCSS({ fontFamily, lineHeight })}</style></head>`
+      + `<title>${t || OBR.t('readerPrintDefaultTitle')}</title><style>${printCSS({ fontStack, lineHeight })}</style></head>`
       + `<body><h1>${t}</h1>`
       + (byline ? `<div class="obr-print-byline">${escapeHTML(byline)}</div>` : '')
       + (content || `<p>${OBR.t('readerPrintNoArticle')}</p>`)
@@ -769,7 +827,7 @@
 
     const docHtml = buildPrintDoc({
       title, byline, content,
-      fontFamily: settings.fontFamily, lineHeight: settings.lineHeight, url, brand,
+      fontStack: fontStack(settings), lineHeight: settings.lineHeight, url, brand,
     });
 
     // Render into an OFF-SCREEN (not 0x0 / visibility:hidden) iframe so the print
@@ -811,7 +869,7 @@
       const Sheet = win.CSSStyleSheet;
       if (Sheet && 'replaceSync' in Sheet.prototype) {
         const sheet = new Sheet();
-        sheet.replaceSync(printCSS({ fontFamily: settings.fontFamily, lineHeight: settings.lineHeight }));
+        sheet.replaceSync(printCSS({ fontStack: fontStack(settings), lineHeight: settings.lineHeight }));
         doc.adoptedStyleSheets = [sheet];
       }
     } catch (e) { /* the inline <style> already covers the common case */ }
@@ -2034,7 +2092,7 @@
     const mins = OBR.readingTimeMin ? OBR.readingTimeMin(words) : 0;
     if (metaEl) metaEl.textContent = mins ? OBR.t('readerReadingTime', [String(mins)]) : '';
     fitControls(); // the title and meta just changed width (a no-op until the host is shown)
-    pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
+    pagesEl.style.fontFamily = fontStack(settings);
     pagesEl.innerHTML =
       `<div class="obr-content">
          <h1 class="obr-doc-h1">${escapeHTML(title || '')}</h1>
@@ -4000,18 +4058,84 @@
     keptPlace = { f, spread: currentSpread, columns: totalColumns, perSpread: pagesPerSpread };
   }
 
+  // This page's host: the key for a site's own font ('' where there is none to key on).
+  function siteHost() {
+    try { return OBR.normalizeHost(location.href); } catch (e) { return ''; }
+  }
+
+  // The font in effect: this site's own when it has one, else the global choice. An entry
+  // this version can't use (a newer one synced from another device) reads as Serif.
+  function fontChoice(s) {
+    const o = s || settings;
+    return OBR.siteFontOf(o, siteHost()) || OBR.fontEntry(o.fontFamily) || 'serif';
+  }
+
+  // The CSS font-family value for a settings object, for the pages and for print.
+  function fontStack(s) {
+    return OBR.fontStackFor(fontChoice(s), siteFont);
+  }
+
+  // The page's own text font: the computed font-family of its largest prose block, else of
+  // <body> (a page whose text sits in <div>s). The value is copied, not inherited — the
+  // host's `all: initial` cuts inheritance — and the page's web fonts still apply inside
+  // the shadow root, because @font-face rules belong to the document. Once per open.
+  let siteFontCache = null;
+  function siteFont() {
+    if (siteFontCache === null) {
+      let v = '';
+      try {
+        const el = OBR._proseStats().maxEl || document.body;
+        if (el) v = getComputedStyle(el).fontFamily;
+      } catch (e) { /* no font to copy: serif */ }
+      siteFontCache = v || '';
+    }
+    return siteFontCache;
+  }
+
+  // Apply a setting that re-paginates (size, font, columns) and stay on the same text.
+  // Capture reading position as a fraction BEFORE the change reflows the content (the
+  // column count changes, so the spread index isn't portable — the progress fraction is).
+  // Without this, re-paginating would snap back to p.1.
+  // `save` stands in for the plain merge when the write must be read-modify-write.
+  function relayoutWith(patch, save) {
+    const anchor = readingFraction();
+    restoreAnchor = null; // live anchor supersedes any pending resume
+    Object.assign(settings, patch);
+    if (save) save(); else OBR.saveSettings(patch);
+    pagesEl.style.fontFamily = fontStack(settings);
+    syncTypePop();
+    layout(true, anchor);
+    showChrome();
+  }
+
   function changeFont(dir) {
     const next = Math.min(FONT_MAX, Math.max(FONT_MIN, settings.fontSize + dir));
     if (next === settings.fontSize) return;
-    // Capture reading position as a fraction BEFORE the font change reflows the
-    // content (column count changes, so the spread index isn't portable — the
-    // progress fraction is). Without this, re-paginating would snap back to p.1.
-    const anchor = readingFraction();
-    restoreAnchor = null; // live anchor supersedes any pending resume
-    settings.fontSize = next;
-    OBR.saveSettings({ fontSize: next });
+    relayoutWith({ fontSize: next });
+  }
+
+  // A pick from the Aa list goes where the "Only on this site" box says: to this site's own
+  // font while it has one, else to the global font.
+  function setFontFamily(v) {
+    const e = OBR.fontEntry(v);
+    if (!e || OBR.fontKey(e) === OBR.fontKey(fontChoice())) return;
+    const host = siteHost();
+    if (!OBR.siteFontOf(settings, host)) return relayoutWith({ fontFamily: e });
+    relayoutWith({ siteFonts: OBR.withSiteFont(settings.siteFonts, host, e) }, () => OBR.saveSiteFont(host, e));
+  }
+
+  // The "Only on this site" box. Ticked, this site keeps the font in effect as its own, so the
+  // page doesn't change until the next pick; unticked, it drops it and reads in the global font.
+  function setFontScope(own) {
+    const host = siteHost();
+    if (!host || own === !!OBR.siteFontOf(settings, host)) return;
+    const e = own ? fontChoice() : '';
+    const save = () => OBR.saveSiteFont(host, e);
+    const siteFonts = OBR.withSiteFont(settings.siteFonts, host, e);
+    if (!own) return relayoutWith({ siteFonts }, save);
+    settings.siteFonts = siteFonts;
+    save();
     syncTypePop();
-    layout(true, anchor);
     showChrome();
   }
 
@@ -4033,16 +4157,7 @@
 
   function setColumns(n) {
     if (COLUMN_OPTS.indexOf(n) < 0 || n === settings.columns) return;
-    // Preserve reading position across the re-pagination (same fraction-anchor
-    // trick as changeFont — the spread index isn't portable when the column
-    // count changes, but the progress fraction is).
-    const anchor = readingFraction();
-    restoreAnchor = null; // live anchor supersedes any pending resume
-    settings.columns = n;
-    OBR.saveSettings({ columns: n });
-    syncTypePop();
-    layout(true, anchor);
-    showChrome();
+    relayoutWith({ columns: n });
   }
 
   // Advertise how many gallery-worthy images the page has, on the Images segment
@@ -4095,6 +4210,7 @@
     // strings lifted from its DOM — leaving them set would report the PREVIOUS article (on a
     // different site) as if it were this one.
     flipDesyncs = 0; lastFlipDesync = null;
+    siteFontCache = null; // a new open may be a new page (an SPA keeps the same world)
     const gen = ++openGen; // claim this open; abort below if a newer open()/close() supersedes us
     const t = OBR._timer ? OBR._timer('[OBR reader]') : null; // local debug timing (see settings.js)
     settings = await OBR.loadSettings();
@@ -4481,6 +4597,9 @@
     // reader's CLEAN print (printReader) rather than the browser printing the clipped overlay
     // spread — the exact output that feature exists to replace.
     const mod = e.ctrlKey || e.metaKey || e.altKey;
+    // A focused checkbox (Aa's "Only on <site>") takes Space as its toggle, not a page turn.
+    const target = e.composedPath ? e.composedPath()[0] : e.target;
+    if (e.key === ' ' && target && target.type === 'checkbox') return;
     switch (e.key) {
       case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
         e.preventDefault(); e.stopPropagation(); flip(1); break;
@@ -4517,7 +4636,7 @@
         if (pickerActive) return; // overlay is hidden mid-pick; re-apply on the next open instead
         settings = s;
         applyTheme();
-        pagesEl.style.fontFamily = FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif;
+        pagesEl.style.fontFamily = fontStack(settings);
         syncTypePop();
         fitControls(); // a setting-gated action (⤓ Markdown) may have been switched on or off
         applyStylesheet();

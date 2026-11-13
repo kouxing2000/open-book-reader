@@ -288,6 +288,19 @@
     };
   };
 
+  // The reading font stacks. Shared so the Options page previews a font with the same
+  // fallback the reader uses.
+  OBR.FONT_STACKS = {
+    serif: 'Georgia, "Songti SC", "STSong", "Noto Serif SC", serif',
+    sans: '-apple-system, system-ui, "PingFang SC", "Noto Sans SC", sans-serif'
+  };
+  // The built-in reading fonts. Any other fontFamily / fontList entry is a CSS font-family value.
+  OBR.FONT_TOKENS = ['serif', 'sans', 'site'];
+  // fontList and siteFonts live in the one 8KB sync item with the site rules, so both are
+  // bounded: this many entries, each no longer than OBR.cssFontFamily allows.
+  OBR.FONT_LIST_MAX = 10;
+  OBR.SITE_FONTS_MAX = 20;
+
   OBR.DEFAULTS = {
     fontSize: 19,          // px
     theme: 'paper',        // 'auto' | 'paper' | 'light' | 'dark'. 'auto' follows the OS
@@ -296,7 +309,13 @@
     maxBookWidth: 0,       // 0 = fill the window (default). >0 caps the book width (px) for readability.
     gutter: 80,            // px, center spine width
     lineHeight: 1.62,
-    fontFamily: 'serif',   // 'serif' | 'sans'
+    fontFamily: 'serif',   // the reading font: 'serif' | 'sans' | 'site' (the page's own text
+                           // font) | a CSS font-family value (one name or a list)
+    fontList: ['serif', 'sans', 'site'], // "Your fonts": exactly what the Aa menu offers, in
+                           // order. Same entry forms as fontFamily; see OBR.fontListOf.
+    siteFonts: {},         // { '<host>': entry } — a site's own reading font, set with Aa's
+                           // "Only on this site"; it wins over fontFamily there. Keyed by
+                           // OBR.normalizeHost; see OBR.withSiteFont for the bound.
     columns: 2,            // columns (pages) per spread: 2, 3, or 4
     singlePageBelow: 720,  // px viewport width → fall back to one page
     transitionMs: 340,     // page-flip animation duration
@@ -802,10 +821,11 @@
   // `site` (optional): a host to focus — the options page filters its site-rules + saved-picks
   // lists to that site (with a "Show all" toggle). The reader/gallery pass the current host so
   // opening settings from a page jumps straight to that site's overrides.
-  OBR.openOptions = function (site) {
+  // `focus` (optional): 'font' lands on the reading-font setting (the Aa menu's More fonts).
+  OBR.openOptions = function (site, focus) {
     try {
       if (globalThis.chrome && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({ type: 'obr-open-options', site: site || '' }, () => { void chrome.runtime.lastError; });
+        chrome.runtime.sendMessage({ type: 'obr-open-options', site: site || '', focus: focus || '' }, () => { void chrome.runtime.lastError; });
       }
     } catch (e) { /* messaging unavailable */ }
   };
@@ -1568,10 +1588,11 @@
     return s;
   }
 
-  // { words, maxBlock }: total words in substantial prose leaf blocks, and the word
+  // { words, maxBlock, maxEl }: total words in substantial prose leaf blocks, the word
   // count of the single largest leaf block (the auto-open "anchor block" — a forum
   // index can total 200 words of long topic titles, but only a real post carries one
-  // substantial paragraph).
+  // substantial paragraph), and that block's element when it is substantial (else null) —
+  // the reader's "site font" reads the page's text font off it.
   // opts.divs also counts each <div>'s own text as a block, for forums whose posts are a
   // <div> split by <br>. Only the auto-open sentinel asks for it, and only to time a
   // Reader or Gallery rule's open. Every DECISION keeps the narrow count — the toolbar's
@@ -1579,22 +1600,105 @@
   // footer notice in a <div> clears the 80-word anchor alone) and could flip an image page
   // near the 200-word line from gallery to reader (docs/audit/sweep-2026-09-04.md A4-1).
   OBR._proseStats = function (opts) {
-    let words = 0, maxBlock = 0;
-    const add = (w) => {
-      if (w > maxBlock) maxBlock = w;
+    let words = 0, maxBlock = 0, maxEl = null;
+    const add = (w, el) => {
+      if (w > maxBlock) { maxBlock = w; maxEl = w >= MIN_PARA_WORDS ? el : null; }
       if (w >= MIN_PARA_WORDS) words += w;
     };
     document.querySelectorAll('p, blockquote, li').forEach((el) => {
       if (el.querySelector('p, blockquote, li')) return; // leaf blocks only — no nesting double-count
-      add(OBR._countWords(el.textContent));
+      add(OBR._countWords(el.textContent), el);
     });
     if (opts && opts.divs) {
       document.querySelectorAll('div').forEach((el) => {
         if (el.closest('p, blockquote, li')) return; // already inside a block counted above
-        add(OBR._countWords(ownText(el)));
+        add(OBR._countWords(ownText(el)), el);
       });
     }
-    return { words, maxBlock };
+    return { words, maxBlock, maxEl };
+  };
+
+  // A typed font value as CSS will take it — one family or a comma list, quoted or not —
+  // or '' when CSS would reject it. Assigning a rejected value to style.fontFamily is a
+  // silent no-op that KEEPS the previous font, so every stored font value goes through
+  // this (via OBR.fontEntry). No CSS global (the service worker) means no check is
+  // possible: ''. It is checked as it will be used, with a fallback after it: a lone
+  // CSS-wide keyword (inherit, initial…) passes on its own and fails once a fallback follows.
+  // var()/env()/attr() pass any parse check and fail only when computed, so they are refused.
+  // The length bound keeps a full fontList and siteFonts small in the sync item.
+  OBR.cssFontFamily = function (value) {
+    const v = String(value == null ? '' : value).trim();
+    if (!v || v.length > 80 || !globalThis.CSS || !CSS.supports) return '';
+    if (/\b(var|env|attr)\s*\(/i.test(v)) return '';
+    return CSS.supports('font-family', v + ', serif') ? v : '';
+  };
+
+  // One fontFamily / fontList entry in its stored form: a built-in token, matched without
+  // case so a typed "Serif" is the built-in, else a value CSS takes; '' when neither.
+  OBR.fontEntry = function (value) {
+    const v = String(value == null ? '' : value).trim();
+    return OBR.FONT_TOKENS.indexOf(v.toLowerCase()) >= 0 ? v.toLowerCase() : OBR.cssFontFamily(v);
+  };
+
+  // Two entries name the same font when they differ only in quotes, case or comma spacing.
+  OBR.fontKey = function (entry) {
+    return String(entry).replace(/["']/g, '').replace(/\s*,\s*/g, ',').trim().toLowerCase();
+  };
+
+  // The CSS font-family to draw an entry in. `siteFont` is asked only for 'site': the reader
+  // passes the page's own font; without one (the Options page), Serif stands in.
+  OBR.fontStackFor = function (entry, siteFont) {
+    const e = OBR.fontEntry(entry);
+    if (e === 'site') return (siteFont && siteFont()) || OBR.FONT_STACKS.serif;
+    if (OBR.FONT_STACKS[e]) return OBR.FONT_STACKS[e];
+    return e ? e + ', ' + OBR.FONT_STACKS.serif : OBR.FONT_STACKS.serif;
+  };
+
+  // The name shown for an entry: a built-in's own label, else its first family unquoted.
+  OBR.fontLabel = function (entry) {
+    const e = OBR.fontEntry(entry);
+    const keys = { serif: 'optFontSerif', sans: 'optFontSans', site: 'optFontSite' };
+    if (keys[e]) return OBR.t(keys[e]);
+    return e.split(',')[0].trim().replace(/^(["'])(.*)\1$/, '$2');
+  };
+
+  // A site's own font from a settings object, or '' when it has none (or an unusable one).
+  OBR.siteFontOf = function (s, host) {
+    const m = s && s.siteFonts;
+    if (!host || !m || typeof m !== 'object' || !Object.prototype.hasOwnProperty.call(m, host)) return '';
+    return OBR.fontEntry(m[host]);
+  };
+
+  // siteFonts with `host` set to `entry` ('' removes it), as a new object. The newest goes
+  // last, so past SITE_FONTS_MAX the ones set longest ago are dropped.
+  OBR.withSiteFont = function (map, host, entry) {
+    const m = Object.assign({}, map && typeof map === 'object' ? map : {});
+    delete m[host];
+    if (entry) m[host] = entry;
+    const keys = Object.keys(m);
+    keys.slice(0, Math.max(0, keys.length - OBR.SITE_FONTS_MAX)).forEach((k) => { delete m[k]; });
+    return m;
+  };
+
+  // Read-modify-write over the stored map, so a site set from another tab is never lost.
+  OBR.saveSiteFont = function (host, entry) {
+    return OBR.updateSettings((raw) => { raw.siteFonts = OBR.withSiteFont(raw.siteFonts, host, entry); });
+  };
+
+  // Your fonts as stored, cleaned: usable entries only, no repeats, at most FONT_LIST_MAX.
+  // A missing list is the default one; an empty list stays empty (Aa then offers only
+  // More fonts, and the reader falls back to Serif).
+  OBR.fontListOf = function (s) {
+    const list = Array.isArray(s && s.fontList) ? s.fontList : OBR.DEFAULTS.fontList;
+    const seen = new Set();
+    const out = [];
+    list.forEach((v) => {
+      const e = OBR.fontEntry(v);
+      if (!e || seen.has(OBR.fontKey(e)) || out.length >= OBR.FONT_LIST_MAX) return;
+      seen.add(OBR.fontKey(e));
+      out.push(e);
+    });
+    return out;
   };
 
   // Long-standing alias (gallery/_autoToggle, reports, tests).

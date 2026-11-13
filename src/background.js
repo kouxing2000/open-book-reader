@@ -439,12 +439,17 @@ chrome.commands.onCommand.addListener(async (command) => {
 // instead of a ?site= URL: options.js reads + clears it on load, and its storage.onChanged
 // listener re-scopes a tab that's already open. (local, not session — session doesn't
 // reliably survive the SW→page handoff; the key is consumed immediately so it never lingers.)
-function openOptionsForSite(site) {
+// `focus` rides the same way: 'font' (the Aa menu's More fonts) lands on the reading-font
+// setting. Only known values are passed on.
+function openOptionsForSite(site, focus) {
   const s = site && String(site).trim();
+  const stash = {};
+  if (s) stash.obr_options_site = s;
+  if (focus === 'font') stash.obr_options_focus = focus;
   const openPage = () => { try { chrome.runtime.openOptionsPage(); } catch (e) { /* */ } };
   try {
-    if (s && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.set({ obr_options_site: s }, openPage); // stash, THEN open
+    if (Object.keys(stash).length && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set(stash, openPage); // stash, THEN open
     } else {
       openPage();
     }
@@ -1402,7 +1407,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // that API exists only in the SW/extension pages. The ⚙ button relays here; the
   // context-menu "Settings…" item calls the same helper directly (see below).
   if (msg.type === 'obr-open-options') {
-    openOptionsForSite(msg.site);
+    openOptionsForSite(msg.site, msg.focus);
     sendResponse({ ok: true });
     return true;
   }

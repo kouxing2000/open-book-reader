@@ -124,14 +124,20 @@ keeps the label.
 ## The toolbar — Aa, ⋯, and a width fit instead of breakpoints
 
 The topbar is the mode switch, the title, and then **Aa · ◐ · ⛶ · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
-is a popover with text size, theme and columns (the `+` `−` `T` keys reach the same settings; the
-columns row is hidden at one page per view, where the count does nothing); ◐
+is a popover with text size, reading font, theme and columns (the `+` `−` `T` keys reach size and
+theme; the columns row is hidden at one page per view, where the count does nothing); ◐
 cycles the theme in one tap, as `T` does; ⋯ is a menu with everything else. The Aa and ⋯ popovers
 are hand-rolled (`togglePop` / `closePop`) because the `popover` attribute needs Chrome 114 and the
 manifest's floor is 102. They live inside `.obr-topbar`, so the
 page-flip click handler already ignores clicks in them; a click anywhere else while one is open only
 closes it (no page turn), Escape closes it before it closes the reader, and `scheduleHideChrome`
-never hides the bar while one is open.
+never hides the bar while one is open. A popover hangs from its button's right edge, and on a phone
+Aa sits near the middle of the bar, so the room to its left can be less than the Aa popover's
+width (a 250px minimum, more where a language's labels run long). Shrink-to-fit gives an absolutely
+positioned box only the room left of its `right` offset, so nudging it after it renders never widens
+it: `togglePop` measures its natural width (`width: max-content`, capped at the window by the CSS)
+and moves `right` in until that width fits with an 8px margin. The font list and the site line
+don't count toward that width (see Reading font), so a long font or host name can't push it out.
 
 **Pick, Print and Markdown are `FLEX_ACTS`**: inline while the bar has room, in ⋯ when it does not —
 each has a twin menu item, and exactly one of the pair is shown. `fitControls` decides by MEASURING,
@@ -175,6 +181,59 @@ leaves to `'normal'`. During the page's own full screen the window reports `'ful
 those answers leave `_winFs` alone and the `fullscreenchange` that ends it asks again. A
 user's close still ends only the page's own full screen: a browser full screen the user chose
 stays. The worker half is pinned in `extension-load.spec.js` with real window states.
+
+## Reading font — Your fonts, and a site's own
+
+Two settings decide the font. `fontList` ("Your fonts", default `['serif', 'sans', 'site']`) is
+what Aa offers, one row per font in its own face, plus **More fonts…**; Options edits it. The one
+exception: the font in effect is added at the end when it is no longer listed (removed in Options
+while a site keeps it), so the menu never hides the font the page is in. The rows are built only
+while Aa is open, since This site's font row reads the page.
+`fontFamily` is the global choice. An entry is a built-in token (`OBR.FONT_TOKENS`) or a CSS
+`font-family` value, normalized by `OBR.fontEntry` (a typed "Serif" is the token). `siteFonts`
+(`{ host: entry }`, keyed by `OBR.normalizeHost`) is a site's own font, and wins over `fontFamily`
+on that site. `fontChoice()` → `fontStack()` in reader.js is the one resolver for the pages and for
+print.
+
+- **Only on <site>** under the Aa list routes picks. Ticked, a pick sets this site's entry and the
+  global font is untouched; ticking keeps the font in effect as the site's own (nothing moves);
+  unticking deletes it and the page reads in the global font again. Writes go through
+  `OBR.saveSiteFont`, a read-modify-write, so a site set from another tab is never dropped.
+- **Both lists share the one 8KB sync item** with the site rules, so both are bounded:
+  `OBR.FONT_LIST_MAX` entries in Your fonts (Options disables adding past it and says why),
+  `OBR.SITE_FONTS_MAX` sites (`OBR.withSiteFont` keeps insertion order with the newest last, so the
+  site set longest ago drops first), and `OBR.cssFontFamily` caps an entry's length.
+- **Options never picks by adding.** Typing a name or starring an installed font adds it to Your
+  fonts; the Reading font dropdown and Aa pick. Removing the font in effect moves the global
+  choice to the first one left (Serif when none is). The dropdown also lists the font in effect
+  when it is no longer on the list, so it never names a font the reader isn't using.
+- **More fonts…** relays `{ type: 'obr-open-options', focus: 'font' }`; background.js stashes
+  `obr_options_focus` the way the ⚙ scope rides `obr_options_site`, and options.js opens the
+  Reader card (it may have been left collapsed) and scrolls to the font row, in a fresh tab or one
+  already open.
+- **This site's font** copies the computed `font-family` of the page's largest prose block
+  (`OBR._proseStats`'s `maxEl`, a leaf `p`/`blockquote`/`li` of 20+ words; else `<body>`), once per
+  open. It is copied because the host's `all: initial` cuts inheritance. The page's web fonts still
+  apply inside the shadow root, since `@font-face` belongs to the document, but NOT in the print
+  frame (a separate about:blank document): print falls through to the next family the site lists.
+- **Every stored value is checked** with `OBR.cssFontFamily` on read, as it will be used: with a
+  fallback after it (`CSS.supports('font-family', v + ', serif')`), which rejects a lone CSS-wide
+  keyword such as `initial`, and with `var()`/`env()`/`attr()` refused, since those pass any parse
+  check and fail only when computed. An invalid value assigned to `style.fontFamily` is a silent
+  no-op that KEEPS the previous font, so an unchecked bad value would leave the reader in whatever
+  font it had before. The reader's serif
+  stack backs every custom entry, and Options previews with the same stack (`OBR.fontStackFor`).
+- **The Aa list is rebuilt only when Your fonts changes**, and the installed-font list only when the
+  shown names change: a rebuild under the pointer swallows the click that caused it.
+- **The list and the site line don't size the popover** (`contain: inline-size`): a font or host
+  name can be any length, so the other rows set the width and a long name is cut short.
+- **The installed-font list** (Options) uses `queryLocalFonts()`, asked only from the button's
+  click; no manifest permission is involved. Granted earlier, it loads with the page, which takes
+  a second or two on a machine with a few hundred families. Refused, dismissed or unsupported,
+  typing a name is the whole feature.
+- **Print escapes `<`** in the font value (`\3c`). Site's value is page-controlled, and the print
+  CSS is written into the frame as HTML, where `</style>` ends the style element even inside a
+  quoted CSS string. Pinned in `reader.spec.js` (Reading font).
 
 ## Page-turn animation
 

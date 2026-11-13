@@ -124,6 +124,35 @@
       margin: 0 0 18px; padding: 10px 14px; border-radius: 10px; font-size: 13.5px;
       background: rgba(124,108,255,.12); border: 1px solid rgba(124,108,255,.38); }
     .site-filter[hidden] { display: none; }
+    /* Reading font → Custom: the name box, the installed-font list (each name drawn in its
+       own font) and a preview drawn in the typed value with the reader's own fallback. */
+    .font-custom { padding: 4px 0 12px; border-bottom: 1px solid rgba(127,127,127,.18); }
+    .font-head { margin: 6px 0 8px; font-size: 14px; }
+    .font-head .hint { display: block; font-size: 12px; opacity: .55; margin-top: 2px; font-weight: 400; }
+    .font-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .font-chip { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 3px 4px 3px 12px; border-radius: 999px; background: rgba(124,108,255,.14); font-size: 14px; }
+    .font-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .font-chip button { padding: 2px 7px; border-radius: 999px; background: transparent; color: inherit; font: 13px system-ui, sans-serif; opacity: .6; }
+    .font-chip button:hover { opacity: 1; background: rgba(127,127,127,.18); }
+    .font-addback { font-size: 12.5px; margin: 8px 0 0; }
+    .font-addback[hidden] { display: none; }
+    .font-addback button { padding: 2px 8px; margin-left: 4px; background: transparent; color: #6b5cff; font-size: 12.5px; }
+    .font-add { display: flex; gap: 8px; flex: 1 1 220px; min-width: 0; }
+    .font-full { font-size: 12px; opacity: .6; margin: 2px 0 6px; }
+    .font-name { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 8px 0; }
+    .font-name label { flex: 1 1 200px; font-size: 14px; }
+    .font-name .hint { display: block; font-size: 12px; opacity: .55; margin-top: 2px; }
+    .font-name input { flex: 1 1 180px; min-width: 0; box-sizing: border-box; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
+    .font-error { margin: 2px 0 6px; font-size: 12.5px; color: #c62828; }
+    #fontListNote { font-size: 12px; opacity: .6; margin: 6px 0; }
+    .font-list { max-height: 240px; overflow-y: auto; margin: 6px 0; border: 1px solid rgba(127,127,127,.25); border-radius: 8px; }
+    .font-list button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 6px 10px; border-radius: 0; background: transparent; color: inherit; font-size: 15px; }
+    .font-list button::before { content: '☆'; font-family: system-ui, sans-serif; opacity: .45; width: 1em; }
+    .font-list button[aria-selected="true"]::before { content: '★'; color: #6b5cff; opacity: 1; }
+    .font-list button:disabled { cursor: default; opacity: .45; }
+    .font-list button:hover { background: rgba(124,108,255,.12); }
+    .font-list button[aria-selected="true"] { background: rgba(124,108,255,.12); }
+    .font-preview { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 16px; line-height: 1.6; background: rgba(127,127,127,.1); }
     .site-focus-bar { display: flex; align-items: center; gap: 8px; margin: -6px 0 18px; font-size: 13px; opacity: .85; }
     .site-focus-bar[hidden] { display: none; }
     .site-focus-bar label { display: inline-flex; align-items: center; gap: 8px; }
@@ -174,7 +203,7 @@
       <ul>
         <li data-i18n-html="optGuideReadFlip"><kbd>←</kbd> <kbd>→</kbd> flip pages — or click the left / right edge of the book</li>
         <li data-i18n-html="optGuideReadHomeEnd"><kbd>Home</kbd> / <kbd>End</kbd> first / last spread · <kbd>Esc</kbd> close</li>
-        <li data-i18n-html="optGuideReadTopbar">Topbar: <kbd>Aa</kbd> font size · theme · full screen (<kbd>F</kbd>) · columns (2/3/4) · <kbd>⋯</kbd> Pick · Print · Markdown · Settings · Report (a wide window shows some of these right in the bar) · 🖼 switch to gallery</li>
+        <li data-i18n-html="optGuideReadTopbar">Topbar: <kbd>Aa</kbd> font size · reading font · theme · full screen (<kbd>F</kbd>) · columns (2/3/4) · <kbd>⋯</kbd> Pick · Print · Markdown · Settings · Report (a wide window shows some of these right in the bar) · 🖼 switch to gallery</li>
       </ul>
 
       <p data-i18n-html="optGuideWrongTitle"><b>Picked the wrong content?</b> Sometimes the reader grabs a sidebar or the wrong block. Three ways to fix it:</p>
@@ -213,12 +242,27 @@
       </select>
     </div>
 
-    <div class="row">
-      <label data-i18n="optFont">Reading font</label>
-      <select id="fontFamily">
-        <option value="serif" data-i18n="optFontSerif">Serif</option>
-        <option value="sans" data-i18n="optFontSans">Sans-serif</option>
-      </select>
+    <div class="row wide-select" id="fontRow">
+      <label for="fontFamily" data-i18n="optFont">Reading font</label>
+      <select id="fontFamily"></select>
+    </div>
+    <div class="font-custom" id="fontPanel">
+      <p class="font-head"><b data-i18n="optFontsHead">Your fonts</b> <span class="hint" data-i18n="optFontsHint">Exactly what the reader's Aa menu offers.</span></p>
+      <div class="font-chips" id="fontChips"></div>
+      <p class="hint font-addback" id="fontAddBack" hidden><span data-i18n="optFontAddBack">Add back:</span></p>
+      <div class="font-name">
+        <label for="fontInput"><span data-i18n="optFontCustomName">Font name</span> <span class="hint" data-i18n="optFontCustomHint">Any font installed on this computer. Add fallbacks after commas.</span></label>
+        <div class="font-add">
+          <input type="text" id="fontInput" spellcheck="false" autocomplete="off" placeholder="LXGW WenKai, Kaiti SC" />
+          <button type="button" class="ghost" id="fontAddBtn" data-i18n="optFontAdd">Add</button>
+        </div>
+      </div>
+      <p class="font-error" id="fontInputError" data-i18n="optFontInvalid" hidden>Not a font name the browser accepts. Check quotes and commas.</p>
+      <p class="font-full" id="fontFullNote" hidden></p>
+      <button type="button" class="ghost" id="fontListBtn" data-i18n="optFontListBtn" hidden>Choose from installed fonts</button>
+      <p class="hint" id="fontListNote" data-i18n="optFontListDenied" hidden>Chrome didn't allow access to your installed fonts. Type a font name instead.</p>
+      <div class="font-list" id="fontList" role="listbox" aria-multiselectable="true" hidden></div>
+      <p class="font-preview" id="fontPreview" data-i18n="optFontPreview">The quick brown fox jumps over the lazy dog.</p>
     </div>
 
     <div class="row">
@@ -428,6 +472,12 @@
       match images by their place in the page instead of by URL. Remove one to bring those images back.</span>
     </div>
     <div id="hidden"></div>
+
+    <div class="subhead">
+      <span data-i18n="optSiteFontsHead">Site fonts</span> <span id="siteFontsCount" class="subhead-count"></span>
+      <span class="hint" data-i18n-html="optSiteFontsHint">Sites with a reading font of their own. To give one its own, tick the box under the font list in the reader's <b>Aa</b> menu while reading it. Remove one to read that site in your usual font again.</span>
+    </div>
+    <div id="siteFonts"></div>
   </details>
 
   <div class="actions">

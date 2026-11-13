@@ -912,3 +912,158 @@ test('the welcome + options "Share with a friend" links copy their own tagged in
     await expect(link).toHaveText('Share with a friend', { timeout: 5000 }); // the label comes back
   }
 });
+
+// Reading font → Your fonts. Chrome's installed-font list (queryLocalFonts) and its permission
+// are stubbed: a headless profile cannot answer the permission prompt, and the fonts a CI
+// machine has installed are not ours to assert on.
+async function stubLocalFonts(page, { state = 'prompt', refuse = false } = {}) {
+  await page.addInitScript(({ state, refuse }) => {
+    window.__lfCalls = 0;
+    window.__lfState = state;
+    window.queryLocalFonts = async () => {
+      window.__lfCalls++;
+      if (refuse) { window.__lfState = 'denied'; throw new DOMException('denied', 'NotAllowedError'); } // Block on the prompt
+      return [{ family: 'Zeta Sans' }, { family: '.Hidden System' }, { family: 'Alpha Serif' }, { family: 'Alpha Serif' }];
+    };
+    const query = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (d) => (d && d.name === 'local-fonts'
+      ? Promise.resolve({ state: window.__lfState }) : query(d));
+  }, { state, refuse });
+}
+// The raw stored settings (not merged over the defaults), so an unwritten key reads undefined.
+const storedRaw = (page) => page.evaluate(() => new Promise((res) =>
+  chrome.storage.sync.get('obr_settings', (d) => res(d.obr_settings || {}))));
+const chipNames = (page) => page.locator('#fontChips .font-chip > span');
+
+test('Your fonts: typing adds only a value CSS takes, and adding never changes the reading font', async ({ page, extensionId }) => {
+  await stubLocalFonts(page);
+  await page.goto(optionsUrl(extensionId));
+  await openSections(page);
+  await expect(chipNames(page)).toHaveText(['Serif', 'Sans-serif', "This site's font"]);
+  expect(await page.locator('#fontFamily option').evaluateAll((os) => os.map((o) => o.value))).toEqual(['serif', 'sans', 'site']);
+  await expect(page.locator('#fontAddBack')).toBeHidden();
+
+  await page.fill('#fontInput', 'Courier New, monospace');
+  // The preview draws the typed value, backed by the reader's own serif stack.
+  expect(await page.locator('#fontPreview').evaluate((el) => el.style.fontFamily)).toMatch(/^"?Courier New"?, monospace, Georgia/);
+  await page.locator('#fontInput').press('Enter');
+  await expect.poll(() => storedRaw(page).then((s) => s.fontList)).toEqual(['serif', 'sans', 'site', 'Courier New, monospace']);
+  expect((await storedRaw(page)).fontFamily).toBeUndefined();
+  await expect(page.locator('#fontInput')).toHaveValue('');
+  await expect(chipNames(page)).toHaveText(['Serif', 'Sans-serif', "This site's font", 'Courier New']);
+
+  await page.fill('#fontInput', 'Broken "Quote');
+  await expect(page.locator('#fontInputError')).toBeVisible();
+  await page.locator('#fontInput').press('Enter');
+  await page.waitForTimeout(300);
+  expect((await storedRaw(page)).fontList).toHaveLength(4); // refused: the error line says why
+  await page.fill('#fontInput', '');
+
+  await page.selectOption('#fontFamily', 'Courier New, monospace'); // the dropdown is what picks
+  await expect.poll(() => storedRaw(page).then((s) => s.fontFamily)).toBe('Courier New, monospace');
+});
+
+test('Your fonts: removing the font in use moves to the first one left, and a built-in can come back', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({ obr_settings: { fontFamily: 'sans', siteFonts: { 'a.example': 'serif' } } }, res)));
+  await page.reload();
+  await openSections(page);
+  await expect(page.locator('#fontFamily')).toHaveValue('sans');
+
+  await page.locator('#fontChips .font-chip', { hasText: 'Sans-serif' }).locator('button').click();
+  await expect.poll(() => storedRaw(page)).toMatchObject({ fontList: ['serif', 'site'], fontFamily: 'serif' });
+  expect((await storedRaw(page)).siteFonts).toEqual({ 'a.example': 'serif' }); // a read-modify-write
+  await expect(page.locator('#fontFamily')).toHaveValue('serif');
+
+  await expect(page.locator('#fontAddBack button')).toHaveText(['+ Sans-serif']);
+  await page.click('#fontAddBack button');
+  await expect.poll(() => storedRaw(page).then((s) => s.fontList)).toEqual(['serif', 'site', 'sans']);
+  await expect(page.locator('#fontAddBack')).toBeHidden();
+});
+
+test('Your fonts: a full list refuses more, and says how many it holds', async ({ page, extensionId }) => {
+  await stubLocalFonts(page, { state: 'granted' });
+  await page.goto(optionsUrl(extensionId));
+  const ten = ['serif', 'sans', 'site', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'Zeta Sans'];
+  await page.evaluate((fontList) => new Promise((res) => chrome.storage.sync.set({ obr_settings: { fontList } }, res)), ten);
+  await page.reload();
+  await openSections(page);
+  await expect(page.locator('#fontAddBtn')).toBeDisabled();
+  await expect(page.locator('#fontFullNote')).toHaveText('Up to 10 fonts. Remove one to add another.');
+  // Granted earlier: the list shows at once. A listed font can still be taken off; others can't go on.
+  await expect(page.locator('#fontList button', { hasText: 'Alpha Serif' })).toBeDisabled();
+  await expect(page.locator('#fontList button', { hasText: 'Zeta Sans' })).toBeEnabled();
+});
+
+test('Your fonts: the installed-font list asks only on click, then filters, and a click stars or unstars', async ({ page, extensionId }) => {
+  await stubLocalFonts(page, { state: 'prompt' });
+  await page.goto(optionsUrl(extensionId));
+  await openSections(page);
+  await expect(page.locator('#fontListBtn')).toBeVisible();
+  expect(await page.evaluate(() => window.__lfCalls)).toBe(0); // nothing asked before the click
+
+  await page.click('#fontListBtn');
+  const names = page.locator('#fontList button');
+  await expect(names).toHaveText(['Alpha Serif', 'Zeta Sans']); // deduped, sorted, hidden faces dropped
+  await expect(page.locator('#fontListBtn')).toBeHidden();
+  expect(await names.nth(1).evaluate((el) => el.style.fontFamily)).toMatch(/^"?Zeta Sans"?, Georgia/); // drawn in itself
+
+  await page.fill('#fontInput', 'zet');
+  await expect(names).toHaveText(['Zeta Sans']);
+  await names.first().click();
+  await expect.poll(() => storedRaw(page).then((s) => s.fontList)).toEqual(['serif', 'sans', 'site', 'Zeta Sans']);
+  await expect(names.first()).toHaveAttribute('aria-selected', 'true');
+  await names.first().click(); // unstar
+  await expect.poll(() => storedRaw(page).then((s) => s.fontList)).toEqual(['serif', 'sans', 'site']);
+  await expect(names.first()).toHaveAttribute('aria-selected', 'false');
+});
+
+test('Your fonts: a refused font permission leaves typing working', async ({ page, extensionId }) => {
+  await stubLocalFonts(page, { state: 'prompt', refuse: true });
+  await page.goto(optionsUrl(extensionId));
+  await openSections(page);
+  await page.click('#fontListBtn');
+  await expect(page.locator('#fontListNote')).toBeVisible();
+  await expect(page.locator('#fontListBtn')).toBeHidden(); // blocked: asking again would do nothing
+  await expect(page.locator('#fontList')).toBeHidden();
+  await page.fill('#fontInput', 'Georgia');
+  await page.click('#fontAddBtn');
+  await expect.poll(() => storedRaw(page).then((s) => s.fontList)).toEqual(['serif', 'sans', 'site', 'Georgia']);
+});
+
+test('Site fonts: listed with the per-site data, and removing one keeps the others', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteFonts: { 'b.example': '"Obr X", serif', 'a.example': 'sans' } } }, res)));
+  await page.reload();
+  await openSections(page);
+  const rows = page.locator('#siteFonts .pick-row');
+  await expect(rows.locator('.pick-host')).toHaveText(['a.example', 'b.example']);
+  await expect(rows.nth(1)).toContainText('Obr X');
+  await expect(page.locator('#siteFontsCount')).toHaveText('(2)');
+  await rows.nth(0).locator('.site-remove').click();
+  await expect.poll(() => storedRaw(page).then((s) => s.siteFonts)).toEqual({ 'b.example': '"Obr X", serif' });
+  await expect(rows.locator('.pick-host')).toHaveText(['b.example']);
+});
+
+test('Site fonts: scoped to one site from the reader, Show all lists every site again', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteFonts: { 'a.example': 'sans', 'b.example': 'serif' } } }, res)));
+  await page.goto(optionsUrl(extensionId) + '?site=a.example');
+  await openSections(page);
+  const hosts = page.locator('#siteFonts .pick-host');
+  await expect(hosts).toHaveText(['a.example']);
+  await page.click('#siteFilterClear');
+  await expect(hosts).toHaveText(['a.example', 'b.example']);
+});
+
+test("More fonts lands on the font setting, even with the Reader card collapsed", async ({ page, serviceWorker, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  const card = page.locator('details.card', { has: page.locator('#fontRow') });
+  await card.evaluate((d) => { d.open = false; });
+  // The worker's side of the Aa menu's More fonts: stash, then focus this open Options tab.
+  await serviceWorker.evaluate(() => openOptionsForSite('', 'font'));
+  await expect.poll(() => card.evaluate((d) => d.open)).toBe(true);
+  await expect(page.locator('#fontRow')).toBeInViewport();
+  await expect.poll(() => page.evaluate(() => new Promise((res) =>
+    chrome.storage.local.get('obr_options_focus', (d) => res(d.obr_options_focus ?? null))))).toBeNull(); // consumed
+});

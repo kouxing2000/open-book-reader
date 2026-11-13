@@ -79,10 +79,13 @@
     .obr-pop {
       position: absolute; top: calc(100% - 2px); right: 18px; z-index: 11;
       display: flex; flex-direction: column; gap: 2px; min-width: 210px; padding: 6px;
+      max-width: calc(100vw - 16px); /* an 8px margin a side (border-box: padding included) */
       border-radius: 12px; background-color: rgb(var(--obr-bg));
       background-image: linear-gradient(rgba(255,255,255,.38), rgba(255,255,255,.38));
       box-shadow: 0 12px 30px rgba(0,0,0,.24), 0 0 0 1px rgba(0,0,0,.07);
     }
+    /* Aa: wide enough for a typical font name; a short window scrolls it. */
+    .obr-pop[data-for="type"] { min-width: 250px; max-height: calc(100vh - 64px); overflow-y: auto; }
     .obr-overlay.dark .obr-pop {
       background-image: linear-gradient(rgba(255,255,255,.07), rgba(255,255,255,.07));
       box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);
@@ -98,6 +101,40 @@
     }
     .obr-set-btn[aria-pressed="true"] { background: rgba(255,255,255,.8); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
     .obr-overlay.dark .obr-set-btn[aria-pressed="true"] { background: rgba(255,255,255,.22); }
+    /* Reading font: Your fonts as a list, one row per font drawn in its own face; past about
+       eight rows the list scrolls. A font name and a site name can be any length, so neither
+       the list nor the site line counts toward the popover's width (contain: inline-size):
+       the other rows set it, and a long name is cut short instead of widening the popover. */
+    .obr-fontbox {
+      margin: 0 6px 4px; padding: 3px; border-radius: 8px; background: rgba(0,0,0,.09);
+      contain: inline-size;
+    }
+    .obr-overlay.dark .obr-fontbox { background: rgba(255,255,255,.08); }
+    .obr-fonts { display: flex; flex-direction: column; gap: 1px; max-height: 17em; overflow-y: auto; }
+    .obr-font {
+      display: flex; align-items: center; gap: 8px; border: none; cursor: pointer;
+      padding: 6px 10px; border-radius: 6px; background: transparent; color: inherit;
+      font-size: 15px; line-height: 20px; text-align: left; /* px: each face has its own metrics */
+    }
+    .obr-font > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .obr-font:hover { background: rgba(0,0,0,.06); }
+    .obr-overlay.dark .obr-font:hover { background: rgba(255,255,255,.08); }
+    .obr-font[aria-pressed="true"] { background: rgba(255,255,255,.8); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+    .obr-overlay.dark .obr-font[aria-pressed="true"] { background: rgba(255,255,255,.22); }
+    .obr-font[aria-pressed="true"]::after { content: "✓"; font-family: system-ui, sans-serif; }
+    .obr-font-more {
+      width: 100%; justify-content: space-between; margin-top: 2px; font: inherit; font-size: 12.5px;
+      border-top: 1px solid rgba(0,0,0,.08); border-radius: 0 0 6px 6px;
+    }
+    .obr-overlay.dark .obr-font-more { border-top-color: rgba(255,255,255,.1); }
+    .obr-font-more > span { flex: none; }
+    .obr-font-site {
+      display: flex; align-items: center; gap: 6px; padding: 2px 8px 4px; font-size: 12.5px;
+      cursor: pointer; contain: inline-size;
+    }
+    .obr-font-site[hidden] { display: none; }
+    .obr-font-site input { margin: 0; flex: none; }
+    .obr-font-site span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .obr-menuitem {
       display: flex; align-items: center; border: none; cursor: pointer; padding: 8px 10px;
       border-radius: 7px; background: transparent; color: inherit; font: inherit;
