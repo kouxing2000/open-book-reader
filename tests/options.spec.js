@@ -981,6 +981,24 @@ test('Your fonts: removing the font in use moves to the first one left, and a bu
   await expect(page.locator('#fontAddBack')).toBeHidden();
 });
 
+test('Your fonts: removing one not in use keeps the font; removing the last switches to This site\'s font', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({ obr_settings: { fontList: ['Yeti Mono', 'Xena Serif', 'Zeta Sans'], fontFamily: 'Zeta Sans' } }, res)));
+  await page.reload();
+  await openSections(page);
+  await expect(page.locator('#fontFamily')).toHaveValue('Zeta Sans');
+  const remove = (name) => page.locator('#fontChips .font-chip', { hasText: name }).locator('button').click();
+
+  await remove('Yeti Mono'); // not the one in use, and not the first left after it goes
+  await expect.poll(() => storedRaw(page)).toMatchObject({ fontList: ['Xena Serif', 'Zeta Sans'], fontFamily: 'Zeta Sans' });
+  await remove('Xena Serif');
+  await expect.poll(() => storedRaw(page).then((s) => s.fontList)).toEqual(['Zeta Sans']);
+  await remove('Zeta Sans');
+  await expect.poll(() => storedRaw(page)).toMatchObject({ fontList: [], fontFamily: 'site' });
+  await expect(page.locator('#fontFamily')).toHaveValue('site');
+  await expect(page.locator('#fontAddBack button')).toHaveText(['+ Serif', '+ Sans-serif', "+ This site's font"]);
+});
+
 test('Your fonts: a full list refuses more, and says how many it holds', async ({ page, extensionId }) => {
   await stubLocalFonts(page, { state: 'granted' });
   await page.goto(optionsUrl(extensionId));

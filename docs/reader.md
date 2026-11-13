@@ -205,8 +205,9 @@ print.
   site set longest ago drops first), and `OBR.cssFontFamily` caps an entry's length.
 - **Options never picks by adding.** Typing a name or starring an installed font adds it to Your
   fonts; the Reading font dropdown and Aa pick. Removing the font in effect moves the global
-  choice to the first one left (Serif when none is). The dropdown also lists the font in effect
-  when it is no longer on the list, so it never names a font the reader isn't using.
+  choice to the first one left, or to This site's font when none is (no font of your own leaves
+  the page in its own). The dropdown also lists the font in effect when it is no longer on the
+  list, so it never names a font the reader isn't using.
 - **More fonts…** relays `{ type: 'obr-open-options', focus: 'font' }`; background.js stashes
   `obr_options_focus` the way the ⚙ scope rides `obr_options_site`, and options.js opens the
   Reader card (it may have been left collapsed) and scrolls to the font row, in a fresh tab or one

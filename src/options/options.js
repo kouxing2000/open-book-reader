@@ -396,12 +396,13 @@
     });
   }
 
-  // Removing the font in effect moves the reader to the first one left (Serif when none is).
+  // Removing the font in effect moves the reader to the first one left. With none left, no
+  // font of your own means the page keeps its own: This site's font.
   function removeFont(entry) {
     editFonts((list, current) => {
       const rest = list.filter((x) => !sameFont(x, entry));
       if (rest.length === list.length) return null;
-      return { list: rest, current: sameFont(current, entry) ? rest[0] || 'serif' : current };
+      return { list: rest, current: sameFont(current, entry) ? rest[0] || 'site' : current };
     });
   }
 

@@ -1686,8 +1686,8 @@
   };
 
   // Your fonts as stored, cleaned: usable entries only, no repeats, at most FONT_LIST_MAX.
-  // A missing list is the default one; an empty list stays empty (Aa then offers only
-  // More fonts, and the reader falls back to Serif).
+  // A missing list is the default one; an empty list stays empty (Aa then offers just the
+  // font in effect, plus More fonts).
   OBR.fontListOf = function (s) {
     const list = Array.isArray(s && s.fontList) ? s.fontList : OBR.DEFAULTS.fontList;
     const seen = new Set();
