@@ -316,6 +316,152 @@ test('an external maxBookWidth change applies live to an open reader', async ({ 
   await expect.poll(() => paperWidth(page)).toBeLessThan(before - 100);
 });
 
+test.describe('Spine shadow and Max book width', () => {
+  // The centre spine: whether its shadow shows, its box, and the gap between the two pages of
+  // the spread, from the column geometry layout() set (the left page ends colW into the viewport).
+  const spine = (page) => page.evaluate(() => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const el = sr.querySelector('.obr-spine');
+    const pages = sr.querySelector('.obr-pages');
+    const vp = sr.querySelector('.obr-viewport').getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const colW = parseFloat(pages.style.columnWidth), gap = parseFloat(pages.style.columnGap);
+    return { shown: getComputedStyle(el).display !== 'none', left: r.left, right: r.right, width: r.width,
+      gapLeft: vp.left + colW, gapRight: vp.left + colW + gap, gap, colW };
+  });
+  // Aa's Max book width control: the track position, its range, and the readout beside it.
+  const aaWidth = (page) => page.evaluate(() => {
+    const sr = document.getElementById('obr-host').shadowRoot;
+    const r = sr.querySelector('.obr-pop[data-for="type"] input.obr-width');
+    return r && { value: r.value, min: r.min, max: r.max, shown: r.getClientRects().length > 0,
+      readout: sr.querySelector('.obr-width-val').textContent };
+  });
+  const widthTrack = (page) => page.locator('#obr-host >> .obr-pop[data-for="type"] input.obr-width');
+  // A drag that lands on `value`, as the track reports it: input while moving, change on release.
+  const dragTo = (page, value) => widthTrack(page).evaluate((el, v) => {
+    el.value = String(v === 'top' ? el.max : v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+
+  test('the spine shadow follows its setting, and the gap between the pages stays as Spine width sets it', async ({ page }) => {
+    await openReader(page);
+    const on = await spine(page);
+    expect(on.shown).toBe(true); // on by default
+    expect(on.gap).toBe(80);
+
+    await page.evaluate(() => OBR.saveSettings({ spineShadow: false })); // as the Options checkbox does
+    await expect.poll(() => spine(page).then((s) => s.shown)).toBe(false);
+    const off = await spine(page);
+    expect({ gap: off.gap, colW: off.colW }).toEqual({ gap: on.gap, colW: on.colW });
+
+    await page.evaluate(() => OBR.saveSettings({ spineShadow: true }));
+    await expect.poll(() => spine(page).then((s) => s.shown)).toBe(true);
+    const back = await spine(page);
+    expect({ gap: back.gap, colW: back.colW }).toEqual({ gap: on.gap, colW: on.colW });
+  });
+
+  test('the spine shadow is never wider than the gap, so it stays off the text', async ({ page }) => {
+    await seedSettings(page, { gutter: 24 });
+    await openReader(page);
+    let s = await spine(page);
+    expect(s.shown).toBe(true);
+    expect(s.gap).toBe(24);
+    expect(s.width).toBeGreaterThan(0);
+    expect(s.left).toBeGreaterThanOrEqual(s.gapLeft - 0.5);
+    expect(s.right).toBeLessThanOrEqual(s.gapRight + 0.5);
+
+    // A gap wider than the shadow keeps the full 60px shadow, still inside the gap.
+    await page.evaluate(() => OBR.saveSettings({ gutter: 100 }));
+    await expect.poll(() => spine(page).then((x) => x.gap)).toBe(100);
+    s = await spine(page);
+    expect(s.width).toBeCloseTo(60, 1);
+    expect(s.left).toBeGreaterThanOrEqual(s.gapLeft - 0.5);
+    expect(s.right).toBeLessThanOrEqual(s.gapRight + 0.5);
+  });
+
+  test('settings saved before the spine-shadow switch existed load with the shadow on, nothing else reset', async ({ page }) => {
+    await seedSettings(page, { gutter: 100, fontSize: 22, theme: 'dark', maxBookWidth: 1000 });
+    expect(await page.evaluate(() => OBR.loadSettings()))
+      .toMatchObject({ spineShadow: true, gutter: 100, fontSize: 22, theme: 'dark', maxBookWidth: 1000 });
+    await openReader(page);
+    const s = await spine(page);
+    expect(s.shown).toBe(true);
+    expect(s.gap).toBe(100);
+    expect(await readState(page)).toMatchObject({ theme: 'dark', fontSize: 22 });
+    expect(await paperWidth(page)).toBe(1000);
+  });
+
+  test('Max book width in Aa narrows the book, keeps it across a reopen, and its top is Full', async ({ page }) => {
+    await openReader(page);
+    const full = await paperWidth(page);
+    await clickInReader(page, '[data-pop="type"]');
+    // 1280px window: the book is 1256px at Full, so the track ends at 1240 and every step narrows it.
+    expect(await aaWidth(page)).toEqual({ value: '1240', min: '800', max: '1240', shown: true, readout: 'Full' });
+
+    await dragTo(page, 1000);
+    await expect.poll(() => paperWidth(page)).toBe(1000);
+    expect(await aaWidth(page)).toMatchObject({ value: '1000', readout: '1000 px' });
+    expect((await page.evaluate(() => OBR.loadSettings())).maxBookWidth).toBe(1000); // the Options setting
+
+    await page.evaluate(() => OBR.close());
+    await openReader(page);
+    expect(await paperWidth(page)).toBe(1000);
+    await clickInReader(page, '[data-pop="type"]');
+    expect(await aaWidth(page)).toMatchObject({ value: '1000', readout: '1000 px' });
+
+    // The top of the track stores Full (0), the value Options' own Full writes.
+    await dragTo(page, 'top');
+    await expect.poll(() => paperWidth(page)).toBe(full);
+    expect(await aaWidth(page)).toMatchObject({ value: '1240', readout: 'Full' });
+    expect((await page.evaluate(() => OBR.loadSettings())).maxBookWidth).toBe(0);
+  });
+
+  test('arrow keys on the Aa width control change the width and never turn the page', async ({ page }) => {
+    await openReader(page);
+    const full = await paperWidth(page);
+    await clickInReader(page, '[data-pop="type"]');
+    await widthTrack(page).focus();
+
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(() => paperWidth(page)).toBe(1220);
+    await page.keyboard.press('ArrowDown'); // a page turn anywhere else
+    await expect.poll(() => paperWidth(page)).toBe(1200);
+    expect((await readState(page)).indicator).toMatch(/^1\D2\b/); // still the first spread
+    expect((await page.evaluate(() => OBR.loadSettings())).maxBookWidth).toBe(1200);
+
+    await page.keyboard.press('ArrowRight'); // a page turn anywhere else
+    await page.keyboard.press('ArrowUp');
+    await expect.poll(() => paperWidth(page)).toBe(full); // back at the top: Full
+    expect((await readState(page)).indicator).toMatch(/^1\D2\b/);
+    expect(await aaWidth(page)).toMatchObject({ value: '1240', readout: 'Full' });
+  });
+
+  test('a slider on the page that still has focus when the reader opens does not stop the arrow keys', async ({ page }) => {
+    await page.evaluate(() => {
+      const r = Object.assign(document.createElement('input'), { type: 'range', id: 'page-slider', min: 0, max: 100, value: 50 });
+      r.style.cssText = 'position:fixed;top:0;left:0';
+      document.body.appendChild(r);
+      r.focus();
+    });
+    await openReader(page);
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => readState(page).then((s) => s.indicator)).toMatch(/^3\D4\b/);
+    expect(await page.evaluate(() => document.getElementById('page-slider').value)).toBe('50');
+  });
+
+  test('a window too narrow to narrow the book leaves the width control out of Aa', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 800 });
+    await openReader(page);
+    await clickInReader(page, '[data-pop="type"]');
+    expect((await aaWidth(page)).shown).toBe(false);
+    await page.setViewportSize({ width: 1280, height: 800 }); // the resize closes Aa; reopen it
+    await expect.poll(() => paperWidth(page)).toBeGreaterThan(1200);
+    await clickInReader(page, '[data-pop="type"]');
+    expect((await aaWidth(page)).shown).toBe(true);
+  });
+});
+
 test('the Aa columns segments set 3 and 4 columns per spread', async ({ page }) => {
   await openReader(page);
   expect((await readState(page)).indicator).toMatch(/^1\D2\b/); // default: 2 per spread

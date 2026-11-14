@@ -182,6 +182,20 @@ export async function openReader(page) {
   await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
 }
 
+/** Open the reader on the fixture article loaded as an EXTENSION page, with the engine injected
+ *  from the extension's own files, so it runs on the real chrome.storage and chrome.i18n the
+ *  Options page uses — an http fixture has only the per-page shims, which no other tab sees.
+ *  The unpacked extension is the repo root, so the fixture is reachable at its repo path. */
+export async function openReaderInExtension(page, extensionId, fixture = 'article.html') {
+  const base = `chrome-extension://${extensionId}/`;
+  const root = path.resolve(__dirname, '..');
+  await page.goto(base + 'tests/fixtures/' + fixture);
+  for (const file of CONTENT_FILES) {
+    await page.addScriptTag({ url: base + path.relative(root, file).split(path.sep).join('/') });
+  }
+  await openReader(page);
+}
+
 /** Read the reader's observable state out of the open shadow DOM. */
 export function readState(page) {
   return page.evaluate(() => {

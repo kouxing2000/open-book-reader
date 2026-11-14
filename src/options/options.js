@@ -21,7 +21,7 @@
   const SLIDERS = ['fontSize', 'maxBookWidth', 'gutter', 'lineHeight', 'singlePageBelow', 'galleryColumns', 'galleryOrderedCols', 'autoGalleryMin', 'autoTextMinWords', 'galleryAutoScrollSpeed', 'gallerySlideSeconds'];
   const SELECTS = ['theme', 'pageTurn', 'galleryOtherVideos'];
   const SEGMENTS = ['columns']; // a group of [data-val] buttons, one pressed
-  const CHECKBOXES = ['splitLongPictures', 'readSelection', 'markdownExport', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding', 'colophon', 'colophonLifetime'];
+  const CHECKBOXES = ['spineShadow', 'splitLongPictures', 'readSelection', 'markdownExport', 'galleryAutoLoad', 'galleryFitWidth', 'galleryHideAvatars', 'printSourceUrl', 'printBranding', 'colophon', 'colophonLifetime'];
   const savedEl = document.getElementById('saved');
   let saveTimer;
 

@@ -2,6 +2,7 @@
  * Uses the REAL unpacked extension (options runs in a genuine extension context
  * with real chrome.storage / chrome.runtime — no shim needed). */
 import { test, expect } from './fixtures.js';
+import { openReaderInExtension, openReader, clickInReader } from './helpers.js';
 
 const optionsUrl = (id) => `chrome-extension://${id}/src/options/options.html`;
 
@@ -1084,4 +1085,71 @@ test("More fonts lands on the font setting, even with the Reader card collapsed"
   await expect(page.locator('#fontRow')).toBeInViewport();
   await expect.poll(() => page.evaluate(() => new Promise((res) =>
     chrome.storage.local.get('obr_options_focus', (d) => res(d.obr_options_focus ?? null))))).toBeNull(); // consumed
+});
+
+/* The reader's own settings, shared with an OPEN reader in another tab. The reader runs as an
+ * extension page (openReaderInExtension), so both tabs read and write the one real
+ * chrome.storage.sync and every change crosses tabs the way it does for a user. */
+const readerSpine = (reader) => reader.evaluate(() => {
+  const sr = document.getElementById('obr-host').shadowRoot;
+  return { shown: getComputedStyle(sr.querySelector('.obr-spine')).display !== 'none',
+    gap: sr.querySelector('.obr-pages').style.columnGap };
+});
+const readerPaperW = (reader) => reader.evaluate(() =>
+  document.getElementById('obr-host').shadowRoot.querySelector('.obr-paper').getBoundingClientRect().width);
+const readerAaWidth = (reader) => reader.evaluate(() => {
+  const sr = document.getElementById('obr-host').shadowRoot;
+  return { value: sr.querySelector('input.obr-width').value, readout: sr.querySelector('.obr-width-val').textContent };
+});
+// Set an Options slider the way a drag does: input while moving, change on release.
+const setSlider = (page, id, value) => page.locator('#' + id).evaluate((el, v) => {
+  el.value = String(v === 'top' ? el.max : v);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}, value);
+
+test('Spine shadow: ticked for settings saved before it existed, and the open reader follows the box', async ({ page, context, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) =>
+    chrome.storage.sync.set({ obr_settings: { gutter: 100, fontSize: 22 } }, res))); // no spineShadow key
+  const reader = await context.newPage();
+  await openReaderInExtension(reader, extensionId);
+  await page.reload();
+  await openSections(page);
+  const box = page.locator('#spineShadow');
+  await expect(box).toBeChecked();
+  expect(await readerSpine(reader)).toEqual({ shown: true, gap: '100px' });
+
+  await box.uncheck();
+  await expect.poll(() => readerSpine(reader)).toEqual({ shown: false, gap: '100px' }); // the gap stays
+  expect(await storedRaw(page)).toMatchObject({ gutter: 100, fontSize: 22, spineShadow: false });
+
+  await box.check();
+  await expect.poll(() => readerSpine(reader)).toEqual({ shown: true, gap: '100px' });
+});
+
+test('Max book width is one setting: set in Aa it shows in Options, set in Options it shows in the open reader', async ({ page, context, extensionId }) => {
+  const reader = page;
+  await openReaderInExtension(reader, extensionId);
+  await clickInReader(reader, '[data-pop="type"]');
+  await reader.locator('#obr-host >> input.obr-width').focus();
+  await reader.keyboard.press('Home'); // the track's narrowest stop, not the first page
+  await expect.poll(() => readerPaperW(reader)).toBe(800);
+
+  const options = await context.newPage();
+  await options.goto(optionsUrl(extensionId));
+  await expect(options.locator('#maxBookWidth')).toHaveValue('800');
+  await expect(options.locator('#maxBookWidthVal')).toHaveText('800');
+
+  await setSlider(options, 'maxBookWidth', 1000);
+  await expect.poll(() => readerPaperW(reader)).toBe(1000); // live, no reload
+  expect(await readerAaWidth(reader)).toEqual({ value: '1000', readout: '1000 px' });
+  await reader.evaluate(() => OBR.close());
+  await openReader(reader);
+  expect(await readerPaperW(reader)).toBe(1000);
+
+  // Options' Full is Aa's Full.
+  await setSlider(options, 'maxBookWidth', 'top');
+  await expect.poll(() => readerAaWidth(reader)).toEqual({ value: '1240', readout: 'Full' });
+  expect((await storedRaw(options)).maxBookWidth).toBe(0);
 });

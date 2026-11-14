@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Turn off the spine shadow.** Options → Spine shadow removes the shadow down the middle of a
+  two-page spread; the gap between the pages stays as Spine width sets it. A narrow spine now keeps
+  the shadow inside the gap instead of over the text.
+- **Max book width in Aa.** The reader's Aa menu has the same Max book width setting as Options, so
+  you can narrow the text on a wide screen without leaving the page.
+
 ## [1.19.0] - 2026-11-13
 
 - **Choose the reading font yourself, per site too.** Aa now lists your fonts, each in its own

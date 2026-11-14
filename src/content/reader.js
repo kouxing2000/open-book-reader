@@ -20,6 +20,9 @@
   ];
   const FONT_STACKS = OBR.FONT_STACKS;
   const FONT_MIN = 14, FONT_MAX = 26;
+  // Max book width's range and step, as on the Options slider (options.html #maxBookWidth).
+  const WIDTH_MIN = 800, WIDTH_MAX = 2560, WIDTH_STEP = 20;
+  const RANGE_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
 
   // Mode-switch glyphs (open book + framed picture) — shared with gallery.js, defined once
   // on the OBR namespace in settings.js (loads first).
@@ -66,6 +69,7 @@
   let currentSpread = 0, totalSpreads = 1, totalColumns = 1;
   let pageCountText = ''; // the indicator's "3–4 / 12 pages", which bumpEdge prefixes
   let colW = 0, colGap = 0, pagesPerSpread = 2;
+  let fullBookW = 0; // the book's width at Full in this window (layout())
   let savedScrollY = 0;
   // Whether the user turned a page this session — the one case close() moves the page to the
   // reader's position instead of back to savedScrollY (see readingAnchors).
@@ -226,6 +230,11 @@
           <div class="obr-set">${THEMES.map((t) => `<button class="obr-set-btn" data-act="theme" data-val="${t}" aria-pressed="false">${OBR.t(THEME_LABELS[t])}</button>`).join('')}</div>
           <div class="obr-pop-lab obr-cols">${OBR.t('optColumns')}</div>
           <div class="obr-set obr-cols">${COLUMN_OPTS.map((n) => `<button class="obr-set-btn" data-act="columns" data-val="${n}" aria-pressed="false">${n}</button>`).join('')}</div>
+          <div class="obr-pop-lab obr-width-lab">${OBR.t('optMaxWidth')}</div>
+          <div class="obr-pop-row obr-width-row">
+            <input type="range" class="obr-width" min="${WIDTH_MIN}" step="${WIDTH_STEP}" aria-label="${OBR.t('optMaxWidth')}">
+            <span class="obr-width-val"></span>
+          </div>
         </div>
         <div class="obr-pop" data-for="more" role="menu" hidden>
           ${FLEX_ACTS.map((a) => `<button class="obr-menuitem" role="menuitem" data-act="${a.act}" title="${OBR.t(a.title)}">${OBR.t(a.label)}</button>`).join('')}
@@ -331,6 +340,9 @@
       b.addEventListener('click', () => handleAction(b.dataset.act, b.dataset.val, b)));
     const siteBox = overlay.querySelector('.obr-font-site input');
     siteBox.addEventListener('change', () => setFontScope(siteBox.checked));
+    const widthEl = overlay.querySelector('.obr-width');
+    widthEl.addEventListener('input', () => showWidth(widthAt(Number(widthEl.value)))); // the readout follows a drag
+    widthEl.addEventListener('change', () => setMaxBookWidth(widthAt(Number(widthEl.value))));
     overlay.querySelectorAll('[data-pop]').forEach((b) =>
       b.addEventListener('click', () => togglePop(b.dataset.pop)));
 
@@ -553,7 +565,32 @@
       b.setAttribute('aria-pressed', String(b.dataset.val === theme)));
     overlay.querySelectorAll('.obr-set-btn[data-act="columns"]').forEach((b) =>
       b.setAttribute('aria-pressed', String(Number(b.dataset.val) === settings.columns)));
+    syncWidth();
     if (openPop === 'type') syncFontList(); // its This site's font row reads the page; not before Aa opens
+  }
+
+  // Max book width, the same stored setting as the Options slider, on a track that ends at this
+  // window's Full: the top stores 0 (Full), as Options' top does, and every step below it narrows
+  // the book on screen, where Options' 2560px top would leave a stretch that changes nothing. A
+  // window no wider than the narrowest setting has nothing to narrow, so the control hides.
+  function widthTop() {
+    return Math.min(WIDTH_MAX, Math.floor(fullBookW / WIDTH_STEP) * WIDTH_STEP);
+  }
+  // The track's own top, not widthTop(): the two differ until syncWidth() runs after a relayout.
+  function widthAt(pos) { return pos >= Number(overlay.querySelector('.obr-width').max) ? 0 : pos; }
+  function showWidth(w) {
+    overlay.querySelector('.obr-width-val').textContent = w ? w + ' px' : OBR.t('optValFull');
+  }
+  function syncWidth() {
+    const top = widthTop();
+    const usable = top > WIDTH_MIN;
+    overlay.querySelectorAll('.obr-width-lab, .obr-width-row').forEach((el) => { el.hidden = !usable; });
+    if (!usable) return;
+    const w = settings.maxBookWidth > 0 && settings.maxBookWidth < top ? settings.maxBookWidth : 0;
+    const track = overlay.querySelector('.obr-width');
+    track.max = top; // before the value, which the old max would clamp
+    track.value = w || top;
+    showWidth(w);
   }
 
   // Your fonts, one row each, drawn in the font it picks; the one in effect is marked, and is
@@ -2937,6 +2974,7 @@
     // Fill the window by default; maxBookWidth (when set) is an optional readability cap.
     const fullW = vw - outerMargin;
     const bookW = settings.maxBookWidth ? Math.min(fullW, settings.maxBookWidth) : fullW;
+    fullBookW = fullW;
     const sidePad = pagesPerSpread === 1 ? 14 : 44;
     const visibleW = bookW - sidePad * 2;
     colGap = settings.gutter;
@@ -2963,8 +3001,10 @@
     pagesEl.style.fontSize = settings.fontSize + 'px';
     pagesEl.style.transition = 'none';
 
-    // Center spine only fits an even split (its 50% line lands on the middle gap).
-    overlay.querySelector('.obr-spine').classList.toggle('hidden', pagesPerSpread % 2 !== 0);
+    // Center spine only fits an even split (its 50% line lands on the middle gap), and shows
+    // only while its Options switch is on; the CSS keeps it inside the gap (--obr-gap).
+    overlay.querySelector('.obr-spine').classList.toggle('hidden', pagesPerSpread % 2 !== 0 || !settings.spineShadow);
+    paperEl.style.setProperty('--obr-gap', colGap + 'px');
 
     // Measure the CONTENT alone first — a colophon or end mark left attached by a previous pass
     // would distort the blank-page detection below.
@@ -4160,6 +4200,11 @@
     relayoutWith({ columns: n });
   }
 
+  function setMaxBookWidth(w) {
+    if (w === (settings.maxBookWidth || 0)) return;
+    relayoutWith({ maxBookWidth: w });
+  }
+
   // Advertise how many gallery-worthy images the page has, on the Images segment
   // (e.g. "🖼 Images · 42"), so the value of switching is visible before the jump.
   // Hidden when there are none, or if the gallery engine isn't loaded. The count leaves out
@@ -4600,6 +4645,9 @@
     // A focused checkbox (Aa's "Only on <site>") takes Space as its toggle, not a page turn.
     const target = e.composedPath ? e.composedPath()[0] : e.target;
     if (e.key === ' ' && target && target.type === 'checkbox') return;
+    // Aa's width track moves on its own keys (arrows, PgUp/PgDn, Home, End); none turns the page.
+    // Only the reader's own track: a slider on the page keeps focus when the reader opens.
+    if (target && target.classList && target.classList.contains('obr-width') && RANGE_KEYS.indexOf(e.key) >= 0) { e.stopPropagation(); return; }
     switch (e.key) {
       case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
         e.preventDefault(); e.stopPropagation(); flip(1); break;

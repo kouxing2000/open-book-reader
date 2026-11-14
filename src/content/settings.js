@@ -308,6 +308,8 @@
                            // resolution lives in reader.js resolveTheme().
     maxBookWidth: 0,       // 0 = fill the window (default). >0 caps the book width (px) for readability.
     gutter: 80,            // px, center spine width
+    spineShadow: true,     // the shadow down the middle of an even-column spread. Off = no
+                           // shadow; the gap between the pages stays `gutter` either way.
     lineHeight: 1.62,
     fontFamily: 'serif',   // the reading font: 'serif' | 'sans' | 'site' (the page's own text
                            // font) | a CSS font-family value (one name or a list)

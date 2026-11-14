@@ -15,6 +15,12 @@ as CSS multi-column where a "spread" is N columns-per-view — lives in `AGENTS.
 Architecture, because you need it to orient in the codebase at all. **That is the single source;
 don't copy it back here.** Everything below builds on it.
 
+**The spine shadow** (`.obr-spine`) is a separate box centred on the paper, so it lands on the middle
+gap only for an even split; `layout()` hides it for odd counts and one page per view, and whenever
+Options' Spine shadow (`spineShadow`) is off. Turning it off never touches the gap, which is
+`gutter` alone. `layout()` hands the gap to the CSS as `--obr-gap`, and the shadow takes the smaller
+of 60px and that, so a narrow Spine width cannot lay the shadow over the text.
+
 ## Input model — three tap zones, and one rule about mouse-compatibility events
 
 Paging is keyboard (`ArrowRight`/`Down`/`PageDown`/space and their reverses) **and** pointer. The
@@ -124,8 +130,8 @@ keeps the label.
 ## The toolbar — Aa, ⋯, and a width fit instead of breakpoints
 
 The topbar is the mode switch, the title, and then **Aa · ◐ · ⛶ · [Pick] [Print] [Markdown] · ⋯ · ✕**. Aa
-is a popover with text size, reading font, theme and columns (the `+` `−` `T` keys reach size and
-theme; the columns row is hidden at one page per view, where the count does nothing); ◐
+is a popover with text size, reading font, theme, columns and Max book width (the `+` `−` `T` keys
+reach size and theme; the columns row is hidden at one page per view, where the count does nothing); ◐
 cycles the theme in one tap, as `T` does; ⋯ is a menu with everything else. The Aa and ⋯ popovers
 are hand-rolled (`togglePop` / `closePop`) because the `popover` attribute needs Chrome 114 and the
 manifest's floor is 102. They live inside `.obr-topbar`, so the
@@ -153,6 +159,14 @@ nothing, so without that call a narrowed window leaves ✕ off-screen. **The bar
 never allowed to wrap**: a second row sits in the bar's transparent gradient tail with the article
 showing through the buttons. `syncTypePop` keeps the Aa readout and marked segments true on every path
 that changes them, including an Options-page change and the OS flipping an 'auto' theme.
+
+**Max book width in Aa is the Options setting, not a copy of it.** Both read and write
+`maxBookWidth`, where 0 is Full. The Aa track runs from the Options minimum to this window's Full
+(`widthTop()`, from the `fullBookW` that `layout()` records), and its top stores 0, so every step
+below it narrows the book on screen; Options' own top is 2560px, so on a narrower window the upper
+end of its track changes nothing. A stored width at or above the Aa track's top shows as Full in Aa
+and as its number in Options. A window no wider than the minimum hides the control. The track's own keys (arrows,
+PgUp/PgDn, Home, End) are let through by the reader's keydown handler, so none of them turns the page.
 
 **⛶ full screen** (`F`; the gallery has the button only, since its big view already uses `F` for
 fit-width) takes the PAGE full screen through `OBR.toggleFullscreen` (settings.js), never the

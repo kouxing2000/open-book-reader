@@ -93,6 +93,9 @@
     .obr-pop-lab { font-size: 11.5px; opacity: .8; padding: 6px 8px 2px; }
     .obr-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 6px 4px; }
     .obr-font-size { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
+    /* Max book width: the track takes the row; the readout keeps one width, Full or 1240 px. */
+    .obr-width { flex: 1; min-width: 0; margin: 0; accent-color: #7c6cff; }
+    .obr-width-val { min-width: 4.6em; text-align: right; font-variant-numeric: tabular-nums; }
     .obr-set { display: flex; gap: 2px; padding: 3px; margin: 0 6px 4px; border-radius: 8px; background: rgba(0,0,0,.09); }
     .obr-overlay.dark .obr-set { background: rgba(255,255,255,.08); }
     .obr-set-btn {
@@ -175,7 +178,9 @@
     .obr-viewport { overflow: hidden; position: relative; }
     .obr-pages { column-fill: auto; transition: transform ${flip}ms cubic-bezier(.22,.61,.36,1); will-change: transform; }
 
-    .obr-spine { position: absolute; top: 0; bottom: 0; width: 60px; left: 50%; transform: translateX(-50%); pointer-events: none;
+    /* The shadow down the middle of the spread, never wider than the gap between the pages
+       (layout() sets --obr-gap): a 60px shadow over a narrower gap falls across the text. */
+    .obr-spine { position: absolute; top: 0; bottom: 0; width: min(60px, var(--obr-gap, 60px)); left: 50%; transform: translateX(-50%); pointer-events: none;
       background: linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,.06) 45%, rgba(0,0,0,.12) 50%, rgba(0,0,0,.06) 55%, rgba(0,0,0,0) 100%); }
     .obr-overlay.dark .obr-spine { background: linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,.30) 45%, rgba(0,0,0,.55) 50%, rgba(0,0,0,.30) 55%, rgba(0,0,0,0) 100%); }
     .obr-spine.hidden { display: none; }
