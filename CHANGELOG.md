@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-11-14
+
 - **Turn off the spine shadow.** Options → Spine shadow removes the shadow down the middle of a
   two-page spread; the gap between the pages stays as Spine width sets it. A narrow spine now keeps
   the shadow inside the gap instead of over the text.
@@ -690,7 +692,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.19.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.20.0...HEAD
+[1.20.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.20.0
 [1.19.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.19.0
 [1.18.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.18.0
 [1.17.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.17.0
