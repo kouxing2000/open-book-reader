@@ -1198,20 +1198,39 @@ test('threads one pathname apart only by their query keep separate reading posit
   expect((await readState(page)).translateX).toBe(left.translateX);
 });
 
+test('a stored reading position keeps no text of the query, only its fingerprint', async ({ page }) => {
+  // A query can carry a session or sign-in token; the map only ever looks a key up, so the
+  // text itself never needs to reach storage.
+  await page.goto('/article.html?t=thread-alpha-7');
+  await injectReader(page);
+  await openReader(page);
+  await page.keyboard.press('End');
+  await page.evaluate(() => globalThis.OBR.close());
+  const keys = await page.evaluate(() => new Promise((res) => chrome.storage.local.get(
+    'obr_positions', (d) => res(Object.keys(d.obr_positions || {})))));
+  const origin = new URL(page.url()).origin;
+  expect(keys.filter((k) => k.startsWith(origin + '/article.html'))).toHaveLength(1); // it was stored
+  expect(keys.join('\n')).not.toContain('thread-alpha-7');
+});
+
 test('the position key keeps the query that picks the page and drops campaign tags', async ({ page }) => {
   const key = (u) => page.evaluate((u) => globalThis.OBR.positionKey(new URL(u)), u);
-  expect(await key('https://news.ycombinator.com/item?id=1')).toBe('https://news.ycombinator.com/item?id=1');
-  expect(await key('https://news.ycombinator.com/item?id=2')).toBe('https://news.ycombinator.com/item?id=2');
+  const thread1 = await key('https://news.ycombinator.com/item?id=1');
+  const thread2 = await key('https://news.ycombinator.com/item?id=2');
+  for (const k of [thread1, thread2]) expect(k).toMatch(/^https:\/\/news\.ycombinator\.com\/item\?~[0-9a-z]{1,7}$/);
+  expect(thread2).not.toBe(thread1);
   expect(await key('https://forum.test/viewtopic.php?t=7&utm_source=x&fbclid=y'))
-    .toBe('https://forum.test/viewtopic.php?t=7');
+    .toBe(await key('https://forum.test/viewtopic.php?t=7'));
   // The order the parameters arrive in does not split one page into two.
   expect(await key('https://bbs.test/forum.php?mod=viewthread&tid=9'))
     .toBe(await key('https://bbs.test/forum.php?tid=9&mod=viewthread'));
-  // A query too long to keep whole keys as a short fingerprint: bounded, and still apart.
-  const long = await key('https://ex.test/search?q=' + 'x'.repeat(300));
-  expect(long).toMatch(/^https:\/\/ex\.test\/search\?~[0-9a-z]+$/);
-  expect(await key('https://ex.test/search?q=' + 'y'.repeat(300))).not.toBe(long);
-  expect(await key('https://ex.test/search?utm_source=n&q=' + 'x'.repeat(300))).toBe(long);
+  // A query of any length keys as the same short form, and two queries stay apart.
+  const short = await key('https://ex.test/search?q=a');
+  const long = await key('https://ex.test/search?q=' + 'x'.repeat(5000));
+  for (const k of [short, long]) expect(k).toMatch(/^https:\/\/ex\.test\/search\?~[0-9a-z]{1,7}$/);
+  expect(long).not.toBe(short);
+  expect(await key('https://ex.test/search?q=' + 'y'.repeat(5000))).not.toBe(long);
+  expect(await key('https://ex.test/search?utm_source=n&q=' + 'x'.repeat(5000))).toBe(long);
 });
 
 test('the position key holds its rules over generated addresses', async ({ page }) => {
@@ -1247,12 +1266,10 @@ test('the position key holds its rules over generated addresses', async ({ page 
       const tags = Array.from({ length: Math.floor(rand() * 4) }, () => [pick(TAGS), pick(VALUES)]);
       const k = key(url(routing));
       const fail = (why) => out.push({ why, routing, tags, k });
-      const long = routing.some(([, v]) => v === LONG);
       if (key(url(shuffle(routing.concat(tags)))) !== k) fail('tags or order changed the key');
-      if (!routing.length && k !== base) fail('keyed on more than the path');
-      if (long && !k.startsWith(base + '?~')) fail('a long query kept whole');
-      if (!long && key(k) !== k) fail('not stable on its own output'); // a fingerprint is no address
-      if (k.length > base.length + 1 + 256) fail('over the length bound');
+      // The path alone, or the path and a short fingerprint: no query text ever reaches a key.
+      const tail = k.startsWith(base) ? k.slice(base.length) : null;
+      if (routing.length ? !/^\?~[0-9a-z]{1,7}$/.test(tail) : tail !== '') fail('not path + fingerprint');
       if (routing.length) {
         const i = Math.floor(rand() * routing.length);
         const other = routing.map(([name, v], j) => [name, j === i ? v + 'x' : v]);

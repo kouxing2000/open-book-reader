@@ -1137,7 +1137,7 @@
   OBR.POSITIONS_KEY = 'obr_positions';
 
   // FNV-1a, 32-bit, base 36: a short stable stand-in for a string the map should not hold
-  // whole (the reader's top-paragraph key, an over-long query).
+  // whole (the reader's top-paragraph key, a page's query).
   OBR.fingerprint = function (k) {
     let h = 2166136261;
     for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -1145,17 +1145,15 @@
   };
   OBR.POSITIONS_MAX = 300;
 
-  // Stable per-article key: origin + pathname + the query that picks the page. Query-routed
-  // sites put every thread on one pathname (news.ycombinator.com/item?id=, phpBB
-  // viewtopic.php?t=), so the query must count. Campaign tags (TRACKING_PARAM, the list the
-  // shared-article link drops) are dropped, so one article reached through different links
-  // resolves to one position, and the rest is sorted. A page with no query, or tags only, keys
-  // as origin + pathname: every position saved before the query counted stays reachable. A
-  // query longer than POSITION_QUERY_MAX is kept as `?~` + its fingerprint: the key stays
-  // short, which the LRU-by-count positions map relies on, and two such pages stay apart. A
-  // serialized query never starts with a literal `~` (it is percent-encoded), so the two
-  // forms cannot collide.
-  const POSITION_QUERY_MAX = 256;
+  // Stable per-article key: origin + pathname, plus `?~` + a fingerprint of the query that
+  // picks the page. Query-routed sites put every thread on one pathname
+  // (news.ycombinator.com/item?id=, phpBB viewtopic.php?t=), so the query must count. Campaign
+  // tags (TRACKING_PARAM, the list the shared-article link drops) are dropped and the rest
+  // sorted before the fingerprint, so one article reached through different links resolves to
+  // one position. Only the fingerprint is stored, never the query text: a query can carry a
+  // session or sign-in token, and the map only ever looks a key up. A page with no query, or
+  // tags only, keys as plain origin + pathname: positions already saved on users' devices sit
+  // under that form, so it must not change. With no key (the catch) no position is stored.
   OBR.positionKey = function (loc) {
     const l = loc || (typeof location !== 'undefined' ? location : null);
     if (!l) return '';
@@ -1164,9 +1162,8 @@
       for (const k of [...params.keys()]) if (TRACKING_PARAM.test(k)) params.delete(k);
       params.sort();
       const q = params.toString();
-      if (!q) return l.origin + l.pathname;
-      return l.origin + l.pathname + (q.length <= POSITION_QUERY_MAX ? '?' + q : '?~' + OBR.fingerprint(q));
-    } catch (e) { return l.href || ''; }
+      return l.origin + l.pathname + (q ? '?~' + OBR.fingerprint(q) : '');
+    } catch (e) { return ''; }
   };
 
   function localArea() {
@@ -1739,8 +1736,8 @@
 
   // Suppression key: origin+pathname+SEARCH. Query-routed forums (viewtopic.php?t=123)
   // put every topic on one pathname — an Esc keyed on pathname alone would silence the
-  // whole forum. The set is in-memory (page-session lifetime), so it keeps the whole query,
-  // campaign tags and long queries included, which OBR.positionKey drops from a stored key.
+  // whole forum. The set is in-memory (page-session lifetime), so it keeps the whole query as
+  // text; OBR.positionKey, whose key is stored, keeps only a fingerprint of it.
   OBR._autoPageKey = function () {
     try { return location.origin + location.pathname + location.search; }
     catch (e) { return (globalThis.location && location.href) || ''; }
