@@ -117,6 +117,7 @@
   "galleryDoneSavedFailed": { "message": "완료 — $SAVED$개 저장, $FAILED$개 실패", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "완료 — $SAVED$개 저장", "placeholders": { "saved": { "content": "$1" } } },
   "galleryZipVideosSkipped": { "message": "동영상 $COUNT$개 건너뜀 — 동영상은 ‘다운로드’로 저장하세요", "placeholders": { "count": { "content": "$1" } } },
+  "galleryZipTooLarge": { "message": "선택한 이미지가 너무 커서 ZIP으로 만들 수 없습니다($LIMIT$MB 초과) — 이미지를 줄여 주세요", "placeholders": { "limit": { "content": "$1" } } },
   "gallerySelectTile": { "message": "선택" },
   "galleryEmpty": { "message": "아직 이미지를 찾지 못했습니다. 갤러리를 스크롤해 더 불러오거나 ⟳ 모두 불러오기를 사용하세요." },
   "galleryImageCount": { "message": "이미지 $COUNT$장", "placeholders": { "count": { "content": "$1" } } },

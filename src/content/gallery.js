@@ -1096,13 +1096,40 @@
     });
   }
 
+  // A ZIP's pictures, each in its own message, FETCH_LANES at a time: Chrome refuses an extension
+  // message over 64 MiB, so a selection sent back as one reply never arrives past about 48 MB.
+  // Resolves {url, bytes} per picture in order, or null for one that failed. These sends follow
+  // the permission ask and never prompt, so a send with no answer is that picture failing, never
+  // a wait. Resolves null outright once the pictures pass OBR.ZIP_MAX_BYTES: the archive is
+  // built in this page's memory, about three copies of the selection at once, and zip.js is not
+  // ZIP64, so a far larger selection would crash the tab or wrap past 4 GiB into a broken file.
+  const FETCH_LANES = 5;
+  OBR.ZIP_MAX_BYTES = 500 * 1024 * 1024;
+  async function fetchEach(urls) {
+    const out = new Array(urls.length).fill(null);
+    let next = 0, total = 0;
+    const lane = async () => {
+      while (next < urls.length && total <= OBR.ZIP_MAX_BYTES) {
+        const i = next++;
+        const resp = await sendSW({ type: 'obr-fetch-bytes', urls: [urls[i]], noPrompt: true });
+        const r = resp && resp.results && resp.results[0];
+        if (r && r.ok && r.b64) {
+          out[i] = { url: urls[i], bytes: b64ToBytes(r.b64) };
+          total += out[i].bytes.length;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(FETCH_LANES, urls.length) }, lane));
+    return total > OBR.ZIP_MAX_BYTES ? null : out;
+  }
+
   async function batchDownload(asZip) {
     if (busy) return;
     // Selection identity is the displayed thumbnail (im.url); download the full-res variant.
     let items = images.filter((im) => selected.has(im.url));
     if (!items.length) return;
-    // A ZIP holds pictures only: the worker hands every file back as one base64 message, and a
-    // video's megabytes would ride in it. Selected videos are left out, and the status says so.
+    // A ZIP holds pictures only: the worker hands each file back as a base64 message, and a
+    // video's megabytes would ride in one. Selected videos are left out, and the status says so.
     const skipped = asZip ? items.filter((im) => im.video).length : 0;
     const skipNote = skipped ? OBR.t('galleryZipVideosSkipped', [String(skipped)]) : '';
     const withSkipped = (msg) => skipNote ? msg + ' · ' + skipNote : msg;
@@ -1123,24 +1150,33 @@
         const ok = sent.filter((r) => r && r.ok).length;
         setStatus(ok ? OBR.t('gallerySentCount', [String(ok)]) : OBR.t('galleryDownloadsPermissionNeeded'));
       } else {
-        // SW fetches bytes (cross-origin host permission bypasses CORS), returns base64.
-        const fetchMsg = { type: 'obr-fetch-bytes', urls };
-        let resp = await sendSW(fetchMsg);
+        // The SW fetches the bytes (its host permission gets past CORS) and returns base64. The
+        // first message only asks for the permission, over every picture, and fetches nothing:
+        // it is the one send that can open the prompt, so the only one whose silence can mean a
+        // human is still deciding.
+        const ask = { type: 'obr-fetch-bytes', urls, askOnly: true };
+        let resp = await sendSW(ask);
         // A null answer means the CHANNEL died, not that the download failed — normally the
         // worker idling out while the permission prompt waits on a human. Saying "Download
         // failed" here (as this did) was a lie the user then acted on.
         if (!resp) {
           setStatus(OBR.t('galleryWaitingPermission'));
-          resp = await retryUntilAnswered(fetchMsg);
+          resp = await retryUntilAnswered(ask);
+          if (resp && !resp.denied) setStatus(OBR.t('galleryZipping'));
         }
         if (resp && resp.denied) { setStatus(withSkipped(OBR.t('galleryImageFetchPermissionNeeded'))); return; }
-        const results = (resp && resp.results) || [];
-        const ok = results.filter((r) => r && r.ok && r.b64);
+        const got = resp ? await fetchEach(urls) : [];
+        if (!got) {
+          const mb = String(Math.round(OBR.ZIP_MAX_BYTES / 1048576));
+          setStatus(withSkipped(OBR.t('galleryZipTooLarge', [mb])));
+          return;
+        }
+        const ok = got.filter(Boolean);
         if (!ok.length) {
           setStatus(withSkipped(OBR.t('galleryDownloadFailed')));
         } else {
           const names = uniquifyNames(ok.map((r, k) => filenameFromUrl(r.url, k)));
-          const files = ok.map((r, k) => ({ name: names[k], bytes: b64ToBytes(r.b64) }));
+          const files = ok.map((r, k) => ({ name: names[k], bytes: r.bytes }));
           const zip = OBR._buildZip(files);
           OBR.saveBlob(new Blob([zip], { type: 'application/zip' }), 'images.zip');
           const failed = urls.length - ok.length;

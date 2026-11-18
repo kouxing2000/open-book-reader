@@ -10,7 +10,7 @@ import path from 'path';
 import {
   gotoImages, injectGallery, openGallery, galleryState, clickInGallery, sentMessages,
   gotoArticle, injectAll, readState, clickInReader, gotoIllustratedArticle, gotoLazyImages,
-  gotoGrowNoImages, gotoFixture, openReader, holdReaderChrome, CONTENT_FILES,
+  gotoGrowNoImages, gotoFixture, openReader, holdReaderChrome, CONTENT_FILES, GALLERY_FILES,
 } from './helpers.js';
 
 // Headless Chromium refuses every requestFullscreen, from any button, with "TypeError: not
@@ -715,7 +715,27 @@ test.describe('gallery downloads', () => {
     expect(sent.length).toBeGreaterThan(1);                    // it asked again
     expect(sent[0].noPrompt).toBeUndefined();                  // the FIRST ask may open the prompt
     expect(sent.slice(1).every((m) => m.noPrompt)).toBe(true); // no retry opens a second one
-    expect(sent[sent.length - 1].urls).toEqual(sent[0].urls);  // same payload, re-sent verbatim
+    const retries = sent.filter((m) => m.askOnly).slice(1);
+    expect(retries.length).toBeGreaterThan(0);
+    for (const r of retries) expect(r.urls).toEqual(sent[0].urls); // same ask, re-sent verbatim
+  });
+
+  test('once a waited-for grant lands, the status stops saying it is waiting', async ({ page }) => {
+    // The pictures download after the grant; "Waiting for permission…" over that would be wrong.
+    await page.evaluate(() => {
+      window.__obrDeadChannel = true;
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.status');
+      window.__obrStatuses = [];
+      new MutationObserver(() => window.__obrStatuses.push(el.textContent))
+        .observe(el, { childList: true, characterData: true, subtree: true });
+    });
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status)).toContain('Waiting');
+    await page.evaluate(() => { window.__obrDeadChannel = false; }); // the grant lands
+    await expect.poll(() => galleryState(page).then((s) => s.status), { timeout: 15000 }).toContain('saved');
+    const seen = await page.evaluate(() => window.__obrStatuses);
+    expect(seen.slice(seen.lastIndexOf('Waiting for permission…') + 1)).toContain('Zipping…');
   });
 
   test('a pending answer keeps waiting — only a real answer ends the wait', async ({ page }) => {
@@ -728,6 +748,42 @@ test.describe('gallery downloads', () => {
 
     await page.evaluate(() => { window.__obrDeadChannel = false; });
     await expect.poll(() => galleryState(page).then((s) => s.status), { timeout: 20000 }).toContain('saved');
+  });
+
+  test('a fetch that fails with the permission held is a failure, not a wait for permission', async ({ page }) => {
+    // The permission ask was answered, so no prompt is on screen; the pictures then never came
+    // back. Nothing is waiting on a human: the download ends as failed, and no picture is asked
+    // for twice.
+    await page.evaluate(() => {
+      window.__obrFetchDies = true;
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.status');
+      window.__obrStatuses = [];
+      new MutationObserver(() => window.__obrStatuses.push(el.textContent))
+        .observe(el, { childList: true, characterData: true, subtree: true });
+    });
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status), { timeout: 5000 }).toBe('Download failed');
+    expect(await page.evaluate(() => window.__obrStatuses)).not.toContain('Waiting for permission…');
+    const fetches = (await sentMessages(page)).filter((m) => m.type === 'obr-fetch-bytes' && !m.askOnly);
+    expect(fetches.flatMap((m) => m.urls)).toHaveLength(6); // each picture asked for once
+  });
+
+  test('a selection past the ZIP cap stops with a plain "too large", and saves nothing', async ({ page }) => {
+    // The cap comes down below one stubbed picture (8 bytes), so the first answer crosses it.
+    await page.evaluate(() => {
+      globalThis.OBR.ZIP_MAX_BYTES = 4;
+      globalThis.OBR.saveBlob = () => { window.__obrSaved = true; };
+    });
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status))
+      .toBe('Selection too large to ZIP (over 0 MB) — select fewer pictures');
+    expect(await page.evaluate(() => window.__obrSaved)).toBeUndefined();
+    // Past the cap it stops asking: fetching the rest is the memory the cap is there to spare.
+    // Six pictures, more than are asked for at once, so a sixth send means it kept going.
+    const fetches = (await sentMessages(page)).filter((m) => m.type === 'obr-fetch-bytes' && !m.askOnly);
+    expect(fetches.length).toBeLessThan(6);
   });
 
   test('every image of a Save-selected batch survives, not just one', async ({ page }) => {
@@ -3127,6 +3183,99 @@ test.describe('the worker half of the permission retry (R1)', () => {
       '192.168.1.5'
     ));
     expect(need).toEqual({ origins: ['*://192.168.1.5/*'] });
+  });
+});
+
+/* A ZIP bigger than one extension message.
+ *
+ * Chrome refuses an extension message over 64 MiB, and the worker hands the pictures back as
+ * base64, 4 characters for every 3 bytes. The selection below crosses that ceiling only when it
+ * travels as ONE reply; no picture alone comes near it. Everything between the button and the
+ * ceiling runs for real: the unmodified gallery in an extension page, the real worker, Chrome's
+ * own message limit. Two edges the harness cannot reach are stood in for: the network (the
+ * worker's fetch answers generated bytes) and the host grant (headless cannot click Allow). */
+test.describe('a ZIP larger than one extension message', () => {
+  const PICS = 5;
+  const PIC_BYTES = 12 * 1024 * 1024; // 60 MiB in all, 80 MiB once base64
+
+  // Drive the real gallery from an extension page, where sendMessage reaches the real worker.
+  async function galleryOnExtensionPage(page, context, extensionId, serviceWorker) {
+    await context.route('https://img.example.test/**', (route) =>
+      route.fulfill({ path: new URL('./fixtures/photo-400.png', import.meta.url).pathname, contentType: 'image/png' }));
+    await serviceWorker.evaluate((bytes) => {
+      chrome.permissions.contains = (_need, cb) => cb(true); // as if the image host were granted
+      const realFetch = self.fetch;
+      self.__obrFetches = 0;
+      self.fetch = (url, opts) => {
+        if (!String(url).startsWith('https://img.example.test/')) return realFetch(url, opts);
+        self.__obrFetches++;
+        return Promise.resolve(new Response(new Uint8Array(bytes).fill(7),
+          { status: 200, headers: { 'content-type': 'image/jpeg' } }));
+      };
+    }, PIC_BYTES);
+    await page.goto(`chrome-extension://${extensionId}/src/options/options.html`);
+    // An extension page's CSP refuses inline script tags, so the engine files are evaluated. The
+    // page already carries settings.js.
+    for (const file of GALLERY_FILES.slice(1)) await page.evaluate(fs.readFileSync(file, 'utf8'));
+    await page.evaluate((n) => {
+      document.body.replaceChildren(...Array.from({ length: n }, (_, i) =>
+        Object.assign(document.createElement('img'), { src: `https://img.example.test/pic-${i + 1}.png` })));
+      globalThis.OBR.saveBlob = (blob, name) => { globalThis.__obrSaved = { size: blob.size, name }; };
+    }, PICS);
+    await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
+    await openGallery(page);
+    expect((await galleryState(page)).tiles).toBe(PICS);
+    // Every status the gallery shows, so one that flashes past between two polls is seen too.
+    await page.evaluate(() => {
+      const el = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.status');
+      globalThis.__obrStatuses = [];
+      new MutationObserver(() => globalThis.__obrStatuses.push(el.textContent))
+        .observe(el, { childList: true, characterData: true, subtree: true });
+    });
+  }
+
+  test('Chrome refuses a message over 64 MiB, and nothing smaller', async ({ page, extensionId }) => {
+    // The premise of this block, measured in this browser rather than taken on trust.
+    await page.goto(`chrome-extension://${extensionId}/src/options/options.html`);
+    const send = (chars) => page.evaluate((n) => {
+      try {
+        chrome.runtime.sendMessage({ type: 'obr-none', pad: 'x'.repeat(n) }, () => void chrome.runtime.lastError);
+        return 'sent';
+      } catch (e) { return String(e && e.message); }
+    }, chars);
+    expect(await send(64 * 1024 * 1024 - 64)).toBe('sent');
+    expect(await send(64 * 1024 * 1024)).toMatch(/exceeded maximum allowed/i);
+  });
+
+  test('every picture arrives in the archive, and no wait for permission is shown', async ({ page, context, extensionId, serviceWorker }) => {
+    test.slow(); // 60 MiB through base64 twice
+    await galleryOnExtensionPage(page, context, extensionId, serviceWorker);
+    await clickInGallery(page, '.selall-cb');
+    await clickInGallery(page, '.dl-zip');
+    await expect.poll(() => galleryState(page).then((s) => s.status), { timeout: 60000 })
+      .toBe(`Done — ${PICS} saved`);
+    const saved = await page.evaluate(() => globalThis.__obrSaved);
+    expect(saved.name).toBe('images.zip');
+    expect(saved.size).toBeGreaterThan(PICS * PIC_BYTES); // every picture's bytes, plus the headers
+    expect(await page.evaluate(() => globalThis.__obrStatuses)).not.toContain('Waiting for permission…');
+    expect(await serviceWorker.evaluate(() => self.__obrFetches)).toBe(PICS); // each picture fetched once
+  });
+
+  test('a picture too big for any message comes back failed, in a reply that arrives', async ({ page, extensionId, serviceWorker }) => {
+    test.slow(); // 40 MiB through base64
+    // 40 MiB is 53 MiB once base64: under Chrome's ceiling, over the worker's own cap, which
+    // keeps each reply well clear of it.
+    await serviceWorker.evaluate((bytes) => {
+      chrome.permissions.contains = (_need, cb) => cb(true);
+      self.fetch = () => Promise.resolve(new Response(new Uint8Array(bytes).fill(7),
+        { status: 200, headers: { 'content-type': 'image/jpeg' } }));
+    }, 40 * 1024 * 1024);
+    await page.goto(`chrome-extension://${extensionId}/src/options/options.html`);
+    const ask = (urls) => page.evaluate((urls) => new Promise((r) => chrome.runtime.sendMessage(
+      { type: 'obr-fetch-bytes', urls, noPrompt: true },
+      (resp) => { void chrome.runtime.lastError; r(resp === undefined ? null : resp); })), urls);
+    expect(await ask(['https://img.example.test/huge.jpg']))
+      .toEqual({ results: [{ url: 'https://img.example.test/huge.jpg', ok: false }] });
   });
 });
 

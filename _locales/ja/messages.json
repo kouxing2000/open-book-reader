@@ -117,6 +117,7 @@
   "galleryDoneSavedFailed": { "message": "完了 — $SAVED$件保存、$FAILED$件失敗", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "完了 — $SAVED$件保存", "placeholders": { "saved": { "content": "$1" } } },
   "galleryZipVideosSkipped": { "message": "動画 $COUNT$ 件をスキップ — 動画は「ダウンロード」で保存してください", "placeholders": { "count": { "content": "$1" } } },
+  "galleryZipTooLarge": { "message": "選択が大きすぎて ZIP にできません（$LIMIT$ MB 超）— 画像を減らしてください", "placeholders": { "limit": { "content": "$1" } } },
   "gallerySelectTile": { "message": "選択" },
   "galleryEmpty": { "message": "まだ画像が見つかりません。ギャラリーをスクロールして読み込むか、⟳ すべて読み込む を使ってください。" },
   "galleryImageCount": { "message": "$COUNT$枚の画像", "placeholders": { "count": { "content": "$1" } } },

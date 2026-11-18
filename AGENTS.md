@@ -147,10 +147,13 @@ while editing a feature belongs beside that feature.
   is a human pause and an MV3 worker idles out at ~30s, so the worker that opened the prompt is
   routinely dead before the answer arrives, taking the `sendResponse` channel with it. The worker
   stores NOTHING across that gap: `chrome.permissions` already holds the grant durably, and the
-  page still holds its own request. So a `null` from `sendSW` on a download means "ask again",
-  never "failed" — `gallery.js: retryUntilAnswered` re-sends the same message with `noPrompt`,
+  page still holds its own request. So a `null` from `sendSW` on a send that can open the prompt
+  (a single download, or a ZIP's `askOnly` permission ask) means "ask again", never "failed" —
+  `gallery.js: retryUntilAnswered` re-sends the same message with `noPrompt`,
   which makes the worker answer from permission state and never open a second popup, replying
-  `{pending:true}` until the grant lands. Keep it one-directional: a worker→page result channel
+  `{pending:true}` until the grant lands. A ZIP's pictures then travel ONE PER MESSAGE with
+  `noPrompt` (Chrome refuses an extension message over 64 MiB), so a `null` on one of those is
+  that picture failing, never a wait. Keep it one-directional: a worker→page result channel
   needs de-duplication against the live one, and every retry instead arrives with a live `sender`,
   which is what the same-host fetch exemption is derived from.
 - Double-injection guards: `reader.js` via `OBR._engineLoaded`, `gallery.js` via

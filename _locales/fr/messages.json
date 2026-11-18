@@ -117,6 +117,7 @@
   "galleryDoneSavedFailed": { "message": "Terminé — $SAVED$ enregistrées, $FAILED$ échouées", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Terminé — $SAVED$ enregistrées", "placeholders": { "saved": { "content": "$1" } } },
   "galleryZipVideosSkipped": { "message": "Vidéos ignorées : $COUNT$ — utilisez « Télécharger » pour les vidéos", "placeholders": { "count": { "content": "$1" } } },
+  "galleryZipTooLarge": { "message": "Sélection trop lourde pour un ZIP (plus de $LIMIT$ Mo) — sélectionnez moins d’images", "placeholders": { "limit": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Sélectionner" },
   "galleryEmpty": { "message": "Aucune image trouvée pour l’instant. Faites défiler la galerie pour en charger plus, ou utilisez ⟳ Tout charger." },
   "galleryImageCount": { "message": "$COUNT$ images", "placeholders": { "count": { "content": "$1" } } },

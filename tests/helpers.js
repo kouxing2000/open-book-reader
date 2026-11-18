@@ -288,20 +288,26 @@ export function downloadShim() {
   //                       idled out mid-prompt does. Flip it back off to "restart" the worker.
   //   __obrPendingSends — answer the next N sends {pending:true}, which is what a live worker
   //                       says while the prompt is still on screen.
+  //   __obrFetchDies    — answer every request that carries pictures with undefined, while the
+  //                       permission ask itself is answered: the permission is held and the
+  //                       failure is something else.
   window.__obrDeadChannel = false;
   window.__obrPendingSends = 0;
+  window.__obrFetchDies = false;
   globalThis.chrome = globalThis.chrome || {};
   globalThis.chrome.runtime = {
     lastError: null,
     sendMessage(msg, cb) {
       window.__obrMsgs.push(msg);
-      if (window.__obrDeadChannel) { if (cb) setTimeout(() => cb(undefined), 0); return; }
+      const fetchDies = window.__obrFetchDies && msg && msg.type === 'obr-fetch-bytes' && !msg.askOnly;
+      if (window.__obrDeadChannel || fetchDies) { if (cb) setTimeout(() => cb(undefined), 0); return; }
       let resp = { ok: true };
       if (window.__obrPendingSends > 0) {
         window.__obrPendingSends--;
         resp = { pending: true };
       } else if (msg && msg.type === 'obr-fetch-bytes') {
-        resp = { results: (msg.urls || []).map((url) => ({ url, ok: true, b64: 'iVBORw0KGgo=' })) };
+        resp = msg.askOnly ? { ok: true } // the permission ask fetches nothing
+          : { results: (msg.urls || []).map((url) => ({ url, ok: true, b64: 'iVBORw0KGgo=' })) };
       }
       if (cb) setTimeout(() => cb(resp), 0);
     },

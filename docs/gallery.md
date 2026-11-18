@@ -157,8 +157,8 @@ embeds, which the overlays keep out.
   "0 / N selected") includes video tiles.
 - **Downloads:** a single video goes through `chrome.downloads` like a picture (no bytes through
   the worker; a URL without an extension saves as `.mp4`). A ZIP leaves selected videos out and
-  says so (`galleryZipVideosSkipped`): the worker returns every file as base64 in one message,
-  and a video's megabytes would ride in it.
+  says so (`galleryZipVideosSkipped`): the worker returns each file as base64 in a message, and
+  a video's megabytes would ride in one.
 - **Picture-only paths:** the hide menu offers a video only the URL scopes (`findImgFor` finds no
   `<img>` for it, so "in this spot" is absent), and page-scroll sync on open/close ignores videos
   (a close with a video tile on top restores the saved page spot).
@@ -287,4 +287,16 @@ ported pattern, so the strip is about consistency, not API validity. `<all_urls>
 and remains reachable as a deliberate "Allow all sites instead" opt-out in `permission.html` — never
 the default. This is what keeps the options **Site access** card meaningful: a broad grant subsumes
 every per-site row, so silently escalating to it made the card useless.
+
+**A ZIP's bytes travel one picture per message.** Chrome refuses an extension message over 64 MiB
+(measured in `gallery.spec.js`), so a whole selection returned as one base64 reply never arrived
+past about 48 MB of pictures, and the page read the silent channel as a permission wait. The ZIP
+first sends `{ askOnly: true }` over every URL: the permission ask, which fetches nothing and is
+the only send that can open the prompt, so the only one whose `null` waits (`retryUntilAnswered`).
+Then `fetchEach` asks for each picture with `noPrompt`, `FETCH_LANES` at a time, and turns its
+bytes into a `Uint8Array` as it lands; a `null` there is that picture failing. The worker's
+`fitReply` fails any picture that would push a reply past `REPLY_MAX` (background.js), so a
+picture too big to travel alone lands in the failed count instead of breaking the reply. The
+archive is built in the page's memory and `zip.js` is not ZIP64, so a selection past
+`OBR.ZIP_MAX_BYTES` stops with `galleryZipTooLarge` and saves nothing.
 

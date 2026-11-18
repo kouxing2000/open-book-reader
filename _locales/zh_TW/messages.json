@@ -117,6 +117,7 @@
   "galleryDoneSavedFailed": { "message": "完成 — 已儲存 $SAVED$ 張，失敗 $FAILED$ 張", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "完成 — 已儲存 $SAVED$ 張", "placeholders": { "saved": { "content": "$1" } } },
   "galleryZipVideosSkipped": { "message": "已略過 $COUNT$ 部影片 — 影片請用「下載」儲存", "placeholders": { "count": { "content": "$1" } } },
+  "galleryZipTooLarge": { "message": "所選圖片太大，無法打包成 ZIP（超過 $LIMIT$ MB）— 請少選一些圖片", "placeholders": { "limit": { "content": "$1" } } },
   "gallerySelectTile": { "message": "選取" },
   "galleryEmpty": { "message": "還沒找到圖片。捲動圖庫載入更多，或使用 ⟳ 全部載入。" },
   "galleryImageCount": { "message": "$COUNT$ 張圖片", "placeholders": { "count": { "content": "$1" } } },

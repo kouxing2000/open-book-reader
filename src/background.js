@@ -1085,11 +1085,28 @@ function runDownload(msg, sendResponse, sender) {
       () => { void chrome.runtime.lastError; sendResponse({ ok: true }); }
     );
   } else if (msg.type === 'obr-fetch-bytes') {
+    // The gallery's first message only asks for the permission, over every picture at once.
+    if (msg.askOnly) return sendResponse({ ok: true });
     runPool(msg.urls, FETCH_CONCURRENCY, async (url) => {
       try { return { url, ok: true, b64: await fetchBytesBase64(url, ownHost) }; }
       catch (e) { return { url, ok: false }; }
-    }).then((results) => sendResponse({ results }), () => sendResponse({ results: [] }));
+    }).then((results) => sendResponse({ results: fitReply(results) }), () => sendResponse({ results: [] }));
   }
+}
+
+// Chrome refuses an extension message over 64 MiB (measured in tests/gallery.spec.js), and a
+// reply that size never reaches the page at all. So a picture that would push a reply past
+// REPLY_MAX comes back as failed instead. The gallery asks for one picture per message, so in
+// practice this turns away only a picture too big to travel alone (over 36 MiB).
+const REPLY_MAX = 48 * 1024 * 1024; // characters of base64, with room left for the URLs and JSON
+function fitReply(results) {
+  let room = REPLY_MAX;
+  return results.map((r) => {
+    if (!r.b64) return r;
+    if (r.b64.length > room) return { url: r.url, ok: false };
+    room -= r.b64.length;
+    return r;
+  });
 }
 
 /* Optional-permission flow.

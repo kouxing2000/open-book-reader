@@ -117,6 +117,7 @@
   "galleryDoneSavedFailed": { "message": "Gotowe — zapisano: $SAVED$, błędów: $FAILED$", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Gotowe — zapisano: $SAVED$", "placeholders": { "saved": { "content": "$1" } } },
   "galleryZipVideosSkipped": { "message": "Pominięte wideo: $COUNT$ — wideo zapisz przyciskiem „Pobierz”", "placeholders": { "count": { "content": "$1" } } },
+  "galleryZipTooLarge": { "message": "Zaznaczenie za duże na ZIP (ponad $LIMIT$ MB) — zaznacz mniej obrazów", "placeholders": { "limit": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Zaznacz" },
   "galleryEmpty": { "message": "Nie znaleziono jeszcze obrazów. Przewiń galerię, aby wczytać więcej, albo użyj ⟳ Wczytaj wszystko." },
   "galleryImageCount": { "message": "Obrazów: $COUNT$", "placeholders": { "count": { "content": "$1" } } },

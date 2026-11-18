@@ -119,6 +119,7 @@
   "galleryDoneSavedFailed": { "message": "Done — $SAVED$ saved, $FAILED$ failed", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Done — $SAVED$ saved", "placeholders": { "saved": { "content": "$1" } } },
   "galleryZipVideosSkipped": { "message": "Videos skipped: $COUNT$ — use Download for videos", "placeholders": { "count": { "content": "$1" } } },
+  "galleryZipTooLarge": { "message": "Selection too large to ZIP (over $LIMIT$ MB) — select fewer pictures", "placeholders": { "limit": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Select" },
   "galleryEmpty": { "message": "No images found yet. Scroll the gallery to load more, or use ⟳ Load all." },
   "galleryImageCount": { "message": "$COUNT$ images", "placeholders": { "count": { "content": "$1" } } },

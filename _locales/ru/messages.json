@@ -117,6 +117,7 @@
   "galleryDoneSavedFailed": { "message": "Готово — сохранено: $SAVED$, ошибок: $FAILED$", "placeholders": { "saved": { "content": "$1" }, "failed": { "content": "$2" } } },
   "galleryDoneSaved": { "message": "Готово — сохранено: $SAVED$", "placeholders": { "saved": { "content": "$1" } } },
   "galleryZipVideosSkipped": { "message": "Видео пропущено: $COUNT$ — сохраняйте видео кнопкой «Скачать»", "placeholders": { "count": { "content": "$1" } } },
+  "galleryZipTooLarge": { "message": "Слишком много для ZIP (больше $LIMIT$ МБ) — выберите меньше изображений", "placeholders": { "limit": { "content": "$1" } } },
   "gallerySelectTile": { "message": "Выбрать" },
   "galleryEmpty": { "message": "Изображения пока не найдены. Прокрутите галерею, чтобы загрузить больше, или нажмите ⟳ Загрузить все." },
   "galleryImageCount": { "message": "Изображений: $COUNT$", "placeholders": { "count": { "content": "$1" } } },
