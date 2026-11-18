@@ -388,7 +388,7 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
   dispatch to set `OBR._incognito`. That flag gates `skipPassiveWrite()` in `settings.js`, which
   makes `savePosition` / `addReadingTime` / `markPositionFinished` / `bumpLifetime` / `bumpUsage`
   no-ops. Without it, reading in incognito persisted `obr_positions` — which stores
-  **origin+pathname, i.e. browsing history** — plus lifetime/usage totals into `storage.local`,
+  **page addresses (`OBR.positionKey`), i.e. browsing history** — plus lifetime/usage totals into `storage.local`,
   which OUTLIVES the incognito session: a durable on-disk trace of private browsing, against the
   whole point. Reads still work (resuming a position saved earlier creates no new trace) and
   DELIBERATE writes (theme, font, saved picks, dismissing the rating ask) still persist — only the

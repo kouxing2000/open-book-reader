@@ -152,8 +152,8 @@ Non-goals (explicitly rejected or deferred)
   again for the lifetime of that page session (covers SPA back/forward). The query string
   is part of the key — phpBB-style forums route every topic through one pathname
   (`viewtopic.php?t=123`), so an Esc keyed on pathname alone would suppress the whole
-  forum; the set is in-memory, so there is no quota reason to strip the query (unlike
-  `positionKey`). A full reload is a fresh decision — deliberate: re-navigating to a topic
+  forum; the set is in-memory, so it keeps the whole query (`positionKey` keeps it too, minus
+  campaign tags and over-long queries, because its key is stored). A full reload is a fresh decision — deliberate: re-navigating to a topic
   is a new reading intent. An address rewritten in place (a list that loads more as you scroll
   and swaps `?page=N` with `replaceState`) is the same page: when the Navigation API reports a
   `replace` whose `from` address is recorded, the sentinel records the new address too, at the

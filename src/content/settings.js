@@ -114,7 +114,8 @@
    * never sends to a server, so the site learns nothing of what is shared. Tracking tags and
    * the page's own #fragment are dropped: they are the sharer's click trail, not the article. */
   OBR.READ_URL = OBR.SITE_URL + 'read';
-  const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|igshid|_ga|_gl)$/i;
+  // Campaign tags: also dropped from the reading-position key (OBR.positionKey).
+  const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|igshid|_ga|_gl|source|smid|cmp|ref_src|mibextid)$/i;
   OBR.shareableArticleUrl = function (href) {
     const u = new URL(href);
     u.hash = '';
@@ -218,7 +219,7 @@
    * ONE service worker and ONE chrome.storage shared by normal and incognito windows. A content
    * script cannot tell which kind of tab it is in, so the SW (which can, via `tab.incognito`)
    * sets this on every dispatch. When true, the passive records of WHAT and HOW LONG you read —
-   * obr_positions (which carries origin+pathname, i.e. browsing history), obr_lifetime, obr_usage
+   * obr_positions (keyed by page address, i.e. browsing history), obr_lifetime, obr_usage
    * — are skipped, because chrome.storage.local outlives the incognito session and would leave a
    * durable on-disk trace of private browsing. Reads still work (resuming from a position saved
    * earlier in a normal window creates no new trace), and DELIBERATE preference writes (theme,
@@ -1128,20 +1129,44 @@
    * Per-article reading position so the reader resumes where you left off.
    * Stored in chrome.storage.LOCAL (not sync): positions are per-device, can be
    * many, and shouldn't burn the 8KB sync quota that holds the user's settings.
-   * One bounded map `obr_positions` = { '<origin+pathname>': { f, t } } where `f`
+   * One bounded map `obr_positions` = { '<OBR.positionKey>': { f, t } } where `f`
    * is the progress FRACTION (not a spread index — pagination depends on font /
    * columns / viewport, which may differ next session, so we restore the fraction
    * and let the reader re-anchor it onto the new column count). LRU-pruned to
    * POSITIONS_MAX so a heavy reader never grows the map without bound. */
   OBR.POSITIONS_KEY = 'obr_positions';
+
+  // FNV-1a, 32-bit, base 36: a short stable stand-in for a string the map should not hold
+  // whole (the reader's top-paragraph key, an over-long query).
+  OBR.fingerprint = function (k) {
+    let h = 2166136261;
+    for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  };
   OBR.POSITIONS_MAX = 300;
 
-  // Stable per-article key: origin + pathname only (query/hash stripped so the
-  // same article under different tracking params resolves to one position).
+  // Stable per-article key: origin + pathname + the query that picks the page. Query-routed
+  // sites put every thread on one pathname (news.ycombinator.com/item?id=, phpBB
+  // viewtopic.php?t=), so the query must count. Campaign tags (TRACKING_PARAM, the list the
+  // shared-article link drops) are dropped, so one article reached through different links
+  // resolves to one position, and the rest is sorted. A page with no query, or tags only, keys
+  // as origin + pathname: every position saved before the query counted stays reachable. A
+  // query longer than POSITION_QUERY_MAX is kept as `?~` + its fingerprint: the key stays
+  // short, which the LRU-by-count positions map relies on, and two such pages stay apart. A
+  // serialized query never starts with a literal `~` (it is percent-encoded), so the two
+  // forms cannot collide.
+  const POSITION_QUERY_MAX = 256;
   OBR.positionKey = function (loc) {
     const l = loc || (typeof location !== 'undefined' ? location : null);
     if (!l) return '';
-    try { return l.origin + l.pathname; } catch (e) { return l.href || ''; }
+    try {
+      const params = new URLSearchParams(l.search);
+      for (const k of [...params.keys()]) if (TRACKING_PARAM.test(k)) params.delete(k);
+      params.sort();
+      const q = params.toString();
+      if (!q) return l.origin + l.pathname;
+      return l.origin + l.pathname + (q.length <= POSITION_QUERY_MAX ? '?' + q : '?~' + OBR.fingerprint(q));
+    } catch (e) { return l.href || ''; }
   };
 
   function localArea() {
@@ -1714,8 +1739,8 @@
 
   // Suppression key: origin+pathname+SEARCH. Query-routed forums (viewtopic.php?t=123)
   // put every topic on one pathname — an Esc keyed on pathname alone would silence the
-  // whole forum. The set is in-memory (page-session lifetime), so unlike OBR.positionKey
-  // there is no quota reason to strip the query.
+  // whole forum. The set is in-memory (page-session lifetime), so it keeps the whole query,
+  // campaign tags and long queries included, which OBR.positionKey drops from a stored key.
   OBR._autoPageKey = function () {
     try { return location.origin + location.pathname + location.search; }
     catch (e) { return (globalThis.location && location.href) || ''; }

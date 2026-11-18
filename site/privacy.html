@@ -86,7 +86,7 @@
       </ul>
       <p class="sub-label">Kept on this device only (Chrome's <code>storage.local</code>, never synced):</p>
       <ul>
-        <li><strong>Reading positions</strong> — where you stopped in an article and how long you spent on it, so the reader can offer to resume. An entry records the site and the page path (any <code>?query</code> string is dropped), which makes it a record of the articles you opened the reader on. It stays on this device.</li>
+        <li><strong>Reading positions</strong> — where you stopped in an article and how long you spent on it, so the reader can offer to resume. An entry records the site, the page path and the rest of the address after <code>?</code>, such as a forum thread's number. Campaign tags like <code>utm_source</code> are dropped, and a very long remainder is kept only as a short fingerprint. That makes the entry a record of the articles you opened the reader on. It stays on this device.</li>
         <li><strong>Your own counters</strong> — articles finished and total reading time, used only to show your stats on the back-cover page and to decide whether to ask you for a rating.</li>
       </ul>
       <p class="sub-label">Held by Chrome itself:</p>

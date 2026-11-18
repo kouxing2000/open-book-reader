@@ -1173,6 +1173,118 @@ test('resumes the saved reading position when reopened on the same article', asy
   expect(back.translateX).toBe(left.translateX);
 });
 
+test('threads one pathname apart only by their query keep separate reading positions', async ({ page }) => {
+  // Query-routed sites put every thread on one pathname (news.ycombinator.com/item?id=, phpBB
+  // viewtopic.php?t=). A fresh visit to a page at its top takes the saved position as the better
+  // guess at where the reader is, so a shared position opens thread 2 where thread 1 was left.
+  await page.goto('/article.html?id=1');
+  await injectReader(page);
+  await openReader(page);
+  await page.keyboard.press('End');
+  const left = await readState(page);
+  expect(left.translateX).toBeLessThan(0);
+  await page.evaluate(() => globalThis.OBR.close());
+
+  await page.goto('/article.html?id=2');
+  await injectReader(page);
+  await openReader(page);
+  expect((await readState(page)).translateX).toBe(0);
+  await page.evaluate(() => globalThis.OBR.close());
+
+  // Thread 1 on a fresh visit still resumes, so the start above is not resume being broken.
+  await page.goto('/article.html?id=1');
+  await injectReader(page);
+  await openReader(page);
+  expect((await readState(page)).translateX).toBe(left.translateX);
+});
+
+test('the position key keeps the query that picks the page and drops campaign tags', async ({ page }) => {
+  const key = (u) => page.evaluate((u) => globalThis.OBR.positionKey(new URL(u)), u);
+  expect(await key('https://news.ycombinator.com/item?id=1')).toBe('https://news.ycombinator.com/item?id=1');
+  expect(await key('https://news.ycombinator.com/item?id=2')).toBe('https://news.ycombinator.com/item?id=2');
+  expect(await key('https://forum.test/viewtopic.php?t=7&utm_source=x&fbclid=y'))
+    .toBe('https://forum.test/viewtopic.php?t=7');
+  // The order the parameters arrive in does not split one page into two.
+  expect(await key('https://bbs.test/forum.php?mod=viewthread&tid=9'))
+    .toBe(await key('https://bbs.test/forum.php?tid=9&mod=viewthread'));
+  // A query too long to keep whole keys as a short fingerprint: bounded, and still apart.
+  const long = await key('https://ex.test/search?q=' + 'x'.repeat(300));
+  expect(long).toMatch(/^https:\/\/ex\.test\/search\?~[0-9a-z]+$/);
+  expect(await key('https://ex.test/search?q=' + 'y'.repeat(300))).not.toBe(long);
+  expect(await key('https://ex.test/search?utm_source=n&q=' + 'x'.repeat(300))).toBe(long);
+});
+
+test('the position key holds its rules over generated addresses', async ({ page }) => {
+  // Seeded, so a failure reproduces. Each case: distinct routing parameters with values that
+  // need escaping, campaign tags spliced in, all in a shuffled order.
+  const failures = await page.evaluate(() => {
+    let seed = 0x5eed;
+    const rand = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const pick = (a) => a[Math.floor(rand() * a.length)];
+    const shuffle = (a) => {
+      a = a.slice();
+      for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+      return a;
+    };
+    const NAMES = ['id', 't', 'p', 'tid', 'mod', 'page', 'start', 'f', 'q', 'extra'];
+    const TAGS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'fbclid', 'gclid', 'dclid',
+      'msclkid', 'mc_cid', 'mc_eid', 'igshid', '_ga', '_gl', 'source', 'smid', 'CMP', 'ref_src', 'mibextid',
+      'UTM_Source'];
+    const LONG = 'L'.repeat(300);
+    const VALUES = ['1', '42', 'viewthread', 'a b', 'ä', '&=', '%', '', LONG];
+    const base = 'https://forum.example/board/viewtopic.php';
+    const qs = (pairs) => pairs.map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+    const url = (pairs) => (pairs.length ? base + '?' + qs(pairs) : base);
+    const key = (u) => globalThis.OBR.positionKey(new URL(u));
+    const out = [];
+    for (let n = 0; n < 400; n++) {
+      const routing = shuffle(NAMES).slice(0, Math.floor(rand() * 4)).map((k) => [k, pick(VALUES)]);
+      const tags = Array.from({ length: Math.floor(rand() * 4) }, () => [pick(TAGS), pick(VALUES)]);
+      const k = key(url(routing));
+      const fail = (why) => out.push({ why, routing, tags, k });
+      const long = routing.some(([, v]) => v === LONG);
+      if (key(url(shuffle(routing.concat(tags)))) !== k) fail('tags or order changed the key');
+      if (!routing.length && k !== base) fail('keyed on more than the path');
+      if (long && !k.startsWith(base + '?~')) fail('a long query kept whole');
+      if (!long && key(k) !== k) fail('not stable on its own output'); // a fingerprint is no address
+      if (k.length > base.length + 1 + 256) fail('over the length bound');
+      if (routing.length) {
+        const i = Math.floor(rand() * routing.length);
+        const other = routing.map(([name, v], j) => [name, j === i ? v + 'x' : v]);
+        if (key(url(other)) === k) fail('a routing value did not count');
+      }
+    }
+    return out;
+  });
+  expect(failures).toEqual([]);
+});
+
+test('an article keeps the key it was saved under before the query counted', async ({ page }) => {
+  // Every position saved so far sits under origin + pathname. A plain address, and one carrying
+  // only campaign tags, must still resolve to exactly that, or those positions are orphaned.
+  const key = (u) => page.evaluate((u) => globalThis.OBR.positionKey(new URL(u)), u);
+  for (const u of [
+    'https://ex.test/2026/11/slow-reading.html',
+    'https://ex.test/2026/11/slow-reading.html?',
+    'https://ex.test/2026/11/slow-reading.html#comments',
+    'https://ex.test/2026/11/slow-reading.html?utm_source=nl&utm_medium=email&utm_campaign=w46&fbclid=a&gclid=b',
+    'https://ex.test/2026/11/slow-reading.html?source=rss----a1&smid=nytcore&CMP=share_btn&ref_src=twsrc&mibextid=Zx',
+  ]) expect(await key(u)).toBe('https://ex.test/2026/11/slow-reading.html');
+
+  // End to end: an entry written the old way resumes on a visit through a tagged link.
+  await page.evaluate(() => new Promise((res) => chrome.storage.local.set(
+    { obr_positions: { [location.origin + location.pathname]: { f: 1, t: 1 } } }, res)));
+  await page.goto('/article.html?utm_source=newsletter&utm_medium=email&fbclid=abc');
+  await injectReader(page);
+  await openReader(page);
+  expect((await readState(page)).translateX).toBeLessThan(0); // on the last spread, not page 1
+});
+
 /* Page scroll <-> reader position, on a fixture long enough to scroll well past one viewport
  * and with every paragraph's opening unique ("Part N of the walk"). */
 const scrollToPart = (page, n) => page.evaluate((n) => {

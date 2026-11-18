@@ -3171,12 +3171,8 @@
    * otherwise read as a fresh scroll and overwrite the saved position with an old one. */
   let pagePk = ''; // fingerprint of the page's top paragraph, saved with every position write
 
-  // FNV-1a of a block key: the position map stores this, never article text.
-  function fingerprint(k) {
-    let h = 2166136261;
-    for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return (h >>> 0).toString(36);
-  }
+  // A block key's fingerprint: the position map stores this, never article text.
+  const fingerprint = OBR.fingerprint;
 
   // Live-page blocks the user can see. An inactive tab pane or a collapsed accordion has a
   // zero-height box, and its hidden copy must not make the visible block's key a duplicate.

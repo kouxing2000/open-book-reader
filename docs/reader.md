@@ -461,7 +461,14 @@ re-places the reader. The fraction is granular: the restored spread can sit up t
 the new layout off the exact place. **Resume** loads the saved fraction into `restoreAnchor` and
 re-applies it through the late-image settle window until the first user nav clears it. Per-article
 positions persist to `chrome.storage.LOCAL` (NOT sync — per-device, can be many, mustn't burn the 8KB
-sync quota) as one bounded, LRU-pruned map `obr_positions` keyed by `origin+pathname`. No new
+sync quota) as one bounded, LRU-pruned map `obr_positions` keyed by `OBR.positionKey`: origin +
+pathname + the query that picks the page, because query-routed sites put every thread on one
+pathname (`news.ycombinator.com/item?id=`, phpBB `viewtopic.php?t=`). Campaign tags (the shared
+`TRACKING_PARAM` list) are dropped and the rest sorted, so one article reached through different
+links keeps one position; a page with no query, or tags only, keys as plain origin + pathname,
+which is what every key was before the query counted. A query longer than `POSITION_QUERY_MAX` is
+kept as `?~` + `OBR.fingerprint` of it, which bounds the key and still keeps two such pages
+apart. Adding a name to `TRACKING_PARAM` re-keys any position saved with that parameter. No new
 permission — `storage` already covers `storage.local`.
 
 ## The page's scroll and the reader's position follow each other
