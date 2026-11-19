@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.1] - 2026-11-19
+
+- **Each thread keeps its own place.** On sites that put every thread on one address with a
+  different query (Hacker News items, phpBB and Discuz forums), each thread now saves its own
+  reading position, so opening a new thread no longer jumps to where you left another one. The
+  saved position keeps a fingerprint of the query, never the query text itself.
+- **Fewer campaign tags in shared links.** A shared article link now also drops `source`, `smid`,
+  `cmp`, `ref_src` and `mibextid`, as it already dropped `utm_*` and the like.
+- **Large picture ZIPs arrive.** A ZIP over about 48 MB no longer sits on "Waiting for permission…"
+  while fetching every picture again; it now downloads, up to 500 MB per ZIP (a larger selection
+  stops with a message asking you to select fewer pictures). A single picture over about 36 MB is
+  left out and counted as failed.
+- **Clear and rename give back site access.** Clearing a site rule or renaming its site now also
+  hands back the site access it no longer needs, as unchecking, deleting and Stop auto-opening
+  already did; access another auto-open rule still uses is kept. A picture ZIP from that site may
+  ask for access again.
+
 ## [1.20.0] - 2026-11-14
 
 - **Turn off the spine shadow.** Options → Spine shadow removes the shadow down the middle of a
@@ -692,7 +709,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.20.0...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.20.1...HEAD
+[1.20.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.20.1
 [1.20.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.20.0
 [1.19.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.19.0
 [1.18.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.18.0
