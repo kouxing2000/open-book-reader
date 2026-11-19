@@ -1367,7 +1367,7 @@ test.describe('lazy image identity', () => {
     await openWithStaleCandidate(page);
     const featureTile = page.locator('#obr-gallery-host >> .tile:has(img[src$="?n=A"])');
     await featureTile.hover();
-    await featureTile.locator('.tile-hide').click({ force: true });
+    await featureTile.locator('.tile-hide').click();
     const scope = page.locator('#obr-gallery-host >> .hide-menu .hm-opt').first();
     await expect(scope).toContainText('img.feature-photo');
     await scope.hover();
@@ -2315,7 +2315,7 @@ test.describe('gallery image filter', () => {
     expect(await toggleVisible()).toBe(true); // "1 hidden · Show" is offered — not silent loss
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
     await expect.poll(() => galleryState(page).then((s) => s.tiles)).toBe(7);
-    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').click({ force: true });
+    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').click();
     // The allow entry persists and overrides the auto-filter from now on.
     await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns()))
       .toEqual(['+' + new URL(page.url()).hostname.replace(/^www\./, '') + '/pic.png']);
@@ -2369,7 +2369,7 @@ test.describe('lazy forum noise', () => {
     await injectGallery(page);
     await openGallery(page);
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
-    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/600x"]) .tile-unhide').click({ force: true });
+    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/600x"]) .tile-unhide').click();
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
     await page.evaluate(() => globalThis.OBR.closeGallery());
     // The page's lazy loader runs, and the browser picks the 300w size.
@@ -2397,7 +2397,7 @@ test.describe('lazy forum noise', () => {
     await injectGallery(page);
     await openGallery(page);
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
-    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/300x"]) .tile-unhide').click({ force: true });
+    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/300x"]) .tile-unhide').click();
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
     await page.evaluate(() => globalThis.OBR.closeGallery());
     // A later visit: the same picture, not loaded yet.
@@ -2431,7 +2431,7 @@ test.describe('lazy forum noise', () => {
     await injectGallery(page);
     await openGallery(page);
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
-    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/300x"]) .tile-unhide').click({ force: true });
+    await page.locator('#obr-gallery-host >> .tile:has(img[src$="/photos/p/300x"]) .tile-unhide').click();
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
     await page.evaluate(() => globalThis.OBR.closeGallery());
     await page.evaluate((srcset) => {
@@ -2504,7 +2504,7 @@ test.describe('gallery element-selector hide', () => {
       return +[...r.querySelectorAll('.tile')].find((t) => t.getAttribute('href') === u).dataset.idx;
     }, u1);
     await page.locator(`#obr-gallery-host >> .tile[data-idx="${idx}"]`).hover();
-    await page.locator(`#obr-gallery-host >> .tile[data-idx="${idx}"] .tile-hide`).click({ force: true });
+    await page.locator(`#obr-gallery-host >> .tile[data-idx="${idx}"] .tile-hide`).click();
     const menu = await page.evaluate(() => {
       const m = document.getElementById('obr-gallery-host').shadowRoot.querySelector('.hide-menu');
       const first = m.querySelectorAll('.hm-opt')[0]; // (not :first-child — the header div precedes the options)
@@ -2527,7 +2527,7 @@ test.describe('gallery element-selector hide', () => {
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
     await expect.poll(() => page.evaluate(() =>
       document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile.tile-is-hidden').length)).toBe(2);
-    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').first().click({ force: true });
+    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').first().click();
     await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns().length)).toBe(0);
     await expect.poll(() => page.evaluate(() =>
       document.getElementById('obr-gallery-host').shadowRoot.querySelectorAll('.tile.tile-is-hidden').length)).toBe(0);
@@ -3640,7 +3640,7 @@ test.describe('page scroll and the grid follow each other', () => {
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(true));
     expect(await page.evaluate(() => Array.from(document.getElementById('obr-gallery-host').shadowRoot
       .querySelectorAll('.tile.tile-is-hidden img')).map((i) => i.src.replace(/^.*\//, '')))).toEqual(['pic-700.png']); // peeking: back, tagged
-    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').click({ force: true });
+    await page.locator('#obr-gallery-host >> .tile.tile-is-hidden .tile-unhide').click();
     await expect.poll(() => page.evaluate(() => globalThis.OBR._galleryHiddenPatterns())).toEqual([]);
     await page.evaluate(() => globalThis.OBR._galleryRevealHidden(false));
     expect((await galleryState(page)).tiles).toBe(40);
