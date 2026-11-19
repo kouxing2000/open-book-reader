@@ -473,6 +473,43 @@ test('reset whose settings write fails keeps the rules, their site access and th
   expect(await page.evaluate(() => window.__removed)).toEqual([]);
 });
 
+// The site access goes back only once the rule write has landed: a refused write leaves the
+// rule auto in storage, and it still needs its access.
+test('unchecking Auto-open when the settings write fails keeps the site access', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'keep.test', mode: 'auto', auto: true }] },
+  }, res)));
+  await stubGrants(page, ['*://keep.test/*', '*://www.keep.test/*']);
+  await page.reload();
+  await openSections(page);
+  const failedText = await page.evaluate(() => {
+    const realSet = chrome.storage.sync.set;
+    // Oversize the item so Chrome itself rejects the write with a real runtime.lastError.
+    chrome.storage.sync.set = function (items, cb) {
+      return realSet.call(this, { ...items, obr_settings: { ...items.obr_settings, padding: 'x'.repeat(9000) } }, cb);
+    };
+    return chrome.i18n.getMessage('optSaveFailed');
+  });
+  await page.locator('.site-row .site-auto input').click();
+  await expect(page.locator('#saved')).toHaveText(failedText);
+  expect(await page.evaluate(() => window.__granted)).toEqual(['*://keep.test/*', '*://www.keep.test/*']);
+});
+
+test('reset to defaults hands back the site access its auto-open rules used', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'reset.test', mode: 'text', auto: true }, { match: 'plain.test', mode: 'text' }] },
+  }, res)));
+  await stubGrants(page, ['*://reset.test/*', '*://www.reset.test/*', '*://plain.test/*']);
+  await page.reload();
+  await expect(page.locator('.site-row')).toHaveCount(2);
+  await page.locator('#reset').click();
+  await expect(page.locator('.site-row')).toHaveCount(0);
+  // The auto rule's pair goes back; a grant no rule asked for (plain.test's) is not a rule's to give.
+  await expect.poll(() => page.evaluate(() => window.__granted)).toEqual(['*://plain.test/*']);
+});
+
 test('the Auto-open checkbox asks for the site permission — grant, uncheck, and deny paths', async ({ page, extensionId }) => {
   await page.goto(optionsUrl(extensionId));
   // Stub the permission prompt: a real permissions.request pops a native dialog headless
@@ -620,6 +657,71 @@ test('editing a rule pattern to a new, ungranted host turns Auto-open off (re-gr
 
   await expect.poll(() => storedFirstRule(page)).toEqual({ match: 'other.test', mode: 'auto' });
   await expect(page.locator('.site-row .site-auto input')).not.toBeChecked();
+});
+
+// A rename moves the rule to another host, so the old host's access is no longer used by it:
+// it is given back, as deleting the rule gives it back. The new host is treated as before:
+// never asked for here, auto-open kept only when that host is already granted.
+const renameAutoRule = async (page, extensionId, granted) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'old.test', mode: 'auto', auto: true }] },
+  }, res)));
+  await stubGrants(page, granted);
+  await page.reload();
+  await openSections(page);
+  await page.evaluate(() => { window.__requested = []; const r = chrome.permissions.request;
+    chrome.permissions.request = (need, cb) => { window.__requested.push(need); return r(need, cb); }; });
+  const pat = page.locator('.site-pat-input');
+  await pat.fill('new.test');
+  await pat.press('Enter');
+};
+
+test('renaming an auto-open rule to an ungranted host gives back the old host\'s access', async ({ page, extensionId }) => {
+  await renameAutoRule(page, extensionId, ['*://old.test/*', '*://www.old.test/*']);
+  await expect.poll(() => storedFirstRule(page)).toEqual({ match: 'new.test', mode: 'auto' });
+  await expect.poll(() => page.evaluate(() => window.__granted)).toEqual([]);
+  expect(await page.evaluate(() => window.__requested)).toEqual([]);
+});
+
+test('renaming an auto-open rule to a granted host keeps auto-open and gives back the old host\'s access', async ({ page, extensionId }) => {
+  await renameAutoRule(page, extensionId,
+    ['*://old.test/*', '*://www.old.test/*', '*://new.test/*', '*://www.new.test/*']);
+  await expect.poll(() => storedFirstRule(page)).toEqual({ match: 'new.test', mode: 'auto', auto: true });
+  await expect.poll(() => page.evaluate(() => window.__granted)).toEqual(['*://new.test/*', '*://www.new.test/*']);
+  expect(await page.evaluate(() => window.__requested)).toEqual([]);
+});
+
+// Under an all-sites grant, removing a site's own entries leaves its access in place. Deleting
+// the rule must then say the site is still granted, never that its access was removed.
+test('under an all-sites grant, deleting an auto-open rule says the site is still granted', async ({ page, extensionId }) => {
+  await page.goto(optionsUrl(extensionId));
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({
+    obr_settings: { siteRules: [{ match: 'cover.test', mode: 'auto', auto: true }] },
+  }, res)));
+  await page.addInitScript(() => {
+    const iv = setInterval(() => {
+      if (!globalThis.chrome || !chrome.permissions) return;
+      clearInterval(iv);
+      window.__granted = ['<all_urls>', '*://cover.test/*', '*://www.cover.test/*'];
+      const covers = (o) => window.__granted.includes('<all_urls>') || window.__granted.includes(o);
+      chrome.permissions = {
+        request: (need, cb) => cb(true),
+        remove: (need, cb) => {
+          window.__granted = window.__granted.filter((o) => !(need.origins || []).includes(o));
+          cb(true);
+        },
+        contains: (need, cb) => cb((need.origins || []).every(covers)), // the broad grant covers every site
+        getAll: (cb) => cb({ origins: window.__granted.slice() }),
+      };
+    }, 0);
+  });
+  await page.reload();
+  await openSections(page);
+  const still = await page.evaluate(() => chrome.i18n.getMessage('optAccessStillGranted'));
+  await page.locator('.site-row .site-remove').click();
+  await expect(page.locator('#saved')).toHaveText(still);
+  expect(await page.evaluate(() => window.__granted)).toEqual(['<all_urls>']);
 });
 
 test('Escape cancels an in-progress pattern edit without persisting', async ({ page, extensionId }) => {

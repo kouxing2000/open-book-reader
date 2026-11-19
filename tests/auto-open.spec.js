@@ -676,6 +676,29 @@ test('releasableOrigins holds the grant while a sibling auto rule on the same ho
   expect(r.wildcardIsDistinct).toEqual(['*://example.com/*', '*://www.example.com/*']);
 });
 
+// The reverse: a rule under a `*.example.com` grant asks for no grant of its own (contains() is
+// already true), so it runs on the wildcard, which must then stay while that rule is auto. A
+// rename from *.example.com to blog.example.com is that case on its own.
+test('releasableOrigins keeps a *.host grant while a narrower auto rule still runs on it', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await injectSentinel(page);
+  const r = await page.evaluate(() => {
+    const auto = (match) => ({ match, mode: 'auto', auto: true });
+    return {
+      subdomain: OBR.releasableOrigins(auto('*.example.com'), [auto('blog.example.com')]),
+      apexPath: OBR.releasableOrigins(auto('*.example.com'), [auto('example.com/forum/*')]),
+      deeperWildcard: OBR.releasableOrigins(auto('*.example.com'), [auto('*.cdn.example.com')]),
+      lookalike: OBR.releasableOrigins(auto('*.example.com'), [auto('notexample.com')]),
+      rename: OBR.releasedOrigins([auto('*.example.com')], [auto('blog.example.com')]),
+    };
+  });
+  expect(r.subdomain).toEqual([]);
+  expect(r.apexPath).toEqual([]);
+  expect(r.deeperWildcard).toEqual([]);
+  expect(r.lookalike).toEqual(['*://*.example.com/*']); // a suffix, not a subdomain
+  expect(r.rename).toEqual([]);
+});
+
 test('_pathPatternForUrl best-guesses a path-scoped rule pattern from the current URL', async ({ page }) => {
   await gotoFixture(page, 'article.html');
   await injectSentinel(page);

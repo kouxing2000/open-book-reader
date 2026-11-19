@@ -289,17 +289,23 @@ patterns (origins are host-scoped; the path part is enforced by the sentinel, no
 - a host glob that does not form a valid Chrome match pattern → `[]` (options UI disables
   the Auto checkbox for that rule with a hint).
 
-**Turning auto-open OFF now releases the site permission** (changed 2026-07; it previously
-never auto-revoked). Every DELIBERATE turn-off path releases: the options checkbox, deleting
-the rule, the context menu's "Stop auto-opening", and the in-overlay chip's Stop — the last
-one RELAYS via an `obr-stop-auto` message, because a content script cannot call
-`permissions.remove` and clearing in-page would drop the flag while keeping the grant. All of
-those route through `OBR.releasableOrigins(rule, remainingRules)`, which returns `[]` (keep the
-grant) when a sibling auto rule on the same host still needs it. "Reset to defaults" also
-releases, but via `OBR.autoRuleOrigins` directly (it wipes every rule at once, so there is no
-surviving sibling to test against). **Known exception:** editing a rule's *pattern* to a new
-host (`patCommit`) drops `auto` and ORPHANS the old host's grant; it surfaces afterwards as a
-"Not used by any auto-open rule" row in the Site access card rather than being handed back. Origins are HOST-scoped, so
+**Every rule change hands back the site access it leaves unused.** One function owns it,
+`OBR.releaseRuleChange(before, after)` in `settings.js`: given the rules before and after a
+write, it revokes (and verifies) whatever an auto rule before could give back against the
+rules after (`OBR.releasableOrigins`, per rule), and runs only once the write has landed. In
+Options every rule edit saves through `persistRules`, which calls it: the checkbox, deleting a
+rule, renaming its pattern (the old host's access goes back; the new host is never asked for
+there, and auto-open stays only if that host is already granted), the mode, adding one; and
+Reset to defaults calls it with an empty "after". In the worker every rule write goes through
+`writeRules`: the context menu's "Clear rule" and "Stop auto-opening", Configure default, and
+the in-overlay chip's Stop, which RELAYS via an `obr-stop-auto` message, because a content
+script cannot call `permissions.remove` and clearing in-page would drop the flag while keeping
+the grant. Left direct: `OBR.storeAutoRule`, which only turns auto-open on, and the content
+script's local fallback in `_stopAutoHere` (no messaging, no permissions API). `releasableOrigins` returns `[]` (keep the grant) when another auto rule still
+needs it: a sibling on the same host, or a narrower rule running under a `*://*.host/*` grant
+(it asked for nothing of its own, since `contains()` already said yes). A ZIP download asks for
+`*://host/*` per image host, the same string as half a rule's pair, so a release also takes
+back a ZIP grant for images on that host; whether it should is undecided. Origins are HOST-scoped, so
 `host/blog/*` and `host/forum/*` share ONE grant; releasing for one would silently pause the
 other while its checkbox still read "on". The union side of that decision is
 `OBR.autoRuleOrigins(rules)` — the SAME function the sentinel registration uses, so a grant

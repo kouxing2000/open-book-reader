@@ -359,18 +359,25 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
   asking anyway made Chrome record a redundant per-site entry beside "All sites". Two
   consequences that have already bitten: (1) `remove()` resolves `true` even for origins that were
   NEVER granted, and cannot carve a per-site hole out of `<all_urls>` — so **always re-check
-  `contains()` afterwards** and report only that (`options.js: revokeOrigins`; the SW's similar
+  `contains()` afterwards** and report only that (`OBR.revokeOrigins` in `settings.js`; the SW's similar
   "contains is authoritative here" note is about the request-WAITER path, not `remove`); (2) origins are HOST-scoped, so `host/blog/*` and `host/forum/*` share ONE grant —
   releasing on behalf of one silently pauses the other while its checkbox still reads "on".
-  Two shared definitions in `settings.js` settle both, and every caller MUST use them:
-  `OBR.autoRuleOrigins(rules)` (the union the sentinel registration reads) and
-  `OBR.releasableOrigins(rule, remaining)` (`[]` = keep the grant). The deliberate turn-off paths
-  all release: options checkbox, rule delete, Reset to defaults, the context menu's "Stop
-  auto-opening", and the in-overlay chip's Stop (which RELAYS via `obr-stop-auto` — a content
-  script cannot call `permissions.remove`, so clearing in-page would keep the grant). Known
-  exception: editing a rule's pattern to a new host (`patCommit`) drops `auto` and ORPHANS the
-  old host's grant — it surfaces later as a "Not used by any auto-open rule" row. `permissions.remove` needs no user gesture, so the worker releases directly (it skips
-  the verify step only because it reports nothing).
+  Shared definitions in `settings.js` settle both, and every caller MUST use them:
+  `OBR.autoRuleOrigins(rules)` (the union the sentinel registration reads),
+  `OBR.releasableOrigins(rule, remaining)` (`[]` = keep the grant; a `*://*.host/*` grant stays
+  while a narrower auto rule under it still runs on it), and the ONE owner of handing access
+  back, `OBR.releaseRuleChange(before, after)`. Every site-rule write calls that last one once
+  the write has landed: in Options through `persistRules` (checkbox, delete, rename, mode, add)
+  and Reset to defaults, in the worker through `writeRules` (the context menu's Clear rule and
+  "Stop auto-opening", Configure default, and the in-overlay chip's Stop, which RELAYS via
+  `obr-stop-auto` because a content script cannot call `permissions.remove`). A new rule writer
+  goes through one of the two, never straight to `updateSettings`. Two writers stay direct, and
+  why: `OBR.storeAutoRule` only ever turns auto-open ON (nothing to give back), and
+  `_stopAutoHere`'s local fallback runs in a content script with no messaging, where no
+  permissions API exists. `permissions.remove` needs
+  no user gesture, so the worker releases directly. A ZIP download asks for `*://host/*` per
+  image host, the same string as half a rule's pair, so any release also takes back a ZIP
+  grant for images on that host.
   A revoked auto rule KEEPS its `auto` flag on purpose — the sentinel re-arms if the grant returns,
   so the UI shows a paused line and never silently unchecks the box.
 

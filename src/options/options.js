@@ -83,24 +83,6 @@
     });
   }
 
-  // Revoke, then VERIFY — resolves true only if access is genuinely gone.
-  // permissions.remove resolves `true` even for origins that were never granted, so its own
-  // result proves nothing. And under a COVERING grant it does something subtler than failing:
-  // observed behaviour is that the per-site entries vanish from getAll() while contains() stays
-  // true — the bookkeeping changes, the access does not. contains() afterwards is the only
-  // honest signal. Never report a revoke from remove()'s callback alone.
-  function revokeOrigins(origins) {
-    return new Promise((res) => {
-      try {
-        if (!chrome.permissions || !chrome.permissions.remove || !origins.length) return res(false);
-        chrome.permissions.remove({ origins }, () => {
-          void chrome.runtime.lastError;
-          permsContains(origins).then((still) => res(!still));
-        });
-      } catch (e) { res(false); }
-    });
-  }
-
   // A grant that covers every site. background.js requests the literal '<all_urls>', but don't
   // assume getAll() echoes that exact string back — treat any all-host pattern the same, or the
   // card would label it a per-site grant and offer a Revoke that cannot work.
@@ -194,7 +176,7 @@
         btn.textContent = OBR.t(g.broad ? 'optAccessRemove' : 'optAccessRevoke');
         btn.addEventListener('click', () => {
           btn.disabled = true;
-          revokeOrigins(g.targets).then((gone) => {
+          OBR.revokeOrigins(g.targets).then((gone) => {
             btn.disabled = false;
             // Removing a per-site entry under a broad grant DOES delete the entry (the row goes)
             // but cannot remove access (the broad grant still covers the site). Reporting only
@@ -560,12 +542,19 @@
   let rules = [];
   const cloneRules = () => JSON.parse(JSON.stringify(rules || []));
 
-  // `then` receives saveSettings' success boolean, so a caller that follows up with a second
-  // user-visible action (the auto-open revoke) can stay silent when the write itself failed
-  // instead of overwriting "Save failed" with its own cheerier message.
+  // Every rule edit on this page saves here, and so hands back the site access the edit leaves
+  // unused (OBR.releaseRuleChange) — only AFTER the write is known to have landed. A release
+  // running beside a failed write would report a green toast over "Save failed", with the rule
+  // still auto in storage and its permission gone. `then` receives the save's success boolean.
   function persistRules(next, then) {
+    const before = rules;
     rules = next;
-    OBR.saveSettings({ siteRules: next }).then((ok) => { flashSaved(ok); if (then) then(ok !== false); });
+    OBR.saveSettings({ siteRules: next }).then((ok) => {
+      flashSaved(ok);
+      const saved = ok !== false;
+      if (then) then(saved);
+      if (saved) OBR.releaseRuleChange(before, next).then(reportRelease);
+    });
   }
 
   function modeSelect(value) {
@@ -593,9 +582,10 @@
   }
 
   // The per-row Auto-open checkbox. Checking asks for the site permission first (a
-  // denied prompt reverts the box); unchecking clears the flag AND hands the site permission
-  // back. A ZIP download's grant is a DIFFERENT set of patterns (its own image origins), and
-  // `remove` is pattern-exact, so releasing this pair cannot disturb it. The revoke is VERIFIED before it's reported: under a broad
+  // denied prompt reverts the box); unchecking clears the flag, and persistRules hands the site
+  // permission back. A ZIP download asks for `*://host/*` per image host, the same string as
+  // half of this pair, and `remove` is pattern-exact, so the release also takes back a ZIP
+  // grant for images on this host. The revoke is VERIFIED before it's reported: under a broad
   // <all_urls> grant the per-site removal is a no-op, and claiming "removed" then would lie.
   // Rules whose host part can't form a Chrome match pattern (a mid-host `*`) can't auto-open:
   // disabled box + a title explaining why.
@@ -620,17 +610,7 @@
           OBR.setRuleAuto(cloneRules(), rule.match, on),
           (saved) => { if (onCommit) onCommit(on); if (after) after(saved); }
         );
-        if (!cb.checked) {
-          // Only release AFTER the write is known to have landed. Running them concurrently
-          // let the revoke's green toast overwrite a red "Save failed" — reporting success for
-          // a write that didn't persist, leaving the rule still auto:true in storage with its
-          // permission gone. That dishonest-toast case is exactly why flashSaved takes `ok`.
-          commit(false, (saved) => {
-            if (!saved) return; // leave "Save failed" on screen; keep the grant
-            releaseRuleOrigins(rule, rules).then(reportRelease);
-          });
-          return;
-        }
+        if (!cb.checked) { commit(false); return; } // persistRules releases once the write lands
         // Don't ask for access we already have. A broad all-sites grant (from a ZIP download)
         // already covers this site, and requesting anyway makes Chrome record a REDUNDANT
         // per-site entry that then shows up as its own Site access row beside "All sites" —
@@ -670,29 +650,12 @@
     return scope + ' · ' + act;
   }
 
-  // Deleting a rule releases its site permission too, on the same terms as unchecking
-  // Auto-open — otherwise the grant outlives the only thing that asked for it, and the two
-  // ways of switching auto-open off would behave differently.
+  // Deleting a rule releases its site permission too (persistRules), on the same terms as
+  // unchecking Auto-open: otherwise the grant outlives the only thing that asked for it.
   function removeRule(i) {
-    const gone = rules[i];
     const next = cloneRules();
     next.splice(i, 1);
-    persistRules(next, (saved) => {
-      renderSites();
-      if (saved && gone && gone.auto === true) releaseRuleOrigins(gone, rules).then(reportRelease);
-    });
-  }
-
-  // Hand a rule's site permission back, on the shared terms in OBR.releasableOrigins — which
-  // holds the grant when a sibling auto rule on the same host still needs it (origins are
-  // HOST-scoped, so `host/blog/*` and `host/forum/*` share one). The service worker's
-  // "Stop auto-opening" menu item calls the same helper, so turning auto-open off behaves
-  // identically wherever the user does it. `nextRules` is the rule list AFTER the change.
-  // Resolves null when nothing was released, otherwise revokeOrigins' VERIFIED boolean.
-  function releaseRuleOrigins(rule, nextRules) {
-    const origins = OBR.releasableOrigins(rule, nextRules); // [] = not grantable, or a sibling needs it
-    if (!origins.length) return Promise.resolve(null);
-    return revokeOrigins(origins);
+    persistRules(next, renderSites);
   }
 
   // Report a release + refresh the card. `null` = we deliberately kept the grant for a sibling
@@ -1070,14 +1033,15 @@
     // Reset to defaults wipes the settings blob (incl. site rules), the saved-pick map, AND the
     // hidden-images map — a full clear of the user's customizations.
     // The auto rules are about to vanish, so the site permissions they asked for would outlive
-    // the only thing referencing them: an orphaned grant that nothing in the UI explains. Take
-    // the origins BEFORE the wipe and hand them back after. Deliberately rule-derived only —
+    // the only thing referencing them: an orphaned grant that nothing in the UI explains. The
+    // rules are taken BEFORE the wipe (`rules` is emptied below) and their access handed back
+    // after, through the same OBR.releaseRuleChange as every rule edit. Rule-derived only —
     // a broad <all_urls> grant belongs to the gallery's ZIP download and to the opt-in to open
     // shared links in reading mode, not to any rule, so a settings reset is not the place to
     // revoke it.
     // The settings write goes first and must be confirmed: until it is, the rules are still
     // stored, so their site access stays and nothing on the page changes.
-    const orphaned = OBR.autoRuleOrigins(rules);
+    const before = rules;
     chrome.storage.sync.set({ [OBR.STORAGE_KEY]: {} }, () => {
       if (chrome.runtime.lastError) return void flashSaved(false);
       chrome.storage.sync.remove([OBR.PICKS_KEY, OBR.HIDDEN_KEY], () => {
@@ -1095,8 +1059,7 @@
           renderPicks();
           renderHidden();
           flashSaved(cleared);
-          if (orphaned.length) revokeOrigins(orphaned).then(renderSiteAccess);
-          else renderSiteAccess();
+          OBR.releaseRuleChange(before, []).then(renderSiteAccess);
         });
       });
     });

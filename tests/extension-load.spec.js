@@ -368,6 +368,59 @@ test('stopAutoOpen clears the auto flag, keeps the mode, and releases the site g
   expect(out.removed).toEqual([{ origins: ['*://stopme.test/*', '*://www.stopme.test/*'] }]);
 });
 
+// The context menu's "Clear rule" is setSiteRule(host, null). Deleting an auto-open rule must
+// give its site access back, as unchecking or deleting it in Options does. The stub is a granted
+// SET, so remove() and contains() agree on what is still held.
+const withGrants = (serviceWorker, granted, rules, act) => serviceWorker.evaluate(async ({ granted, rules, act }) => {
+  const held = new Set(granted);
+  const real = { remove: chrome.permissions.remove, contains: chrome.permissions.contains };
+  chrome.permissions.remove = (need, cb) => { (need.origins || []).forEach((o) => held.delete(o)); if (cb) cb(true); };
+  chrome.permissions.contains = (need, cb) => cb((need.origins || []).every((o) => held.has(o)));
+  try {
+    await new Promise((res) => chrome.storage.sync.set({ obr_settings: { siteRules: rules } }, res));
+    const saved = await self[act.fn](...act.args);
+    const left = await new Promise((res) =>
+      chrome.storage.sync.get('obr_settings', (d) => res(d.obr_settings.siteRules)));
+    return { saved, held: [...held].sort(), rules: left };
+  } finally {
+    chrome.permissions.remove = real.remove;
+    chrome.permissions.contains = real.contains;
+  }
+}, { granted, rules, act });
+
+test('Clear rule on an auto-open site hands its site access back', async ({ serviceWorker }) => {
+  const out = await withGrants(serviceWorker,
+    ['*://clearme.test/*', '*://www.clearme.test/*', '*://other.test/*', '*://www.other.test/*'],
+    [{ match: 'clearme.test', mode: 'text', auto: true }, { match: 'other.test', mode: 'auto', auto: true }],
+    { fn: 'setSiteRule', args: ['clearme.test', null] });
+  expect(out.saved).toBe(true);
+  expect(out.rules).toEqual([{ match: 'other.test', mode: 'auto', auto: true }]);
+  expect(out.held).toEqual(['*://other.test/*', '*://www.other.test/*']); // the other rule keeps its own
+});
+
+test('Clear rule on a site that never auto-opened leaves the site\'s access alone', async ({ serviceWorker }) => {
+  // No auto rule asked for this pair, so it belongs to something else (a ZIP download of the
+  // site's images): a rule change has nothing of its own to give back.
+  const out = await withGrants(serviceWorker,
+    ['*://zip.test/*', '*://www.zip.test/*'],
+    [{ match: 'zip.test', mode: 'images' }],
+    { fn: 'setSiteRule', args: ['zip.test', null] });
+  expect(out.saved).toBe(true);
+  expect(out.rules).toEqual([]);
+  expect(out.held).toEqual(['*://www.zip.test/*', '*://zip.test/*']);
+});
+
+test('Clear rule keeps the access another auto-open rule on the same host still needs', async ({ serviceWorker }) => {
+  // Access is per host: shared.test/forum/* runs on the same pair the whole-site rule asked for.
+  const out = await withGrants(serviceWorker,
+    ['*://shared.test/*', '*://www.shared.test/*'],
+    [{ match: 'shared.test', mode: 'text', auto: true }, { match: 'shared.test/forum/*', mode: 'text', auto: true }],
+    { fn: 'setSiteRule', args: ['shared.test', null] });
+  expect(out.saved).toBe(true);
+  expect(out.rules).toEqual([{ match: 'shared.test/forum/*', mode: 'text', auto: true }]);
+  expect(out.held).toEqual(['*://shared.test/*', '*://www.shared.test/*']);
+});
+
 
 // The two ways a trigger does NOTHING from the user's seat. Each also logs a console.warn, but
 // that lands in a console no ordinary user opens — so without a badge a dead click is all they

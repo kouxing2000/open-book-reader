@@ -998,16 +998,68 @@
     return out;
   };
 
-  // The origins a rule can give back once it is no longer auto: its own, MINUS whatever the
-  // remaining auto rules still need. Origins are HOST-scoped (a rule's path is enforced by the
-  // sentinel, not the grant), so `host/blog/*` and `host/forum/*` share ONE grant — releasing
-  // for one would silently pause the other while its checkbox still read "on". `[]` means
-  // "keep the grant". `remainingRules` is the rule list AFTER the change. PURE + testable.
+  // Whether origin pattern `o` grants everything pattern `n` asks for. A `*://*.base/*` grant
+  // covers base and every subdomain of it (Chrome's match-pattern rule); any other pattern
+  // covers only itself.
+  function coversOrigin(o, n) {
+    if (o === n) return true;
+    const wild = /^\*:\/\/\*\.([^/]+)\/\*$/.exec(o);
+    const host = (/^\*:\/\/(?:\*\.)?([^/]+)\/\*$/.exec(n) || [])[1];
+    return !!(wild && host) && (host === wild[1] || host.endsWith('.' + wild[1]));
+  }
+
+  // The origins a rule can give back once it is no longer auto: its own, MINUS any that still
+  // covers what a remaining auto rule needs. Origins are HOST-scoped (a rule's path is enforced
+  // by the sentinel, not the grant), so `host/blog/*` and `host/forum/*` share ONE grant —
+  // releasing for one would silently pause the other while its checkbox still read "on". And a
+  // narrower rule under a `*.host` grant runs on that grant without one of its own (asking is
+  // skipped while contains() says it is covered), so the wildcard stays while such a rule does.
+  // `[]` means "keep the grant". `remainingRules` is the rule list AFTER the change. PURE.
   OBR.releasableOrigins = function (rule, remainingRules) {
     const mine = OBR.originsForRule(rule && rule.match);
     if (!mine.length) return [];
     const needed = OBR.autoRuleOrigins(remainingRules);
-    return mine.filter((o) => needed.indexOf(o) === -1);
+    return mine.filter((o) => !needed.some((n) => coversOrigin(o, n)));
+  };
+
+  // What a rule change hands back: everything an auto rule BEFORE the change could give back
+  // against the rules AFTER it (OBR.releasableOrigins, per rule). PURE.
+  OBR.releasedOrigins = function (before, after) {
+    const out = [];
+    (Array.isArray(before) ? before : []).forEach((r) => {
+      if (!r || r.auto !== true || !r.match || !r.mode) return;
+      OBR.releasableOrigins(r, after).forEach((o) => { if (out.indexOf(o) === -1) out.push(o); });
+    });
+    return out;
+  };
+
+  // Revoke, then VERIFY — resolves true only if access is genuinely gone. permissions.remove
+  // resolves true even for origins never granted, and under a COVERING grant (<all_urls>) the
+  // per-site entries vanish from getAll() while contains() stays true: the bookkeeping changes,
+  // the access does not. contains() afterwards is the only honest signal. The worker and the
+  // Options page have chrome.permissions; a content script does not, and resolves false.
+  OBR.revokeOrigins = function (origins) {
+    return new Promise((res) => {
+      try {
+        const p = globalThis.chrome && chrome.permissions;
+        if (!p || !p.remove || !p.contains || !origins || !origins.length) return res(false);
+        p.remove({ origins }, () => {
+          void chrome.runtime.lastError;
+          p.contains({ origins }, (still) => { void chrome.runtime.lastError; res(!still); });
+        });
+      } catch (e) { res(false); }
+    });
+  };
+
+  // THE owner of handing site access back: every site-rule write calls this with the rules
+  // before and after it, once the write has landed (a failed write keeps the rule, so it keeps
+  // the access). Resolves null when nothing is released — none to give back, or a remaining
+  // auto rule still needs it — else revokeOrigins' verified boolean. A ZIP download asks for
+  // `*://host/*` per image host, the same string as half a rule's pair, so a release here also
+  // takes back a ZIP grant for images on that host.
+  OBR.releaseRuleChange = function (before, after) {
+    const origins = OBR.releasedOrigins(before, after);
+    return origins.length ? OBR.revokeOrigins(origins) : Promise.resolve(null);
   };
 
   // Migrate the legacy exact-host `sites` map ({host:{mode}}) into `siteRules` on a RAW

@@ -602,6 +602,22 @@ function createMenus() {
   return menuBuild;
 }
 
+// Every site-rule write in the worker: `mutate` edits the raw settings (returning false skips
+// the write), and once the write has landed the change hands back the site access it leaves
+// unused (OBR.releaseRuleChange). Resolves the write's success after that release has run.
+function writeRules(mutate) {
+  let before = null, after = null;
+  return OBR.updateSettings((raw) => {
+    before = raw.siteRules.map((r) => Object.assign({}, r));
+    const out = mutate(raw);
+    after = raw.siteRules;
+    return out;
+  }).then((saved) => {
+    if (!saved || !before) return saved;
+    return OBR.releaseRuleChange(before, after).then(() => saved, () => saved);
+  });
+}
+
 // Add/replace/remove the WHOLE-SITE rule for `host` (read-modify-write the raw settings
 // object). OBR.upsertSiteRule folds in any legacy `sites` map and does the add/replace/
 // remove — the same shared helper the read (loadSettings) and save paths use.
@@ -609,7 +625,7 @@ function createMenus() {
 // `then` (optional) receives whether the write committed.
 function setSiteRule(host, mode, opts, then) {
   if (!host) return;
-  return OBR.updateSettings((raw) => {
+  return writeRules((raw) => {
     OBR.upsertSiteRule(raw, host, mode, opts);
   }).then((saved) => {
     if (then) then(saved);
@@ -760,27 +776,16 @@ chrome.permissions.onRemoved.addListener(() => { syncSentinelRegistration(); });
 
 // "Stop auto-opening on this site": clear the auto flag on whichever rule matches the page
 // (path rules included), keeping its mode. Uses the page URL so a path-scoped auto rule is
-// turned off precisely; the storage write re-syncs registration + rebuilds the menu.
+// turned off precisely; the storage write re-syncs registration + rebuilds the menu. The site
+// access goes back through writeRules, on the same terms as every other rule change; `remove`
+// needs no user gesture (only `request` does), so the worker can do it itself.
 function stopAutoOpen(src, done) {
   const finish = (ok) => { if (done) { try { done(ok); } catch (e) { /* receiver gone */ } } };
-  let release = [];
-  return OBR.updateSettings((raw) => {
+  return writeRules((raw) => {
     const rule = OBR.matchSiteRuleEx(src, raw.siteRules);
     if (!(rule && rule.auto)) return false;
-    const next = OBR.setRuleAuto(raw.siteRules, rule.match, false);
-    // Give the site permission back on exactly the same terms as the options checkbox, so
-    // WHERE you turn auto-open off doesn't change what happens to the grant. `remove` needs
-    // no user gesture (only `request` does), so the worker can do this itself. No verify step
-    // here: unlike the options page there's nothing to report to. Note it DOES change
-    // bookkeeping even when it cannot change access — under a covering broad grant the per-site
-    // entries disappear from permissions.getAll() while access itself remains (observed).
-    release = OBR.releasableOrigins(rule, next);
-    raw.siteRules = next;
+    raw.siteRules = OBR.setRuleAuto(raw.siteRules, rule.match, false);
   }).then((saved) => {
-    if (saved && release.length) {
-      try { chrome.permissions.remove({ origins: release }, () => { void chrome.runtime.lastError; }); }
-      catch (e) { /* permissions unavailable — the saved rule remains stopped */ }
-    }
     finish(saved);
     return saved;
   });
@@ -792,7 +797,7 @@ function stopAutoOpen(src, done) {
 // no-op {mode:'auto'}), keep it at mode 'auto' when auto-open is on.
 function configureDefault(host, mode) {
   if (!host) return;
-  return OBR.updateSettings((raw) => {
+  return writeRules((raw) => {
     const prev = raw.siteRules.find((r) => r && r.match === host);
     const act = OBR._configureDefaultAction(prev, mode);
     OBR.upsertSiteRule(raw, host, act.clear ? null : act.mode);
