@@ -11,7 +11,7 @@
 import { test, expect } from './fixtures.js';
 import {
   gotoFixture, seedSettings, injectSentinel, waitSentinelDone,
-  injectAll, sentMessages, clickInReader,
+  injectAll, sentMessages, clickInReader, readStatus, clickStatusAction,
 } from './helpers.js';
 
 const AUTO_TEXT = { siteRules: [{ match: 'localhost', mode: 'text', auto: true }] };
@@ -525,24 +525,24 @@ test('an ordinary (registered) load never shows the confirmation chip', async ({
 
 /* ------------------------------------------------------- engine integration */
 
-test('open({trigger:"auto"}) shows the auto chip; a manual open does not', async ({ page }) => {
+test('open({trigger:"auto"}) says so in the status pill with its Stop; a manual open does not', async ({ page }) => {
   await gotoFixture(page, 'forum-topic.html');
   await injectAll(page);
   await page.evaluate(() => OBR.open({ trigger: 'auto' }));
-  await expect.poll(() => page.evaluate(() => {
-    const h = document.getElementById('obr-auto-chip-host');
-    return h ? h.shadowRoot.textContent : '';
-  })).toContain('Opened automatically');
-
-  // Reset: close + drop the chip, then a MANUAL open must stay chip-free.
-  await page.evaluate(() => {
-    OBR.close();
-    const h = document.getElementById('obr-auto-chip-host');
-    if (h) h.remove();
-  });
-  await page.evaluate(() => OBR.open());
-  await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBe(1);
+  const auto = await readStatus(page);
+  expect(auto.shown).toBe(true);
+  expect(auto.label).toContain('Opened automatically — Esc closes'); // the escape stays on screen
+  expect(auto.acts).toEqual(['stop-auto']);
+  // The reader no longer raises the page-level chip, which is what stacked over its own banner.
   expect(await page.evaluate(() => !!document.getElementById('obr-auto-chip-host'))).toBe(false);
+
+  await page.evaluate(() => OBR.close());
+  await page.evaluate(() => OBR.open());
+  await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBe(2);
+  const manual = await readStatus(page);
+  expect(manual.label).not.toContain('Opened automatically');
+  expect(manual.acts).not.toContain('stop-auto');
 });
 
 // The chip's Stop RELAYS to the service worker instead of clearing the flag in-page: a content
@@ -550,16 +550,14 @@ test('open({trigger:"auto"}) shows the auto chip; a manual open does not', async
 // site grant — and the chip shares its verb ("Stop auto-opening") with the context-menu item,
 // which does release. What the content script owns is the relay; the clear-plus-release itself
 // is the SW's, covered against the REAL worker in extension-load.spec.js.
-test('the chip Stop button relays to the service worker (which owns clear + release)', async ({ page }) => {
+test('the status pill Stop relays to the service worker (which owns clear + release)', async ({ page }) => {
   await gotoFixture(page, 'forum-topic.html');
   await seedSettings(page, { siteRules: [{ match: 'localhost', mode: 'text', auto: true }] });
   await injectAll(page);
   await page.evaluate(() => OBR.open({ trigger: 'auto' }));
-  await expect.poll(() => page.evaluate(() => !!document.getElementById('obr-auto-chip-host'))).toBe(true);
+  await expect.poll(() => readStatus(page).then((st) => st.acts)).toContain('stop-auto');
 
-  await page.evaluate(() => {
-    document.getElementById('obr-auto-chip-host').shadowRoot.querySelector('.stop').click();
-  });
+  await clickStatusAction(page, 'stop-auto');
   await expect
     .poll(() => page.evaluate(() => (window.__obrMsgs || []).map((m) => m && m.type)))
     .toContain('obr-stop-auto');
@@ -568,6 +566,8 @@ test('the chip Stop button relays to the service worker (which owns clear + rele
   const relay = await page.evaluate(() =>
     (window.__obrMsgs || []).find((m) => m && m.type === 'obr-stop-auto'));
   expect(Object.keys(relay)).toEqual(['type']);
+  // A Stop that has run is not offered again (a second press could only answer "nothing to stop").
+  await expect.poll(() => readStatus(page).then((st) => st.acts)).not.toContain('stop-auto');
 });
 
 // Messaging absent (no SW at all) must still turn auto-open off rather than silently doing

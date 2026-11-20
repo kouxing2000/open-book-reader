@@ -202,7 +202,7 @@ npx playwright install chromium                # first run only
   (stubbed SW), plain-source videos (still tiles, the in-grid player and what starting one does to the others, big-view playback, Space, slideshow, ZIP skip), mode switching, full screen across both modes (the Fullscreen API stood in for — headless refuses it), page-scroll sync on open/close and the open cue, the shipped auto-mode defaults, and `_buildZip`'s bytes read back
   by real archive parsers.
 - `auto-open.spec.js` — the sentinel's decision ladder end-to-end (content gates, metadata veto,
-  suppression + SPA re-arm, enable-time chip, engine chip/suppress integration) plus the pure rule
+  suppression + SPA re-arm, enable-time chip, the reader status pill's auto-open state and Stop, suppress integration) plus the pure rule
   helpers; the SW-side registration sync is covered in `extension-load.spec.js` with a stubbed
   grant check, and the remaining SW slices (permission prompt, `obr-auto-open` handler) are
   manual-verified per `docs/auto-open-spec.md` §10.
@@ -369,7 +369,7 @@ belong to. Feature-local gotchas live with their feature in `docs/` (see the tab
   back, `OBR.releaseRuleChange(before, after)`. Every site-rule write calls that last one once
   the write has landed: in Options through `persistRules` (checkbox, delete, rename, mode, add)
   and Reset to defaults, in the worker through `writeRules` (the context menu's Clear rule and
-  "Stop auto-opening", Configure default, and the in-overlay chip's Stop, which RELAYS via
+  "Stop auto-opening", Configure default, and the Stop in the reader's status pill or the gallery's chip, which RELAYS via
   `obr-stop-auto` because a content script cannot call `permissions.remove`). A new rule writer
   goes through one of the two, never straight to `updateSettings`. Two writers stay direct, and
   why: `OBR.storeAutoRule` only ever turns auto-open ON (nothing to give back), and

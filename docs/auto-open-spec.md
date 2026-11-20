@@ -35,8 +35,9 @@ autoAnchorWords` — the anchor is what rejects an index of long topic titles; i
 `autoGalleryMin` `<img>`s with decoded size OR lazy-evidence + layout box ≥ 120px — lazy manga
 pages have decoded nothing at probe time). Pass → `obr-auto-open` message → the SW **re-validates
 against fresh settings** (never trusts page state) → `invokeReader(…, {auto:true})` →
-`OBR.open({trigger:'auto'})` + the "Auto-opened" chip (`OBR._showAutoChip`, its own shadow host;
-Stop clears only the `auto` flag via `OBR.setRuleAuto`). A **user-initiated** `close()` (Esc/✕/
+`OBR.open({trigger:'auto'})`, which says so in the reader's status pill (the gallery: the
+"Auto-opened" chip, `OBR._showAutoChip`, its own shadow host); their Stop clears only the `auto`
+flag. A **user-initiated** `close()` (Esc/✕/
 toolbar) records `origin+pathname+search` (query matters: phpBB routes every topic through one
 pathname) into the shared in-page `OBR._autoSuppressed` set, and an in-place address rewrite
 (`replaceState`) carries it to the new address (§3.2); internal closes (mode switch, cross-close) pass
@@ -72,7 +73,8 @@ Goals
   and no signal may ever *lower* the content thresholds.
 - Zero config for the common case: under Smart pick the content heuristic discriminates list
   vs topic; path globs remain the power-user override (already supported by `siteRules`).
-- Instant, obvious escape: Esc closes; a chip offers "stop auto-opening here"; a closed page
+- Instant, obvious escape: Esc closes; the reader's status pill (the gallery's chip) offers
+  "stop auto-opening here"; a closed page
   is never re-opened in the same page session.
 - No install-time permission changes; no new data collection (story stays "fully local").
 
@@ -143,9 +145,11 @@ Non-goals (explicitly rejected or deferred)
   passes, the page opens in the resolved mode **immediately** — no countdown. The one wait:
   a Reader or Gallery page that neither content check can read opens on the last probe,
   about 5s in.
-- On auto-open, the reader/gallery shows a transient **chip** (~6s, dismissible):
-  `Auto-opened · Esc closes · [Stop auto-opening on this site]`.
-  The stop button removes only the `auto` flag (the mode rule survives — "stop automating"
+- On auto-open, the reader's **status pill** reads `Opened automatically — Esc closes` for the
+  whole open, with `[Stop auto-opening on this site]` in its menu. It sits in the blank band
+  under the text, so it covers nothing (`docs/reader.md`, status pill). The gallery shows a
+  transient **chip** (~6s, dismissible) with the same Stop.
+  Stop removes only the `auto` flag (the mode rule survives — "stop automating"
   must not also forget "this site is a gallery site").
 - **Suppression**: a user-initiated dismissal (§5.4) records that page's
   `origin+pathname+search` in an in-page set; the sentinel never auto-opens a recorded page
@@ -298,7 +302,7 @@ rule, renaming its pattern (the old host's access goes back; the new host is nev
 there, and auto-open stays only if that host is already granted), the mode, adding one; and
 Reset to defaults calls it with an empty "after". In the worker every rule write goes through
 `writeRules`: the context menu's "Clear rule" and "Stop auto-opening", Configure default, and
-the in-overlay chip's Stop, which RELAYS via an `obr-stop-auto` message, because a content
+the Stop in the reader's status pill or the gallery's chip, which RELAYS via an `obr-stop-auto` message, because a content
 script cannot call `permissions.remove` and clearing in-page would drop the flag while keeping
 the grant. Left direct: `OBR.storeAutoRule`, which only turns auto-open on, and the content
 script's local fallback in `_stopAutoHere` (no messaging, no permissions API). `releasableOrigins` returns `[]` (keep the grant) when another auto rule still
@@ -392,9 +396,9 @@ functions and creates fresh promise chains), noted here so nobody "fixes" it.
   sentinel's own ladder decides open-vs-confirmation-chip, §3.1 step 3).
 
 ### 5.4 Engine changes (`reader.js`, `gallery.js`)
-- `open(opts)` accepts `{ trigger: 'auto' }` → renders the chip (§3.2). Chip's stop button:
-  read-modify-write settings, clear `auto` on the rule that matched the current URL, keep
-  the mode.
+- `open(opts)` accepts `{ trigger: 'auto' }` → the reader's status pill / the gallery's chip
+  (§3.2). Their Stop relays to the worker (`OBR._stopAutoHere`), which clears `auto` on the rule
+  that matched the current URL, keeps the mode, and hands the site grant back.
 - `close()` (both engines) records `origin+pathname+search` into the shared in-page
   suppression set (`OBR._autoSuppressed`) — but **only for user-initiated dismissals**
   (Esc, the ✕ button, toolbar toggle-off), regardless of how the overlay was *opened*: if
@@ -445,7 +449,7 @@ Each step lands green on the full suite before the next.
      reusing the `permission.html` popup flow (extend that page's copy to also explain an
      origin request for auto-open), then the current-tab sentinel injection (§3.1 step 3).
 4. **Engine UX** (`reader.js`, `gallery.js`, `reader.style.js`)
-   - `open({trigger})` + auto chip + stop button; `close()` suppression recording.
+   - `open({trigger})` + auto-open status (reader pill / gallery chip) + Stop; `close()` suppression recording.
 5. **Options page** (`options.html/js`)
    - Auto checkbox column (+ add-row), gesture-context `permissions.request`, revert on
      deny, disabled-with-hint for rules whose host glob can't form a match pattern; update
@@ -491,8 +495,8 @@ with the storage shim + a captured `chrome.runtime.sendMessage`):
 - hidden document defers evaluation until visible.
 
 Existing specs:
-- `reader.spec.js`: chip renders on `open({trigger:'auto'})`, absent on manual open; stop
-  button clears only the auto flag.
+- `auto-open.spec.js`: the reader's status pill says so on `open({trigger:'auto'})` and offers
+  Stop, absent on a manual open; Stop relays to the worker and is then withdrawn.
 - `options.spec.js`: auto checkbox render/edit paths with a stubbed `chrome.permissions`
   (grant and deny).
 - `extension-load.spec.js`: manifest still ships no new install-time permissions and
@@ -540,7 +544,7 @@ On a real forum (e.g. any Discourse instance):
    also the registered-script/executeScript shared-isolated-world verification, §5.2); full
    reload → opens again. On a query-routed forum (phpBB-style `viewtopic.php?t=N`): Esc on
    one topic must not suppress the others.
-4. Chip "stop auto-opening" → flag cleared, mode rule survives, sentinel deregisters
+4. "Stop auto-opening" (status pill menu, gallery chip) → flag cleared, mode rule survives, sentinel deregisters
    (verify via `chrome.scripting.getRegisteredContentScripts` in the SW console).
 5. Revoke site access in chrome://extensions → no errors, no red badge, sentinel gone;
    the rule row shows the paused line; re-grant via its inline Grant (or the checkbox) → back.
@@ -578,7 +582,7 @@ On a real forum (e.g. any Discourse instance):
 ## 11. Risks
 
 - **False-positive open on a list page** → anchor-block gate + list-type metadata veto +
-  per-site opt-in + chip + suppression; residual risk accepted (one Esc, self-healing).
+  per-site opt-in + the Stop escape + suppression; residual risk accepted (one Esc, self-healing).
 - **Missed opens on short posts** (Smart pick) — the deliberate cost of the strict bias (§2);
   the manual click and keyboard shortcut remain one gesture away. Revisit only with real user
   feedback.

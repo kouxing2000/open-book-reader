@@ -720,12 +720,12 @@ without the restore.
 zero-new-permission. (1) **Selection** — if text is selected when the reader opens (and the
 `readSelection` setting is on, default), read EXACTLY that selection: `extractFromSelection` wraps
 `range.cloneContents()` and runs it through the scoped path. (2) **Element picker** — the ⌖ Pick
-toolbar action (and the "Wrong content?" hint banner) starts `startPicker()`: a uBlock-style hover-to-
+toolbar action (and the status pill's "Wrong content?" menu) starts `startPicker()`: a uBlock-style hover-to-
 highlight over the REAL page in a SEPARATE shadow host (`#obr-pick-host`), with the reader hidden and
 page scroll unlocked (the same toggles `open()`/`close()` and the gallery's `hydratePage` use); a
 click re-renders in place via `endPicker(node)` → `extractFromNode`. The reader keydown handler gates
-on `pickerActive` so the picker owns Escape/arrows while it's up. The "Wrong content?" banner does NOT
-auto-pop on every whole-page open — only when the extraction looks **suspect** (`wholeExtractionSuspect`:
+on `pickerActive` so the picker owns Escape/arrows while it's up. The status pill's "Wrong content?" does NOT
+appear on every whole-page open — only when the extraction looks **suspect** (`wholeExtractionSuspect`:
 it failed/returned the placeholder, OR — on a page with **≥200 prose words** (`proseWordCount`) — the
 extracted text totals **< half** that prose, the "grabbed a sidebar / teaser / truncated" cases). A
 confident or same-size-wrong parse stays quiet; the ⌖ Pick toolbar action (inline, or in ⋯ on a
@@ -741,7 +741,14 @@ site's other pages. `open()` resolves it (when there's no live selection) via `e
 which uses `querySelectorAll`: 0 matches → fall through to whole page (stale selector), 1 → that block,
 N>1 → all matches MERGED — so a multi-block selector like `.intro, .post-body` reads every region as
 one document (this is what makes editing flexible without a multi-select picker). "Use full page" /
-"Clear pick" escape. The Options page lists saved picks (`#picks`, via `OBR.loadPicks`/`OBR.clearPick`)
+"Clear pick" escape, and "Pick again", sit in the status pill's menu, whose label reads Saved pick on every
+open of the site.
+**Status pill** (`renderStatus`): the reader's ONE status surface: the content source (Wrong content? /
+Picked block / Saved pick), then auto-open, each with its actions in a menu that rides the toolbar
+popover state (`openPop === 'status'`, so Esc and an outside click close it). It sits in the 26px band
+`layout()` leaves under the text (paper = window minus 24px, centred, 14px padding), so it covers no word
+and never auto-hides; the footer reserves its measured width (`--obr-status-w`, `fitStatus`). Pinned at
+1280, 900 and 412px wide by the `status pill placement` tests. The Options page lists saved picks (`#picks`, via `OBR.loadPicks`/`OBR.clearPick`)
 with an **editable CSS-selector field** (auto-save like every other setting: live ✓/✗ syntax check,
 valid edits re-save via `OBR.savePick`; **Esc** cancels an in-progress edit, and a per-row **↶ Revert**
 — shown only when changed — restores the selector from when the page opened) and per-row remove;

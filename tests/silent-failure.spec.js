@@ -35,10 +35,11 @@ function observe(page) {
       body: host && host.shadowRoot
         ? (host.shadowRoot.querySelector('.obr-content')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 140)
         : '',
-      // The recovery affordance: the "Wrong content? ⌖ Pick the block" bar, shown only when
-      // the whole-page parse reads as suspect. Its ABSENCE on a bad parse is the finding.
+      // The recovery affordance: the status pill's "Wrong content?", shown only when the
+      // whole-page parse reads as suspect. Its ABSENCE on a bad parse is the finding. The
+      // element is read unconditionally, so a renamed pill throws here instead of reading as ''.
       pickHint: host && host.shadowRoot
-        ? (host.shadowRoot.querySelector('.obr-pick-msg')?.textContent || '')
+        ? host.shadowRoot.querySelector('.obr-status-label').textContent
         : '',
       diag: O && O._diagReader ? O._diagReader() : null,
     };

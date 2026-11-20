@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import { test, expect } from './fixtures.js';
-import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader, clickReaderAction, seedSettings, readerPicture, turnToPicture, zoomViewer, READER_JS } from './helpers.js';
+import { gotoArticle, gotoPictureArticle, gotoWrongContent, gotoThinPage, gotoTallFigures, gotoFixture, injectReader, openReader, readState, clickInReader, clickReaderAction, readStatus, clickStatusAction, holdReaderChrome, seedSettings, readerPicture, turnToPicture, zoomViewer, READER_JS } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await gotoArticle(page);
@@ -3207,38 +3207,30 @@ test.describe('content override', () => {
     expect(r.full).toBe(false);   // kept ~all of it → confident, no nag
   });
 
-  test('the "Wrong content?" banner stays quiet for a confident, full-size whole-page read', async ({ page }) => {
+  test('the "Wrong content?" status stays quiet for a confident, full-size whole-page read', async ({ page }) => {
     // The decoy is a LARGE wrong block (~70% of the page's prose), so the size heuristic can't
-    // tell it's wrong — the banner must NOT auto-nag; the ⌖ Pick toolbar button carries that case.
+    // tell it's wrong — the pill must NOT auto-nag; the ⌖ Pick toolbar button carries that case.
     await openReader(page);
-    const r = await page.evaluate(() => {
-      const root = document.getElementById('obr-host').shadowRoot;
-      const hint = root.querySelector('.obr-pick-hint');
-      return {
-        bannerShown: hint.classList.contains('show'),
-        hasToolbarPick: !!root.querySelector('.obr-btn[data-act="pick"]'),
-      };
-    });
-    expect(r.bannerShown).toBe(false);   // no auto-nag on a full-size extraction
-    expect(r.hasToolbarPick).toBe(true); // the ⌖ Pick affordance is still available
+    const hasToolbarPick = await page.evaluate(() => !!document.getElementById('obr-host').shadowRoot
+      .querySelector('.obr-btn[data-act="pick"]'));
+    expect((await readStatus(page)).shown).toBe(false); // no auto-nag on a full-size extraction
+    expect(hasToolbarPick).toBe(true);                  // the ⌖ Pick affordance is still available
   });
 
   // The positive direction: a genuinely suspect whole-page parse MUST surface the banner. Uses a
   // separate fixture (short article + a big comment thread Readability strips) so the extraction
   // keeps < half the page's prose → extractionSuspect = true. Guards against the gate being
   // disabled/inverted (which the two tests above wouldn't catch).
-  test('the "Wrong content?" banner DOES pop when the whole-page parse is suspect (thin extraction)', async ({ page }) => {
+  test('the "Wrong content?" status DOES show when the whole-page parse is suspect (thin extraction)', async ({ page }) => {
     await gotoThinPage(page);
     await injectReader(page);
     await page.evaluate(() => globalThis.OBR.open());
-    const r = await page.evaluate(() => {
-      const root = document.getElementById('obr-host').shadowRoot;
-      const hint = root.querySelector('.obr-pick-hint');
-      return { live: OBR._articleWordCount(), bannerShown: hint.classList.contains('show'), bannerText: hint.textContent };
-    });
-    expect(r.live).toBeGreaterThanOrEqual(200);   // a substantial page (the ratio gate engages)
-    expect(r.bannerShown).toBe(true);             // …yet extraction kept < half → banner pops
-    expect(r.bannerText).toContain('Wrong content?');
+    const live = await page.evaluate(() => OBR._articleWordCount());
+    const st = await readStatus(page);
+    expect(live).toBeGreaterThanOrEqual(200);   // a substantial page (the ratio gate engages)
+    expect(st.shown).toBe(true);                // …yet extraction kept < half → the pill says so
+    expect(st.label).toContain('Wrong content?');
+    expect(st.acts).toEqual(['start', 'report']);
   });
 
   // The banner carries BOTH ways out: ⌖ Pick, which the user can apply themselves, and ⚠ Report,
@@ -3405,7 +3397,7 @@ test.describe('content override', () => {
         head: empty ? empty.querySelector('.obr-empty-head').textContent : '',
         acts: empty ? Array.from(empty.querySelectorAll('[data-pick]')).map((b) => b.dataset.pick) : [],
         // The duplication this replaced: the pill said the same thing directly underneath.
-        pillShown: root.querySelector('.obr-pick-hint').classList.contains('show'),
+        pillShown: !root.querySelector('.obr-status').hidden,
         // Alert chrome would have to fight three themes and the user's font size — assert the
         // empty state takes its colour from the theme instead of a hardcoded alert palette.
         headColor: empty ? getComputedStyle(empty.querySelector('.obr-empty-head')).color : '',
@@ -3445,11 +3437,10 @@ test.describe('content override', () => {
       window.__obrMsgs = [];
       chrome.runtime = { lastError: null, sendMessage(m, cb) { window.__obrMsgs.push(m); if (cb) cb({ ok: true }); } };
     });
-    // Positive landmark: the button must actually be in the banner, or the click below would
-    // silently do nothing and an empty __obrMsgs would read as a delivery failure instead.
-    expect(await page.evaluate(() => !!document.getElementById('obr-host').shadowRoot
-      .querySelector('.obr-pick-hint [data-pick="report"]'))).toBe(true);
-    await clickInReader(page, '.obr-pick-hint [data-pick="report"]');
+    // Positive landmark: the action must actually be in the pill's menu, or the click below would
+    // fail to find it and an empty __obrMsgs would read as a delivery failure instead.
+    expect((await readStatus(page)).acts).toContain('report');
+    await clickStatusAction(page, 'report');
     const sent = await page.evaluate(() => window.__obrMsgs.filter((m) => m.type === 'obr-open-report'));
     expect(sent).toHaveLength(1);
     expect(sent[0].meta.reportSource).toBe('pick-hint');
@@ -3698,9 +3689,10 @@ test.describe('content override', () => {
     await page.mouse.move(p.x, p.y);
     await page.mouse.click(p.x, p.y);
     await expect.poll(() => readState(page).then((s) => s.contentText)).toContain('REAL-MARKER');
+    expect((await readStatus(page)).acts).toEqual(['save', 'start']); // save it, or pick again
 
     // Save for this site → persisted to chrome.storage.sync under obr_picks.
-    await clickInReader(page, '.obr-pick-hint [data-pick="save"]');
+    await clickStatusAction(page, 'save');
     await expect
       .poll(() => page.evaluate(() => new Promise((res) =>
         chrome.storage.sync.get('obr_picks', (d) => res(Object.keys(d.obr_picks || {}).length)))))
@@ -3712,11 +3704,18 @@ test.describe('content override', () => {
     let s = await readState(page);
     expect(s.contentText).toContain('REAL-MARKER');
     expect(s.contentText).not.toContain('DECOY-MARKER');
+    // Every escape from a saved pick is one click away, Pick again included.
+    expect((await readStatus(page)).acts).toEqual(['fullpage', 'start', 'clear']);
+    // Pick again really starts the picker; Esc backs out to the saved pick, still on offer.
+    await clickStatusAction(page, 'start');
+    await expect(page.locator('#obr-pick-host .obr-pickbar')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() =>
+      getComputedStyle(document.getElementById('obr-host')).display !== 'none')).toBe(true);
+    expect((await readStatus(page)).acts).toEqual(['fullpage', 'start', 'clear']);
 
-    // Clear the pick → falls back to the whole page (the decoy) again. Reaching for the hint
-    // moves the mouse, which brings back the chrome a slow open may have hidden by now.
-    await page.mouse.move(p.x + 1, p.y + 1);
-    await clickInReader(page, '.obr-pick-hint [data-pick="clear"]');
+    // Clear the pick → falls back to the whole page (the decoy) again.
+    await clickStatusAction(page, 'clear');
     await expect.poll(() => readState(page).then((x) => x.contentText)).toContain('DECOY-MARKER');
   });
 });
@@ -5211,7 +5210,7 @@ test.describe('back-cover colophon', () => {
       { obr_positions: { [location.origin + location.pathname]: { f: 1, fin: 1, t: 1 } } }, res)));
     await page.evaluate(() => OBR.savePick(OBR.normalizeHost(location.href), 'article'));
     await openReader(page); // reads via the saved pick (its own #pick position key)
-    await clickInReader(page, '.obr-pick-hint [data-pick="fullpage"]');
+    await clickStatusAction(page, 'fullpage');
     await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
     await page.keyboard.press('End');
     await page.waitForTimeout(200);
@@ -5600,4 +5599,47 @@ test.describe('long pictures cut into page-height strips', () => {
     });
     expect(frac).toBeGreaterThan(0.9); // a whole page, not the 72% cap
   });
+});
+
+/* ---------------------------------------------------------------- status pill geometry
+ * The defect this replaced: two status bars floating bottom-centre over the article, each
+ * unaware of the other. The pill's whole claim is a place, so the test is the geometry, taken
+ * with the LONGEST state (auto-opened AND reading a saved pick) and the chrome up, at a wide
+ * two-page window, the width where the centred footer row comes closest to the left corner,
+ * and a phone. */
+test.describe('status pill placement', () => {
+  for (const [w, h] of [[1280, 800], [900, 700], [412, 915]]) {
+    test(`covers no text and no footer item at ${w}x${h}`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await gotoArticle(page);
+      await injectReader(page);
+      await page.evaluate(() => OBR.savePick(OBR.normalizeHost(location.href), 'article'));
+      await page.evaluate(() => OBR.open({ trigger: 'auto' }));
+      await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBe(1);
+      const st = await readStatus(page);
+      // Positive landmark: both states are in the label, so the widest pill is the one measured.
+      expect(st.shown).toBe(true);
+      expect(st.label).toContain('Saved pick');
+      expect(st.label).toContain('Opened automatically');
+      await holdReaderChrome(page);
+      // The footer slides in with the chrome; measured mid-slide it would sit below the window
+      // and clear the pill whatever the layout did.
+      await expect.poll(() => page.evaluate(() => Math.round(document.getElementById('obr-host')
+        .shadowRoot.querySelector('.obr-footer').getBoundingClientRect().bottom))).toBe(h);
+      const g = await page.evaluate(() => {
+        const sr = document.getElementById('obr-host').shadowRoot;
+        const box = (sel) => {
+          const r = sr.querySelector(sel).getBoundingClientRect();
+          return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width };
+        };
+        return { pill: box('.obr-status-pill'), text: box('.obr-viewport'),
+          indicator: box('.obr-indicator'), hint: box('.obr-hint') };
+      });
+      const meets = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+      expect(meets(g.pill, g.text)).toBe(false);
+      expect(meets(g.pill, g.indicator)).toBe(false);
+      if (g.hint.w > 0) expect(meets(g.pill, g.hint)).toBe(false);
+      expect(g.indicator.r).toBeLessThanOrEqual(w); // the page count is not pushed off-screen
+    });
+  }
 });

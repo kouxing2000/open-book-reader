@@ -34,7 +34,7 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>';
 
   let settings = Object.assign({}, OBR.DEFAULTS);
-  let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, pickHintEl, hintEl;
+  let host, root, overlay, pagesEl, viewportEl, indicatorEl, titleEl, paperEl, metaEl, progressFillEl, statusEl, statusPill, statusLabelEl, statusMenuEl, hintEl;
   let zoomEl, zoomImg; // the picture viewer (openZoom), a sibling of the overlay
   let fsBtn; // the topbar's full-screen toggle (OBR.syncFullscreenBtn keeps it current)
   const syncFsBtn = () => OBR.syncFullscreenBtn(fsBtn, 'readerBtnFullscreenTitle', 'readerBtnExitFullscreenTitle');
@@ -43,7 +43,10 @@
   let pickerActive = false, pickHost = null, pickRoot = null, pickBox = null, pickLabel = null, pickHoverNode = null;
   let active = false, built = false;
   let chromeTimer = null, overControls = false;
-  let openPop = null; // the open toolbar popover: 'type' (Aa) | 'more' (⋯) | null
+  let openPop = null; // the open popover: 'type' (Aa) | 'more' (⋯) | 'status' (the status pill) | null
+  let autoOpened = false; // this open came from auto-open; cleared by its Stop (handlePickHint)
+  let statusFlashTimer = null;
+  const STATUS_FLASH_MS = 6000;
   // How long the floating chrome stays up before auto-hiding. Touch gets longer: a mouse
   // re-reveals itself with a twitch (the mousemove listener), a finger has no hover and pays
   // a whole extra tap for every dismissal it did not mean.
@@ -255,7 +258,10 @@
         <span class="obr-indicator"></span>
         <span class="obr-hint">${OBR.t('readerFooterHint')}</span>
       </div>
-      <div class="obr-pick-hint"></div>
+      <div class="obr-status" hidden>
+        <button class="obr-status-pill" data-pop="status" aria-haspopup="menu" aria-expanded="false"><span class="obr-status-label"></span><span class="obr-status-caret" aria-hidden="true">▾</span></button>
+        <div class="obr-pop obr-status-menu" data-for="status" role="menu" hidden></div>
+      </div>
       <div class="obr-progress"><div class="obr-progress-fill"></div></div>`;
     root.appendChild(overlay);
 
@@ -293,7 +299,15 @@
     paperEl = overlay.querySelector('.obr-paper');
     indicatorEl = overlay.querySelector('.obr-indicator');
     progressFillEl = overlay.querySelector('.obr-progress-fill');
-    pickHintEl = overlay.querySelector('.obr-pick-hint');
+    statusEl = overlay.querySelector('.obr-status');
+    statusPill = statusEl.querySelector('.obr-status-pill');
+    statusLabelEl = statusEl.querySelector('.obr-status-label');
+    statusMenuEl = statusEl.querySelector('.obr-status-menu');
+    // Delegated: renderStatus rewrites the items, never this listener or the pill's own one.
+    statusMenuEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pick]');
+      if (b) handlePickHint(b.dataset.pick);
+    });
     hintEl = overlay.querySelector('.obr-hint');
     fsBtn = overlay.querySelector('.obr-controls [data-act="fullscreen"]');
     applyFooterHint(); // the (pointer: coarse) seed gets the first paint right on a phone
@@ -324,7 +338,7 @@
       else if (touchMode && inEdgeBand(e.clientX) && e.target.closest('summary')) e.preventDefault();
       // A player with controls takes its own clicks; a controls-less clip ignores clicks, so the
       // edge band over it still turns the page.
-      else if (e.target.closest('a, button, input, label, summary, video[controls], audio, .obr-topbar, .obr-footer, .obr-pick-hint')) return;
+      else if (e.target.closest('a, button, input, label, summary, video[controls], audio, .obr-topbar, .obr-footer, .obr-status')) return;
       // The content is in an open shadow root; window.getSelection() can't see selections inside
       // it, so use shadowRoot.getSelection() (Chrome) and fall back to the document selection.
       const sel = root.getSelection ? root.getSelection() : (globalThis.getSelection && getSelection());
@@ -518,7 +532,9 @@
   /* ------------------------------------------------- toolbar popovers + width fit */
   // Aa (text size / theme / columns) and ⋯ (everything else) are hand-rolled rather than the
   // popover attribute: that needs Chrome 114 and the manifest's floor is 102. Both live inside
-  // .obr-topbar, so the page-flip click handler already ignores clicks in them.
+  // .obr-topbar, so the page-flip click handler already ignores clicks in them. The status pill's
+  // menu ('status') rides the same open/close state, so Esc and an outside click dismiss it too,
+  // but it hangs from the pill in the bottom corner, where its own CSS places it.
   function togglePop(name) {
     const was = openPop;
     closePop();
@@ -526,9 +542,10 @@
     const pop = overlay.querySelector('.obr-pop[data-for="' + name + '"]');
     const btn = overlay.querySelector('[data-pop="' + name + '"]');
     if (!pop || !btn) return;
-    const bar = btn.closest('.obr-topbar').getBoundingClientRect();
-    const right = Math.max(8, Math.round(bar.right - btn.getBoundingClientRect().right));
-    pop.style.right = right + 'px';
+    const barEl = btn.closest('.obr-topbar');
+    const bar = barEl && barEl.getBoundingClientRect();
+    const right = bar ? Math.max(8, Math.round(bar.right - btn.getBoundingClientRect().right)) : 0;
+    if (bar) pop.style.right = right + 'px';
     pop.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
     openPop = name;
@@ -537,10 +554,12 @@
     // that button's left: shrink-to-fit squeezes it against the screen edge however it is
     // nudged afterwards. So measure its natural width (capped at the window by the CSS) and
     // move its right edge in until that width fits with an 8px margin.
-    pop.style.width = 'max-content';
-    const want = pop.getBoundingClientRect().width;
-    pop.style.width = '';
-    pop.style.right = Math.max(8, Math.min(right, Math.floor(bar.right - 8 - want))) + 'px';
+    if (bar) {
+      pop.style.width = 'max-content';
+      const want = pop.getBoundingClientRect().width;
+      pop.style.width = '';
+      pop.style.right = Math.max(8, Math.min(right, Math.floor(bar.right - 8 - want))) + 'px';
+    }
     showChrome();
   }
 
@@ -639,6 +658,7 @@
   const TITLE_MIN = 96;
   function fitControls() {
     if (!built || !active) return;
+    fitStatus(); // the footer's reserve for the status pill is measured at the same moments
     const bar = overlay.querySelector('.obr-topbar');
     const pair = (a) => [bar.querySelector('.obr-controls [data-act="' + a.act + '"]'),
       bar.querySelector('.obr-menuitem[data-act="' + a.act + '"]')];
@@ -1817,7 +1837,7 @@
       openedByAuto = false; // choosing the content is reading it, however the reader opened
       currentSpread = 0;
       renderContent(lastArticle);
-      updatePickHint();
+      renderStatus();
       requestAnimationFrame(() => layout(false));
       watchMedia();
     } else {
@@ -1828,45 +1848,93 @@
     showChrome();
   }
 
-  /* ------------------------------------------------------------ pick hint banner */
-  // Render the small affordance above the footer for the current contentSource.
-  // 'whole' invites the picker ONLY when the extraction looks suspect (extractionSuspect);
-  // 'pick-manual' offers to save; 'pick-saved' offers to drop back to the full page or clear
-  // the saved pick. 'selection', and a confident whole-page read, show nothing.
-  function updatePickHint() {
-    if (!pickHintEl) return;
-    let html = '';
+  /* -------------------------------------------------------------- status pill */
+  // The reader's one status surface: why it opened (auto-open) and where its text came from
+  // (a saved pick, a block just picked, a whole-page read that looks wrong), each with its
+  // actions behind a click. It sits in the blank band under the text (see .obr-status), so it
+  // covers no words and stays up for the whole open; nothing here needs a dismiss.
+  // 'whole' speaks up ONLY when the extraction looks suspect (extractionSuspect); 'selection',
+  // and a confident whole-page read, add nothing.
+  function renderStatus() {
+    if (!statusEl) return;
+    clearTimeout(statusFlashTimer);
+    const segs = [];
+    const items = [];
     if (contentSource === 'whole') {
-      // Only nag when the parse looks wrong — a confident whole-page read shows nothing
-      // (the ⌖ Pick toolbar button stays available for the rare same-size wrong block).
       // A TOTAL failure is excluded: renderContent already drew the empty state, which carries
-      // both offers, and repeating them in a pill below it is the duplication this replaced.
+      // both offers, and repeating them here would show the same offer twice.
       if (extractionSuspect && lastArticle) {
         // ⌖ Pick is the fix the user can apply; ⚠ Report is the one they can apply when it
         // cannot be fixed from here. This is the moment the toolbar's own ⚠ is least likely to
         // be found — the page looks broken, so nobody goes hunting through the chrome for it.
-        html = `<span class="obr-pick-msg">${OBR.t('readerHintWrongContent')}</span>
-          <button class="obr-btn" data-pick="start">${OBR.t('readerHintPickBlock')}</button>
-          <button class="obr-btn" data-pick="report">${OBR.t('readerHintReport')}</button>`;
+        segs.push(OBR.t('readerHintWrongContent'));
+        items.push({ act: 'start', key: 'readerHintPickBlock' }, { act: 'report', key: 'readerHintReport' });
       }
     } else if (contentSource === 'pick-manual') {
-      html = `<span class="obr-pick-msg">${OBR.t('readerHintPickedBlock')}</span>
-        <button class="obr-btn" data-pick="save">${OBR.t('readerHintSaveForSite')}</button>`;
+      segs.push(OBR.t('statusPickedBlock'));
+      items.push({ lab: 'readerHintPickedBlock' }, { act: 'save', key: 'readerHintSaveForSite' },
+        { act: 'start', key: 'statusRepick' });
     } else if (contentSource === 'pick-saved') {
-      html = `<span class="obr-pick-msg">${OBR.t('readerHintAutoPicked')}</span>
-        <button class="obr-btn" data-pick="fullpage">${OBR.t('readerHintUseFullPage')}</button>
-        <button class="obr-btn" data-pick="clear">${OBR.t('readerHintClearPick')}</button>`;
+      segs.push(OBR.t('statusSavedPick'));
+      // Pick again sits beside the escapes: a saved pick gone wrong on this page is when it is
+      // wanted, and the toolbar's ⌖ Pick has hidden itself by then (or sits in ⋯ when narrow).
+      items.push({ lab: 'readerHintAutoPicked' }, { act: 'fullpage', key: 'readerHintUseFullPage' },
+        { act: 'start', key: 'statusRepick' }, { act: 'clear', key: 'readerHintClearPick' });
     }
-    if (!html) { pickHintEl.classList.remove('show'); pickHintEl.innerHTML = ''; return; }
-    html += `<button class="obr-pick-x" data-pick="dismiss" title="${OBR.t('readerHintDismiss')}">✕</button>`;
-    pickHintEl.innerHTML = html;
-    pickHintEl.querySelectorAll('[data-pick]').forEach((b) =>
-      b.addEventListener('click', () => handlePickHint(b.dataset.pick)));
-    pickHintEl.classList.add('show');
+    // Last, so a phone-width pill that cuts its label short cuts "Esc closes", which a phone has
+    // no key for, rather than the content state. On a wide window the whole label shows: the
+    // "Esc closes" escape the spec promises on every auto-open.
+    if (autoOpened) {
+      segs.push(OBR.t('autoChipOpened'));
+      items.push({ act: 'stop-auto', key: 'autoChipStop' });
+    }
+    showStatus(segs.join(' · '), items);
+  }
+
+  // Rewrites the label and the menu items only: the pill button and both click listeners are
+  // built once, and replacing the button would leave it without its togglePop listener.
+  function showStatus(label, items) {
+    statusLabelEl.textContent = label;
+    statusMenuEl.innerHTML = items.map((it) => (it.lab
+      ? `<div class="obr-pop-lab">${escapeHTML(OBR.t(it.lab))}</div>`
+      : `<button class="obr-menuitem" role="menuitem" data-pick="${it.act}">${escapeHTML(OBR.t(it.key))}</button>`)).join('');
+    const actionable = items.some((it) => it.act);
+    statusPill.disabled = !actionable; // a flashed message has nothing to open
+    statusEl.classList.toggle('obr-status-msg', !actionable);
+    if (!actionable && openPop === 'status') closePop();
+    statusEl.hidden = !label;
+    overlay.classList.toggle('obr-has-status', !!label);
+    fitStatus();
+  }
+
+  // The footer reserves the pill's width on its left (.obr-has-status .obr-footer), so the page
+  // count and key hint never slide under it. Measured, because the label differs by locale and
+  // by state. Only while shown: a hidden host measures zero, and fitControls re-runs this once
+  // the reader is on screen and on every resize.
+  function fitStatus() {
+    if (!built || !active || !statusEl) return;
+    overlay.style.setProperty('--obr-status-w', (statusEl.hidden ? 0 : statusEl.offsetWidth) + 'px');
+  }
+
+  // A one-line message in the pill (a save error, "auto-open turned off"), then back to state.
+  function flashStatus(msg) {
+    if (!statusEl) return;
+    showStatus(msg, []);
+    statusFlashTimer = setTimeout(renderStatus, STATUS_FLASH_MS);
   }
 
   function handlePickHint(action) {
-    if (action === 'dismiss') return pickHintEl.classList.remove('show');
+    closePop(); // an action ends the menu it came from; it must not hold the chrome up after
+    if (action === 'stop-auto') {
+      // Relays to the worker, which clears the flag AND hands the site grant back. A false
+      // means no auto rule matched any more (stopped from the context menu meanwhile), so the
+      // label goes either way: a Stop that can do nothing must not stay on offer.
+      const stop = OBR._stopAutoHere ? OBR._stopAutoHere() : Promise.resolve(false);
+      return Promise.resolve(stop).then((ok) => {
+        autoOpened = false;
+        if (ok) flashStatus(OBR.t('autoChipStopped')); else renderStatus();
+      }, () => {});
+    }
     if (action === 'start') return startPicker();
     // Carry WHY we flagged it, in the same slot the paint check uses: a report saying "the
     // reader showed 9 words on a page with 31" is actionable without a reproduction.
@@ -1968,14 +2036,6 @@
   }
   OBR._extractFromSelector = extractFromSelector;
 
-  // Transient one-line message in the hint banner (e.g. a save confirmation/error).
-  function flashPickMsg(msg) {
-    if (!pickHintEl) return;
-    pickHintEl.innerHTML = `<span class="obr-pick-msg">${escapeHTML(msg)}</span>`
-      + `<button class="obr-pick-x" data-pick="dismiss" title="${OBR.t('readerHintDismiss')}">✕</button>`;
-    pickHintEl.querySelector('[data-pick]').addEventListener('click', () => pickHintEl.classList.remove('show'));
-    pickHintEl.classList.add('show');
-  }
 
   // Re-render with the whole-page extraction (the "Use full page" affordance). Does
   // NOT clear a saved pick — it's a one-shot escape for this session.
@@ -2000,7 +2060,7 @@
         priorFin = !!(e && e.fin);
       });
     }
-    updatePickHint();
+    renderStatus();
     requestAnimationFrame(() => layout(false));
     watchMedia();
   }
@@ -2008,12 +2068,12 @@
   function saveCurrentPick() {
     if (!pickNode) return;
     const sel = cssPathFor(pickNode);
-    if (!sel) return flashPickMsg(OBR.t('readerPickSaveNoSelector'));
+    if (!sel) return flashStatus(OBR.t('readerPickSaveNoSelector'));
     if (!OBR.savePick) return;
     OBR.savePick(OBR.normalizeHost(location.href), sel).then((ok) => {
-      if (ok === false) return flashPickMsg(OBR.t('readerPickSaveStorageFull'));
+      if (ok === false) return flashStatus(OBR.t('readerPickSaveStorageFull'));
       contentSource = 'pick-saved'; // now the durable per-site pick
-      updatePickHint();
+      renderStatus();
     });
   }
 
@@ -2107,7 +2167,7 @@
     const byline = article && article.byline ? article.byline : '';
     // No article: an EMPTY STATE, not an error. Nothing failed — the page simply isn't one, and
     // a recipe index or a photo gallery is a perfectly good reason to land here. It also owns the
-    // two ways out, which is why updatePickHint() stays quiet on this path (see the guard there):
+    // two ways out, which is why renderStatus() stays quiet on this path (see the guard there):
     // one offer on screen, not the same offer twice. Rendered as a block rather than as prose
     // because the body is where CONTENT goes, and alert chrome there would have to fight the
     // three themes, the reader's font-size setting and the column pagination at once.
@@ -4218,8 +4278,8 @@
   }
 
   /* ---------------------------------------------------------------- open/close */
-  // opts.trigger === 'auto': opened by the auto-open sentinel (no gesture) — show the
-  // transient "Auto-opened" chip with its escape hatch.
+  // opts.trigger === 'auto': opened by the auto-open sentinel (no gesture) — the status pill
+  // says so and carries the escape hatch (Stop auto-opening on this site).
   // RE-ENTRANCY GUARD. `active` is only set at the very END of openInner, after ~5 awaits
   // (settings, saved pick, position/engage/lifetime), so for that whole window `if (active)`
   // guards nothing. A second trigger in the window used to start a RIVAL open, and since each
@@ -4247,6 +4307,7 @@
   async function openInner(opts) {
     if (active) return;
     const trigger = opts && opts.trigger;
+    autoOpened = trigger === 'auto';
     // The page-turn diagnostics describe the article being read, and `why` carries tag/class
     // strings lifted from its DOM — leaving them set would report the PREVIOUS article (on a
     // different site) as if it were this one.
@@ -4303,7 +4364,7 @@
     }
     if (t) t.mark('extract'); // clone + Readability (+ loadPick storage read on the saved-pick path)
     renderContent(lastArticle);
-    updatePickHint();
+    renderStatus();
     if (t) t.mark('render');
     // Where the page is scrolled, read now, while the page is still what the user sees. A
     // selection is exactly what they asked to read, so it always starts at its beginning.
@@ -4377,7 +4438,6 @@
       if (t) { t.mark('layout'); t.flush('src=' + contentSource + ' at=' + openAt + ' spread=' + currentSpread + '/' + totalSpreads + ' [' + anchorWhy + ']'); }
     });
     watchMedia(); // re-paginate once late-loading images / fonts settle
-    if (trigger === 'auto' && OBR._showAutoChip) OBR._showAutoChip('opened');
     OBR._opensCompleted = (OBR._opensCompleted || 0) + 1; // test hook: full inits that ran to completion
     schedulePaintCheck();
     watchCtx();

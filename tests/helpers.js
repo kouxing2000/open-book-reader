@@ -230,6 +230,24 @@ export async function clickInReader(page, selector) {
   await page.locator(`#obr-host >> ${selector}`).click();
 }
 
+/** The reader's status pill: whether it is up, its label, and the actions its menu offers. */
+export async function readStatus(page) {
+  return page.evaluate(() => {
+    const el = document.getElementById('obr-host').shadowRoot.querySelector('.obr-status');
+    return {
+      shown: !el.hidden,
+      label: el.querySelector('.obr-status-label').textContent,
+      acts: Array.from(el.querySelectorAll('.obr-status-menu [data-pick]')).map((b) => b.dataset.pick),
+    };
+  });
+}
+
+/** Run one action from the status pill the way a user does: open its menu, click the item. */
+export async function clickStatusAction(page, act) {
+  await clickInReader(page, '.obr-status-pill');
+  await clickInReader(page, `.obr-status-menu [data-pick="${act}"]`);
+}
+
 /** Hold the reader's toolbar up the way a user does before reaching for it: the desktop bar hides
  *  after a short idle (CHROME_HIDE_MS), and a slow machine can spend that long between opening
  *  the reader and the click, or let the hide fire mid-click, leaving the button off-screen. Any

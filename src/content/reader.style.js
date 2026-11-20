@@ -400,20 +400,33 @@
     .obr-single .obr-cols { display: none; }
     .obr-byline { opacity: .8; font-size: .85em; margin: 0 0 1.4em; }
 
-    /* "Wrong content?" / saved-pick affordance — a small pill above the footer.
-       Auto-hides with the chrome (shares .obr-chrome-hidden), dismissible. */
-    .obr-pick-hint {
-      position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%);
-      z-index: 12; display: none; align-items: center; gap: 9px;
-      padding: 7px 9px 7px 13px; border-radius: 11px; font-size: 12.5px;
-      background: rgba(var(--obr-bg),.98); color: inherit;
-      border: 1px solid rgba(127,127,127,.28); box-shadow: 0 6px 20px rgba(0,0,0,.30);
-      transition: opacity .25s ease, transform .25s ease; max-width: 92%;
+    /* Status pill: auto-open and content-source state, actions in a menu (renderStatus). It sits
+       in the band under the text: layout() makes the paper the window height minus 24px, centred,
+       with 14px padding, so the bottom 26px never hold a word. The pill fills 4px to 24px of it,
+       which is why it stays up instead of hiding with the chrome. Its height is pinned: a taller
+       line box (a CJK fallback font) would reach into the text. */
+    .obr-status { position: absolute; left: 16px; bottom: 4px; z-index: 12; font-size: 13px; } /* the topbar's size, which its menu items share */
+    .obr-status[hidden], .obr-status [hidden] { display: none; }
+    .obr-status-pill {
+      display: flex; align-items: center; gap: 6px; height: 20px; box-sizing: border-box;
+      max-width: calc(100vw - 150px); padding: 0 9px; border-radius: 999px; cursor: pointer;
+      font-family: inherit; font-size: 11.5px; line-height: 18px; color: inherit;
+      background: rgba(var(--obr-bg),.94); border: 1px solid rgba(127,127,127,.32);
+      box-shadow: 0 2px 8px rgba(0,0,0,.14);
     }
-    .obr-pick-hint.show { display: flex; }
-    .obr-chrome-hidden .obr-pick-hint { opacity: 0; pointer-events: none;
-      transform: translateX(-50%) translateY(8px); }
-    .obr-pick-msg { opacity: .82; }
+    .obr-status-pill:hover, .obr-status-pill[aria-expanded="true"] { border-color: #7c6cff; }
+    .obr-status-pill:disabled { cursor: default; }
+    .obr-status-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
+    .obr-status-caret { flex: none; color: #7c6cff; }
+    .obr-status-msg .obr-status-caret { display: none; }
+    /* Opens upward from the pill: the toolbar popovers it shares .obr-pop with hang down from the
+       bar, so their top and right are undone here. */
+    .obr-status-menu { top: auto; right: auto; bottom: calc(100% + 6px); left: 0; }
+    .obr-status-menu .obr-pop-lab { max-width: 300px; }
+    /* The page count and key hint start after the pill (its width is measured into the variable by
+       fitStatus), and the hint gives way first when the row is tight. */
+    .obr-has-status .obr-footer { padding-left: calc(var(--obr-status-w, 0px) + 28px); }
+    .obr-has-status .obr-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Empty state — shown instead of the article when extraction found nothing. Deliberately
        calm: this is not a failure state, it is a page that is not an article. Colour comes from
@@ -434,13 +447,6 @@
     .obr-overlay.dark .obr-empty-go { background: #7c6cff; }
     .obr-overlay.dark .obr-empty-go:hover { background: #6a59f2; }
     .obr-empty-alt { font-family: ${FONT_STACKS.sans}; font-size: .72em; opacity: .8; margin-top: 16px; }
-    .obr-pick-hint .obr-btn { background: #7c6cff; color: #fff; padding: 5px 11px; }
-    .obr-pick-hint .obr-btn:hover { background: #6a59f2; }
-    .obr-pick-x {
-      border: none; cursor: pointer; background: transparent; color: inherit;
-      opacity: .55; font-size: 13px; padding: 4px 6px; border-radius: 6px; font-family: inherit;
-    }
-    .obr-pick-x:hover { opacity: 1; background: rgba(127,127,127,.18); }
 
     /* Back-cover colophon — the reward page at the article's end. Lives IN the column
        flow (break-before starts its own column; height set per layout() so it fills

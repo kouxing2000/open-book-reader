@@ -340,8 +340,9 @@ test('permsFor derives ZIP origins from the actual image URLs, never <all_urls>'
 });
 
 
-// stopAutoOpen is what the context menu AND the in-overlay chip both go through (the chip
-// relays via 'obr-stop-auto' because a content script cannot call permissions.remove). It must
+// stopAutoOpen is what the context menu, the reader's status pill AND the gallery's chip all go
+// through (the in-page two relay via 'obr-stop-auto' because a content script cannot call
+// permissions.remove). It must
 // clear only the auto flag, keep the mode rule, and hand the site grant back.
 test('stopAutoOpen clears the auto flag, keeps the mode, and releases the site grant', async ({ serviceWorker }) => {
   const out = await serviceWorker.evaluate(async () => {
