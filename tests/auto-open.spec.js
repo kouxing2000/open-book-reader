@@ -527,6 +527,7 @@ test('an ordinary (registered) load never shows the confirmation chip', async ({
 
 test('open({trigger:"auto"}) says so in the status pill with its Stop; a manual open does not', async ({ page }) => {
   await gotoFixture(page, 'forum-topic.html');
+  await seedSettings(page, AUTO_TEXT);
   await injectAll(page);
   await page.evaluate(() => OBR.open({ trigger: 'auto' }));
   await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBe(1);
@@ -534,16 +535,72 @@ test('open({trigger:"auto"}) says so in the status pill with its Stop; a manual 
   expect(auto.shown).toBe(true);
   expect(auto.label).toContain('Opened automatically — Esc closes'); // the escape stays on screen
   expect(auto.acts).toEqual(['stop-auto']);
-  // The reader no longer raises the page-level chip, which is what stacked over its own banner.
+  // While the reader is open it raises no page-level chip: that would stack over the reader's own status.
   expect(await page.evaluate(() => !!document.getElementById('obr-auto-chip-host'))).toBe(false);
 
+  // Closing it without Stop leaves the Stop on the page: the pill went with the reader.
   await page.evaluate(() => OBR.close());
+  await expect.poll(() => autoChip(page)).toEqual({ text: expect.stringContaining('Auto-open is on for localhost'), stop: true });
+
+  // A reopen takes it down: the chip rides above every overlay, so it would sit on the text.
   await page.evaluate(() => OBR.open());
   await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBe(2);
+  expect(await autoChip(page)).toBe(null);
   const manual = await readStatus(page);
   expect(manual.label).not.toContain('Opened automatically');
   expect(manual.acts).not.toContain('stop-auto');
+
+  // Closing a manual open offers no Stop, though auto-open is on for the site.
+  await page.evaluate(() => OBR.close());
+  await expectNoAutoChip(page);
 });
+
+// Stopped from the context menu or Options during the read: the stored rule changed, this
+// open's flag did not, and the chip would claim auto-open is still on.
+test('closing an auto-open stopped elsewhere meanwhile shows no chip', async ({ page }) => {
+  await gotoFixture(page, 'forum-topic.html');
+  await seedSettings(page, AUTO_TEXT);
+  await injectAll(page);
+  await page.evaluate(() => OBR.open({ trigger: 'auto' }));
+  await expect.poll(() => page.evaluate(() => OBR._opensCompleted || 0)).toBe(1);
+  await seedSettings(page, { siteRules: [{ match: 'localhost', mode: 'text', auto: false }] });
+  await page.evaluate(() => OBR.close());
+  await expectNoAutoChip(page);
+});
+
+// One chip at a time: the rating ask, when due at that close, takes the slot.
+test('closing an auto-open when the rating ask is due shows only the ask', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await seedSettings(page, AUTO_TEXT);
+  await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({ obr_engage: {} }, () =>
+    chrome.storage.local.set({ obr_usage: { opens: 6, days: 3, lastDay: '2020-01-01' } }, res))));
+  await injectAll(page);
+  await page.evaluate(() => OBR.savePick(OBR.normalizeHost(location.href), 'article'));
+  await page.evaluate(() => OBR.open({ trigger: 'auto' }));
+  await expect.poll(() => readStatus(page).then((st) => st.acts)).toContain('fullpage');
+  // Choosing the content is reading it, so this session may ask like a manual one; it stays
+  // an un-stopped auto-open.
+  await clickStatusAction(page, 'fullpage');
+  await expect.poll(() => readStatus(page).then((st) => st.acts)).toEqual(['stop-auto']);
+  await page.evaluate(() => OBR.close());
+  await expect.poll(() => page.evaluate(() => !!document.getElementById('obr-engage-chip-host'))).toBe(true);
+  await expectNoAutoChip(page);
+});
+
+function autoChip(page) {
+  return page.evaluate(() => {
+    const h = document.getElementById('obr-auto-chip-host');
+    return h ? { text: h.shadowRoot.textContent, stop: !!h.shadowRoot.querySelector('.stop') } : null;
+  });
+}
+
+// The chip arrives after a storage read, so its absence is only seen after a wait: the reader
+// is closed (the landmark), then a wrongly shown chip gets time to land.
+async function expectNoAutoChip(page) {
+  expect(await page.evaluate(() => document.getElementById('obr-host').style.display)).toBe('none');
+  await page.waitForTimeout(300);
+  expect(await autoChip(page)).toBe(null);
+}
 
 // The chip's Stop RELAYS to the service worker instead of clearing the flag in-page: a content
 // script cannot call permissions.remove, so clearing locally would drop `auto` while keeping the
@@ -568,6 +625,9 @@ test('the status pill Stop relays to the service worker (which owns clear + rele
   expect(Object.keys(relay)).toEqual(['type']);
   // A Stop that has run is not offered again (a second press could only answer "nothing to stop").
   await expect.poll(() => readStatus(page).then((st) => st.acts)).not.toContain('stop-auto');
+  // Nor on the page after the close.
+  await page.evaluate(() => OBR.close());
+  await expectNoAutoChip(page);
 });
 
 // Messaging absent (no SW at all) must still turn auto-open off rather than silently doing

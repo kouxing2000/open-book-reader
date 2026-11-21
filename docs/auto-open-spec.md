@@ -73,9 +73,9 @@ Goals
   and no signal may ever *lower* the content thresholds.
 - Zero config for the common case: under Smart pick the content heuristic discriminates list
   vs topic; path globs remain the power-user override (already supported by `siteRules`).
-- Instant, obvious escape: Esc closes; the reader's status pill (the gallery's chip) offers
-  "stop auto-opening here"; a closed page
-  is never re-opened in the same page session.
+- Instant, obvious escape: Esc closes; the reader's status pill, then the page chip after a
+  close (the gallery: its chip), offer "stop auto-opening here"; a closed page is never
+  re-opened in the same page session.
 - No install-time permission changes; no new data collection (story stays "fully local").
 
 Non-goals (explicitly rejected or deferred)
@@ -147,8 +147,10 @@ Non-goals (explicitly rejected or deferred)
   about 5s in.
 - On auto-open, the reader's **status pill** reads `Opened automatically — Esc closes` for the
   whole open, with `[Stop auto-opening on this site]` in its menu. It sits in the blank band
-  under the text, so it covers nothing (`docs/reader.md`, status pill). The gallery shows a
-  transient **chip** (~6s, dismissible) with the same Stop.
+  under the text, so it covers nothing (`docs/reader.md`, status pill). Closing that reader
+  without Stop (Esc, ✕, toolbar) puts a page **chip** up for ~6s, `Auto-open is on for <host>`
+  with the same Stop, unless the rating ask is due at that close (one chip at a time); a reopen
+  takes it down. The gallery shows the chip (~6s, dismissible) on open instead.
   Stop removes only the `auto` flag (the mode rule survives — "stop automating"
   must not also forget "this site is a gallery site").
 - **Suppression**: a user-initiated dismissal (§5.4) records that page's
@@ -302,7 +304,7 @@ rule, renaming its pattern (the old host's access goes back; the new host is nev
 there, and auto-open stays only if that host is already granted), the mode, adding one; and
 Reset to defaults calls it with an empty "after". In the worker every rule write goes through
 `writeRules`: the context menu's "Clear rule" and "Stop auto-opening", Configure default, and
-the Stop in the reader's status pill or the gallery's chip, which RELAYS via an `obr-stop-auto` message, because a content
+the Stop in the reader's status pill or the page chip, which RELAYS via an `obr-stop-auto` message, because a content
 script cannot call `permissions.remove` and clearing in-page would drop the flag while keeping
 the grant. Left direct: `OBR.storeAutoRule`, which only turns auto-open on, and the content
 script's local fallback in `_stopAutoHere` (no messaging, no permissions API). `releasableOrigins` returns `[]` (keep the grant) when another auto rule still
@@ -396,8 +398,8 @@ functions and creates fresh promise chains), noted here so nobody "fixes" it.
   sentinel's own ladder decides open-vs-confirmation-chip, §3.1 step 3).
 
 ### 5.4 Engine changes (`reader.js`, `gallery.js`)
-- `open(opts)` accepts `{ trigger: 'auto' }` → the reader's status pill / the gallery's chip
-  (§3.2). Their Stop relays to the worker (`OBR._stopAutoHere`), which clears `auto` on the rule
+- `open(opts)` accepts `{ trigger: 'auto' }` → the reader's status pill (and the page chip
+  after a user close) / the gallery's chip (§3.2). Their Stop relays to the worker (`OBR._stopAutoHere`), which clears `auto` on the rule
   that matched the current URL, keeps the mode, and hands the site grant back.
 - `close()` (both engines) records `origin+pathname+search` into the shared in-page
   suppression set (`OBR._autoSuppressed`) — but **only for user-initiated dismissals**
@@ -544,7 +546,7 @@ On a real forum (e.g. any Discourse instance):
    also the registered-script/executeScript shared-isolated-world verification, §5.2); full
    reload → opens again. On a query-routed forum (phpBB-style `viewtopic.php?t=N`): Esc on
    one topic must not suppress the others.
-4. "Stop auto-opening" (status pill menu, gallery chip) → flag cleared, mode rule survives, sentinel deregisters
+4. "Stop auto-opening" (status pill menu, the page chip after a close, gallery chip) → flag cleared, mode rule survives, sentinel deregisters
    (verify via `chrome.scripting.getRegisteredContentScripts` in the SW console).
 5. Revoke site access in chrome://extensions → no errors, no red badge, sentinel gone;
    the rule row shows the paused line; re-grant via its inline Grant (or the checkbox) → back.

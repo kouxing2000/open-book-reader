@@ -1830,7 +1830,8 @@
   // Transient auto-open status chip, in its OWN tiny shadow host so it rides above
   // either engine's overlay — and can exist with no engine at all (the enable-time
   // confirmation, §3.1 of docs/auto-open-spec.md). kind: 'opened' (auto-opened; carries
-  // the Stop button) | 'enabled' (auto-open armed but this page did not open) |
+  // the Stop button) | 'closed' (the user closed an auto-opened reader without stopping it;
+  // names the site and carries the Stop) | 'enabled' (auto-open armed but this page did not open) |
   // 'stopped' (feedback after Stop). Best-effort UI: never throws into an open().
   // Shared bottom-chip shell (the auto-open chip and the engagement chip must look like
   // one family — same position, same skin).
@@ -1855,11 +1856,16 @@
       border-radius: 7px; padding: 5px 9px; }`;
 
   let chipTimer = null;
+  // Takes the chip down, if one is up. The reader calls it on open: the chip rides above every
+  // overlay, so one left from the last close would sit on the text.
+  OBR._hideAutoChip = function () {
+    clearTimeout(chipTimer);
+    const prev = document.getElementById('obr-auto-chip-host');
+    if (prev) prev.remove();
+  };
   OBR._showAutoChip = function (kind, host) {
     try {
-      const prev = document.getElementById('obr-auto-chip-host');
-      if (prev) prev.remove();
-      clearTimeout(chipTimer);
+      OBR._hideAutoChip();
       const made = OBR.makeShadowHost('obr-auto-chip-host');
       const el = made.host, root = made.root;
       OBR.adoptStyles(root, CHIP_CSS);
@@ -1868,8 +1874,9 @@
       const msg = document.createElement('span');
       msg.className = 'msg';
       const gone = () => { clearTimeout(chipTimer); el.remove(); };
-      if (kind === 'opened') {
-        msg.textContent = OBR.t('autoChipOpened');
+      const withStop = kind === 'opened' || kind === 'closed';
+      if (withStop) {
+        msg.textContent = kind === 'opened' ? OBR.t('autoChipOpened') : OBR.t('autoChipEnabled', [host || '']);
         const stop = document.createElement('button');
         stop.className = 'stop';
         stop.textContent = OBR.t('autoChipStop');
@@ -1893,7 +1900,7 @@
       x.addEventListener('click', gone);
       chip.append(x);
       root.append(chip);
-      chipTimer = setTimeout(gone, kind === 'opened' ? 6000 : 5000);
+      chipTimer = setTimeout(gone, withStop ? 6000 : 5000);
     } catch (e) { /* chip is best-effort — never break an open over it */ }
   };
 
