@@ -11,7 +11,7 @@
 import { test, expect } from './fixtures.js';
 import {
   gotoFixture, seedSettings, injectSentinel, waitSentinelDone,
-  injectAll, sentMessages, clickInReader, readStatus, clickStatusAction,
+  injectAll, sentMessages, clickInReader, readStatus, clickStatusAction, readState,
 } from './helpers.js';
 
 const AUTO_TEXT = { siteRules: [{ match: 'localhost', mode: 'text', auto: true }] };
@@ -568,8 +568,22 @@ test('closing an auto-open stopped elsewhere meanwhile shows no chip', async ({ 
   await expectNoAutoChip(page);
 });
 
-// One chip at a time: the rating ask, when due at that close, takes the slot.
-test('closing an auto-open when the rating ask is due shows only the ask', async ({ page }) => {
+// Someone who read it wanted it: no Stop chip after every article on a site read daily.
+test('closing an auto-open after a page turn shows no chip', async ({ page }) => {
+  await gotoFixture(page, 'article.html');
+  await seedSettings(page, AUTO_TEXT);
+  await injectAll(page);
+  await page.evaluate(() => OBR.open({ trigger: 'auto' }));
+  await expect.poll(() => readState(page).then((s) => s.indicator)).toContain('pages');
+  const before = (await readState(page)).indicator;
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => readState(page).then((s) => s.indicator)).not.toBe(before);
+  await page.evaluate(() => OBR.close());
+  await expectNoAutoChip(page);
+});
+
+// Choosing the content is reading it too, and a rating ask due at that close is not crowded.
+test('closing an auto-open after choosing its content shows no chip, and the rating ask may come', async ({ page }) => {
   await gotoFixture(page, 'article.html');
   await seedSettings(page, AUTO_TEXT);
   await page.evaluate(() => new Promise((res) => chrome.storage.sync.set({ obr_engage: {} }, () =>
@@ -578,8 +592,7 @@ test('closing an auto-open when the rating ask is due shows only the ask', async
   await page.evaluate(() => OBR.savePick(OBR.normalizeHost(location.href), 'article'));
   await page.evaluate(() => OBR.open({ trigger: 'auto' }));
   await expect.poll(() => readStatus(page).then((st) => st.acts)).toContain('fullpage');
-  // Choosing the content is reading it, so this session may ask like a manual one; it stays
-  // an un-stopped auto-open.
+  // Use full page: the session may now ask like a manual one, and it stays an un-stopped auto-open.
   await clickStatusAction(page, 'fullpage');
   await expect.poll(() => readStatus(page).then((st) => st.acts)).toEqual(['stop-auto']);
   await page.evaluate(() => OBR.close());

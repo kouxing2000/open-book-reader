@@ -148,9 +148,11 @@ Non-goals (explicitly rejected or deferred)
 - On auto-open, the reader's **status pill** reads `Opened automatically — Esc closes` for the
   whole open, with `[Stop auto-opening on this site]` in its menu. It sits in the blank band
   under the text, so it covers nothing (`docs/reader.md`, status pill). Closing that reader
-  without Stop (Esc, ✕, toolbar) puts a page **chip** up for ~6s, `Auto-open is on for <host>`
-  with the same Stop, unless the rating ask is due at that close (one chip at a time); a reopen
-  takes it down. The gallery shows the chip (~6s, dismissible) on open instead.
+  untouched (Esc, ✕, toolbar, with no page turned and no content chosen) and without Stop puts
+  a page **chip** up for ~6s, `Auto-open is on for <host>` with the same Stop, while the rule
+  still has auto on; a reopen takes it down. A reader that was read closes with no chip, so a
+  site read daily does not get one after every article. The gallery shows the chip (~6s,
+  dismissible) on open instead.
   Stop removes only the `auto` flag (the mode rule survives — "stop automating"
   must not also forget "this site is a gallery site").
 - **Suppression**: a user-initiated dismissal (§5.4) records that page's

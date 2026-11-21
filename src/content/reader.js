@@ -4615,19 +4615,19 @@
       ? { key: posKey, f: (currentSpread * pagesPerSpread) / totalColumns, p: pagePk } : null;
     active = false;
     const userClose = !(opts && opts.suppress === false);
+    // Closing an auto-open untouched (no page turned, no content chosen) is what someone who did
+    // not want it does, and the pill that carried its Stop went with the reader, so the Stop
+    // stays on the page a moment. Someone who read it wanted it: no chip after every article.
+    const offerStop = userClose && autoOpened && untouchedAutoOpen() && OBR._showAutoChip;
     // The one moment the engagement chip may appear: after a USER-initiated close — the
     // reading is over, nothing gets interrupted. Mode switches / cross-closes never ask.
     // Nor does dismissing an AUTO-opened session the user never finished: they may be
     // closing something they didn't want — the worst possible instant to ask for a rating.
-    const asking = userClose && !(openedByAuto && !finishedThisOpen) && OBR._maybeEngageAsk
-      ? OBR._maybeEngageAsk() : false;
-    // Closing an auto-open without stopping it puts its Stop on the page for a moment: the pill
-    // that carried it went with the reader, and closing is what someone who did not want this
-    // page does first. One chip at a time, so a rating ask that is due takes the slot.
-    if (userClose && autoOpened && OBR._showAutoChip) {
+    // One chip at a time: a close that offers the Stop leaves the ask to a later close.
+    if (userClose && !offerStop && !(openedByAuto && !finishedThisOpen) && OBR._maybeEngageAsk) OBR._maybeEngageAsk();
+    if (offerStop) {
       const gen = openGen;
-      Promise.resolve(asking).catch(() => false)
-        .then((asked) => (asked ? null : OBR.loadSettings()))
+      Promise.resolve(OBR.loadSettings())
         .then((s) => {
           // The chip says auto-open is on, so it reads the rule rather than this open's flag:
           // a Stop from the context menu or Options during the read leaves the flag set.
