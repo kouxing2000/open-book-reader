@@ -63,8 +63,13 @@ offer: the file a picture links to (most CMSs link the original), else the wides
 candidate, falling back to what the page shows. Esc, the ✕ or a backdrop click closes it on the
 same spread. The rules, each pinned in `reader.spec.js` / `reader-touch.spec.js`:
 - **Mouse: anywhere on the picture, the edge bands included.** The zoom-in cursor says so. It is
-  decided on hover (`isZoomable`), not at layout, because the drawn size moves with every
-  relayout, late image and figure fit. A picture already at its own size gains nothing in the
+  decided on hover and on every mousemove (`canZoom` + `onPicture`), not at layout, because the
+  drawn size moves with every relayout, late image and figure fit. "On the picture" means where
+  it is PAINTED (`paintedRect`), not its element's box: a plate's box is the whole page and
+  `object-fit` letterboxes the picture inside it, and a narrow cut picture's strips sit centred
+  in a box as wide as the page. That empty margin shows no zoom cursor and is treated as page:
+  an edge-band click there turns it. A margin inside a link to a web page still follows the
+  link, since the link's box is the browser's. A picture already at its own size gains nothing in the
   viewer (`ZOOM_MIN_GAIN`), so a click on it still turns the page; so does one on an icon or a
   picture of unknown size (`isContent`).
 - **Touch: the middle band only, and only while the toolbar shows.** A picture can cover a

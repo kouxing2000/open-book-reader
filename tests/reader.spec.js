@@ -5307,9 +5307,10 @@ test.describe('engagement ask policy', () => {
   });
 });
 
+const EDGE_FRAC = 0.28; // reader.js: the outer bands of the window that turn pages
+const inBand = (x, vw) => x < vw * EDGE_FRAC || x > vw * (1 - EDGE_FRAC);
+
 test.describe('picture viewer', () => {
-  const EDGE_FRAC = 0.28; // reader.js: the outer bands of the window that turn pages
-  const inBand = (x, vw) => x < vw * EDGE_FRAC || x > vw * (1 - EDGE_FRAC);
   /** A point on the picture inside a page-turn band — where a click would otherwise turn the page. */
   const bandPoint = (r, vw) => ({ x: (r.left + r.right) / 2 < vw / 2 ? r.left + 3 : r.right - 3, y: (r.top + r.bottom) / 2 });
 
@@ -5378,6 +5379,25 @@ test.describe('picture viewer', () => {
     expect((await readState(page)).translateX).toBe(before);
   });
 
+  // A narrow long picture's strips sit centred in a box as wide as the page, so the space beside
+  // them is that box: it hit the picture, and opened the viewer instead of turning the page.
+  test('the empty margin beside a narrow picture\'s strips turns the page and shows no zoom cursor', async ({ page }) => {
+    const vw = page.viewportSize().width;
+    const r = await turnToPicture(page, 'Narrow long infographic');
+    expect(r.cut).toBe(true);
+    const at = { x: (r.left + r.right) / 2 < vw / 2 ? r.left - 15 : r.right + 15, y: (r.top + r.bottom) / 2 };
+    expect(inBand(at.x, vw)).toBe(true);
+    // The point is on the strips box itself, the element a click there lands on.
+    expect(await page.evaluate(({ x, y }) => document.getElementById('obr-host').shadowRoot
+      .elementFromPoint(x, y).classList.contains('obr-strips'), at)).toBe(true);
+    await page.mouse.move(at.x, at.y);
+    expect((await readerPicture(page, 'Narrow long infographic')).zoomable).toBe(false);
+    const before = (await readState(page)).translateX;
+    await page.mouse.click(at.x, at.y);
+    expect((await zoomViewer(page)).open).toBe(false);
+    expect((await readState(page)).translateX).not.toBe(before);
+  });
+
   test('a picture already drawn at its own size still turns the page', async ({ page }) => {
     const vw = page.viewportSize().width;
     const r = await turnToPicture(page, 'Plain photo');
@@ -5420,6 +5440,39 @@ test.describe('picture viewer', () => {
     expect(v.long).toBe(false);
     expect(v.width).toBe(400);
     expect(page.url()).toBe(url);
+  });
+});
+
+// A plate's box is the whole page and object-fit paints the picture inside it. A near-square
+// picture on a narrower page paints at the page's width and leaves an empty band above and
+// below, inside its own box: that band hit the picture and opened the viewer.
+test.describe('picture viewer on a letterboxed plate', () => {
+  test('the empty band above a plated picture turns the page; the picture itself opens the viewer', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await gotoFixture(page, 'letterbox-plates.html');
+    await injectReader(page);
+    await openReader(page);
+    const vw = page.viewportSize().width;
+    const r = await turnToPicture(page, 'Square 1');
+    const band = (r.bottom - r.top - r.width * 1000 / 900) / 2; // square-plate.svg is 900x1000
+    expect(band).toBeGreaterThan(30); // otherwise there is no letterbox to click
+    const x = (r.left + r.right) / 2 < vw / 2 ? r.left + 5 : r.right - 5;
+    expect(inBand(x, vw)).toBe(true);
+    const margin = { x, y: r.top + band / 2 }, picture = { x, y: (r.top + r.bottom) / 2 };
+
+    await page.mouse.move(picture.x, picture.y);
+    expect((await readerPicture(page, 'Square 1')).zoomable).toBe(true);
+    await page.mouse.move(margin.x, margin.y);
+    expect((await readerPicture(page, 'Square 1')).zoomable).toBe(false);
+
+    const before = (await readState(page)).translateX;
+    await page.mouse.click(picture.x, picture.y);
+    await expect.poll(() => zoomViewer(page).then((v) => v.open)).toBe(true);
+    await page.keyboard.press('Escape');
+    expect((await readState(page)).translateX).toBe(before);
+    await page.mouse.click(margin.x, margin.y);
+    expect((await zoomViewer(page)).open).toBe(false);
+    expect((await readState(page)).translateX).not.toBe(before);
   });
 });
 

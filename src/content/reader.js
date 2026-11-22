@@ -374,12 +374,17 @@
     // would never hide again.
     overlay.addEventListener('mousemove', () => { if (!touchMode) showChrome(); });
     // The zoom-in cursor is decided on hover, not at layout: what the viewer adds depends on the
-    // picture's drawn size, which every relayout, late image and figure fit can change.
-    overlay.addEventListener('mouseover', (e) => {
+    // picture's drawn size, which every relayout, late image and figure fit can change. On every
+    // move as well as on entry: the empty margin of a letterboxed picture is the same element as
+    // the picture, so the cursor has to change inside the element; and a page turn that brings a
+    // picture under a still pointer fires mouseover alone.
+    const markZoomable = (e) => {
       if (touchMode) return;
       const pic = pictureAt(e.target);
-      if (pic) pic.at.classList.toggle('obr-zoomable', canZoom(pic));
-    });
+      if (pic) pic.at.classList.toggle('obr-zoomable', canZoom(pic) && onPicture(pic, e));
+    };
+    overlay.addEventListener('mouseover', markZoomable);
+    overlay.addEventListener('mousemove', markZoomable);
     [overlay.querySelector('.obr-topbar'), overlay.querySelector('.obr-footer')].forEach((bar) => {
       bar.addEventListener('mouseenter', () => {
         if (touchMode) return;
@@ -444,18 +449,37 @@
     if (at !== img) return true; // strips: the viewer shows the picture whole, without its cuts
     if (!isContent(img)) return false; // icons, badges, rules, and pictures of unknown size
     const { w, h } = intrinsic(img);
+    return zoomFit(w, h).width > paintedRect(img).width * ZOOM_MIN_GAIN;
+  }
+
+  /** Where an <img> actually draws its picture. object-fit letterboxes it inside its box: a
+   *  plate's box is the whole page (scale-down), and a flex-stretched one is the column's width.
+   *  object-position is taken as its centred default; no reader rule sets it. */
+  function paintedRect(img) {
     const r = img.getBoundingClientRect();
-    // The PAINTED width: a plate draws with object-fit: scale-down, so its box can be wider
-    // than the picture inside it.
-    const painted = Math.min(r.width, r.height * w / h, w);
-    return zoomFit(w, h).width > painted * ZOOM_MIN_GAIN;
+    const { w, h, known } = intrinsic(img);
+    const fit = getComputedStyle(img).objectFit;
+    if (!known || (fit !== 'contain' && fit !== 'scale-down' && fit !== 'none')) return r;
+    const s = fit === 'none' ? 1 : Math.min(r.width / w, r.height / h, fit === 'scale-down' ? 1 : Infinity);
+    const width = Math.min(r.width, w * s), height = Math.min(r.height, h * s);
+    const left = r.left + (r.width - width) / 2, top = r.top + (r.height - height) / 2;
+    return { left, top, width, height, right: left + width, bottom: top + height };
+  }
+
+  /** Whether the pointer is on the picture itself, not the empty margin its box leaves around
+   *  it: a letterboxed <img>, or the strips box, which spans the column while a narrow
+   *  picture's strips sit centred in it. */
+  function onPicture({ img, at }, e) {
+    if (at !== img) return !!e.target.closest('.obr-strip');
+    const r = paintedRect(img);
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
   }
 
   /** The picture this click should open, or null to let the click page as before. */
   function zoomTarget(e) {
     const pic = pictureAt(e.target);
     // A modified click keeps the browser's meaning (Cmd/Ctrl+click opens a link in a new tab).
-    if (!pic || !canZoom(pic) || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+    if (!pic || !canZoom(pic) || !onPicture(pic, e) || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
     // On touch the edge bands stay page turns: a picture can cover a phone's whole page, and a
     // tap there that zoomed would leave no way to turn it. And while the toolbar is hidden, a tap
     // brings it back first — the middle band is the only touch route to it, and on a page a
