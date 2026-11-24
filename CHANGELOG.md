@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.2] - 2026-11-24
+
+- **Reader notices stay off the text.** The saved-pick note and the "Opened automatically" note
+  no longer float over the article as two bars. One small label now sits in the reader's
+  bottom-left corner, below the text, and stays for the whole read: it says where the text came
+  from (Saved pick, Picked block, or Wrong content? when the page looks misread) and whether the
+  page opened by itself. Click it for what you can do from there, such as Use full page, Clear
+  pick, Report or Stop auto-opening on this site, plus a new Pick again.
+- **Stop is still offered when you close an auto-opened page untouched.** Closing the reader on
+  a page that opened by itself, before turning a page or picking its content, leaves "Stop
+  auto-opening on this site" on the page for a few seconds. Once you have turned a page, closing
+  does not offer Stop, so paging through an article on a site you read every day does not end
+  with that offer.
+- **The blank space beside a picture no longer opens the picture viewer.** In the reader, a
+  click in the blank space around a picture (beside a narrow one, or around one shrunk to fit
+  the page) now acts like a click on the page, so near the left or right edge it turns the page,
+  and the zoom cursor shows only over the picture.
+
 ## [1.20.1] - 2026-11-19
 
 - **Each thread keeps its own place.** On sites that put every thread on one address with a
@@ -709,7 +727,8 @@ First public release on the Chrome Web Store.
 
 _Earlier 0.1.x builds were internal and never released._
 
-[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.20.1...HEAD
+[Unreleased]: https://github.com/kouxing2000/open-book-reader/compare/v1.20.2...HEAD
+[1.20.2]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.20.2
 [1.20.1]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.20.1
 [1.20.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.20.0
 [1.19.0]: https://github.com/kouxing2000/open-book-reader/releases/tag/v1.19.0

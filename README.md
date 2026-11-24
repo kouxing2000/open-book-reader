@@ -78,7 +78,7 @@ in reading mode with zero clicks. On Smart pick (what a site with no default vie
 content pages — forum topics, manga chapters, articles — open, and list and search pages stay
 untouched: the decision ladder is deliberately strict, and when unsure it does nothing. A site
 set to Reader or Gallery opens every matching page in that mode. `Esc` always closes (and remembers that page for
-the session), and a chip offers one-click stop (design + rationale in
+the session), and the reader's status pill (in the gallery, a chip) offers Stop auto-opening on this site (design + rationale in
 `docs/auto-open-spec.md`). Enabling asks once for a permission scoped to that site only.
 
 ## Permissions

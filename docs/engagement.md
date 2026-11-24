@@ -138,7 +138,7 @@ ask opens beside it. And
 `obr-open-shared` → only with a grant covering the
 article, the worker arms a one-shot listener on the SENDER's tab and the page then replaces itself
 with the article (so Back skips the share page); when that tab finishes a load that is not on the
-share site, the worker opens the reader as a `'shared'` open (not `'auto'`: the auto chip's Stop has
+share site, the worker opens the reader as a `'shared'` open (not `'auto'`: the auto-open Stop has
 no rule to stop). All four answer TOP-LEVEL pages only (`sender.frameId === 0`), and read.html does
 not talk to the extension from inside a frame: framed by another site, it could otherwise steer the
 host tab through the worker. The load listener is one shot: the first non-share-site page the tab

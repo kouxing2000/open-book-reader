@@ -271,7 +271,7 @@ directly).
 
 Heuristic source of truth: the prose stats move from `reader.js` into `settings.js`
 (`OBR._proseStats()` → `{ words, maxBlock }`) so the sentinel, `_autoToggle`, and the
-suspect-extraction banner all share ONE implementation and always agree. Only the sentinel
+status pill's "Wrong content?" label all share ONE implementation and always agree. Only the sentinel
 also asks for `{ divs: true }`, and only to time a Reader or Gallery rule's open; no decision
 uses it (`docs/audit/sweep-2026-09-04.md` A4-1 has the toolbar's reverse risk).
 `OBR._articleWordCount` remains as a thin alias (gallery + tests keep working).
